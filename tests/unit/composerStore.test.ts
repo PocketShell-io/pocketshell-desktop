@@ -23,6 +23,7 @@ vi.mock('../../src/renderer/ipc', () => ({
 }));
 
 const { useComposerStore, COMPOSER_HISTORY_LIMIT } = await import('../../src/renderer/stores/composer');
+const { sessionIdentityKey } = await import('../../src/renderer/sessionIdentity');
 const { defaultGeometry } = await import('../../src/shared/composerGeometry');
 const { COMPOSER_STRINGS } = await import('../../src/shared/composerText');
 const { composerTiming } = await import('../../src/shared/composerSend');
@@ -940,5 +941,31 @@ describe('flushToTerminal â€” a short draft goes back to the shell on a close (Â
     expect(composer.terminalOwnsTyping).toBe(true);
     composer.setMode('docked');
     expect(composer.terminalOwnsTyping).toBe(false);
+  });
+});
+
+describe('targetKey identity', () => {
+  it('keys tmux rows by bare name, exactly as before', () => {
+    expect(composer.targetKey('conn-1', 'main')).toBe('conn-1/main');
+  });
+
+  it('keys aplexer rows by their workspace-qualified identity', () => {
+    const identity = sessionIdentityKey('review', {
+      backend: 'aplexer',
+      workspace: '/home/alexey/git/a',
+    });
+    composer.setDraft(composer.targetKey('conn-1', 'review', identity), 'draft for A');
+    const other = sessionIdentityKey('review', {
+      backend: 'aplexer',
+      workspace: '/home/alexey/git/b',
+    });
+    // Same tag, other folder: a different record, untouched draft.
+    expect(composer.targetKey('conn-1', 'review', other)).not.toBe(
+      composer.targetKey('conn-1', 'review', identity),
+    );
+    expect(composer.states[composer.targetKey('conn-1', 'review', other)]?.draft ?? '').toBe('');
+    expect(
+      composer.states[composer.targetKey('conn-1', 'review', identity)]?.draft,
+    ).toBe('draft for A');
   });
 });

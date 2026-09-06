@@ -93,12 +93,22 @@ import {
   type PaneBox,
   type ResizeEdge,
 } from '../../shared/composerGeometry';
+import { sessionIdentityKey } from '../sessionIdentity';
 import type { AttachmentSource, ConnectionId } from '../../shared/types';
 
 const props = defineProps<{
   connectionId: ConnectionId;
   /** Session name — the composer's identity, and the attachment scope key. */
   sessionName: string;
+  /**
+   * Which runtime owns the session, and (for aplexer) which workspace.
+   * Together with the name they form the registry identity: a bare tag
+   * repeats across workspaces, so without these two same-named tags would
+   * share one draft and one shell. Absent means tmux, whose names are
+   * host-global. See `renderer/sessionIdentity.ts`.
+   */
+  backend?: 'tmux' | 'aplexer';
+  workspace?: string | null;
   /** The engine running in this pane. Null until agent detection exists (§25.5). */
   agentKind?: ComposerAgentKind | null;
   /** False while the SSH connection is down — advisory only, never a block (§9). */
@@ -129,8 +139,14 @@ const RESIZE_EDGES: readonly ResizeEdge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se
 const rootEl = ref<HTMLDivElement | null>(null);
 const draftEl = ref<HTMLTextAreaElement | null>(null);
 
-/** `${connectionId}/${sessionName}` — mirrors the phone's `"$hostId/$sessionName"`. */
-const key = computed(() => composer.targetKey(props.connectionId, props.sessionName));
+/** `${connectionId}/${identity}` — mirrors the phone's `"$hostId/$sessionName"`. */
+const sessionKey = computed(() =>
+  sessionIdentityKey(props.sessionName, {
+    backend: props.backend,
+    workspace: props.workspace ?? undefined,
+  }),
+);
+const key = computed(() => composer.targetKey(props.connectionId, props.sessionName, sessionKey.value));
 
 watch(key, (k) => composer.ensure(k), { immediate: true });
 
@@ -920,7 +936,7 @@ const canSend = computed(
 
 async function onSend(): Promise<void> {
   const k = key.value;
-  const shellId = shells.shellIdFor(props.sessionName);
+  const shellId = shells.shellIdFor(sessionKey.value);
   const route = sendRoute({
     liveAgent: props.agentKind ?? null,
     presumedAgent: null,
@@ -940,7 +956,10 @@ async function onSend(): Promise<void> {
       // Both arms write into the pane's PTY; they differ only in how long
       // they wait before Enter (codex's TUI needs the longer gap).
       return deliverPayload(payload, {
-        write: (data) => api.shell.input(shellId, data),
+        // Fenced on name AND workspace: the shellId came out of the
+        // workspace-qualified registry, and the fence re-checks it main-side
+        // so a stale id can refuse instead of writing into a stranger's pane.
+        write: (data) => api.shell.input(shellId, data, props.sessionName, props.workspace ?? undefined),
         submitDelayMs,
       });
     },
@@ -995,14 +1014,14 @@ function openComposer(): void {
  * composer is summoned again (§12.2, §26.1).
  */
 function hideComposer(): void {
-  const shellId = shells.shellIdFor(props.sessionName);
+  const shellId = shells.shellIdFor(sessionKey.value);
   composer.flushToTerminal(
     key.value,
     // Nowhere to put the text — no registered shell, or the connection is
     // down — means no hand-off: an ordinary dismissal keeps the draft.
     props.connected === false || shellId === null
       ? null
-      : (text) => void api.shell.input(shellId, text),
+      : (text) => void api.shell.input(shellId, text, props.sessionName, props.workspace ?? undefined),
   );
   composer.dismiss();
   emit('focus-terminal');

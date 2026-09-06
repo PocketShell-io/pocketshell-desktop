@@ -699,7 +699,11 @@ async function commit(choice: LaunchChoice | null): Promise<void> {
     // of one handoff: `FolderWorkspaceView` reads the slot as it mounts, and
     // `started` is what mounts it.
     const dir = result.folder ?? folder;
-    parkAgentLaunch(id, result.sessionName, { ...choice, dir });
+    // The workspace rides along so the collecting folder can prove the launch
+    // is its own: a bare tag repeats across workspaces. `result.folder` is the
+    // canonical path the host resolved — the same string the session row will
+    // carry as its workspace.
+    parkAgentLaunch(id, result.sessionName, { ...choice, dir }, Date.now(), result.folder ?? folder);
     parkedKind.value = choice.kind;
   }
 

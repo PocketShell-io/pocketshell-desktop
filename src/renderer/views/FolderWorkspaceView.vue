@@ -80,6 +80,7 @@ import {
   type WorkspaceTab,
 } from '../../shared/workspaceTabs';
 import { rootHostPath } from '../sessionRoots';
+import { sessionIdentityKey } from '../sessionIdentity';
 import { UNTRACKED_PATH } from '../sessionGrouping';
 import { useFolderTree } from '../folderTree';
 import { parkedAgentLaunch, takeAgentLaunch } from '../pendingAgentLaunch';
@@ -404,8 +405,18 @@ const sessionPanes = computed(() =>
   ),
 );
 
-const summary = computed(
-  () => sessions.sessions.find((s) => s.name === terminalSession.value) ?? null,
+const summary = computed(() => {
+  // This folder's row first: a same-named tag in another folder must not lend
+  // this workspace its agent badge. The global lookup is the fallback for a
+  // tab whose row already left the listing.
+  const local = (folder.value?.rows ?? []).find((row) => row.session.name === terminalSession.value);
+  if (local) return local.session;
+  return sessions.sessions.find((s) => s.name === terminalSession.value) ?? null;
+});
+
+/** This folder's address for the active session tab, for the composer's identity props. */
+const activeSessionMeta = computed(() =>
+  activeSession.value ? sessionMeta.value.get(activeSession.value) : undefined,
 );
 
 /**
@@ -449,6 +460,22 @@ function aplexerRefFor(
     ...(m.workspace ? { workspace: m.workspace } : {}),
     ...(m.aplexerId ? { aplexerId: m.aplexerId } : {}),
   };
+}
+
+/**
+ * The registry identity for [name] — the key the shells map and the composer
+ * store file it under.
+ *
+ * Resolved through this folder's rows, so an aplexer tag carries its
+ * workspace and same-named tags in other folders do not collide. [like] names
+ * the row to resolve through when [name] itself is not on the bar yet (the
+ * target of a rename); otherwise the name resolves through its own row. A
+ * name with no row falls back to itself — the tmux identity — which is the
+ * only answer available for a tab whose session already left the listing.
+ */
+function identityFor(name: string, like?: string): string {
+  const m = sessionMeta.value.get(like ?? name);
+  return sessionIdentityKey(name, { backend: m?.backend, workspace: m?.workspace ?? undefined });
 }
 
 /**
@@ -1063,11 +1090,13 @@ async function commitRename(): Promise<void> {
     renameError.value = result.error ?? 'rename failed';
     return;
   }
-  // The composer's per-session record is keyed on the name, so it has to move
-  // or the draft is orphaned under a key nothing will ever ask for again.
+  // The composer's per-session record is keyed on the session identity, so it
+  // has to move or the draft is orphaned under a key nothing will ever ask
+  // for again. Both ends resolve through the same row: `next` is not on the
+  // bar yet, so it borrows the renamed row's workspace.
   composer.rekey(
-    composer.targetKey(connectionId, target.session),
-    composer.targetKey(connectionId, result.sessionName),
+    composer.targetKey(connectionId, target.session, identityFor(target.session)),
+    composer.targetKey(connectionId, result.sessionName, identityFor(result.sessionName, target.session)),
   );
   selected.value = result.sessionName;
   terminalSession.value = result.sessionName;
@@ -1176,7 +1205,12 @@ function toggleAddMenu(): void {
  * watch below is that wait; it is one-shot, and a session whose PTY never comes
  * up simply gets a shell, which is what it would have been anyway.
  */
-const pendingLaunch = ref<{ session: string; choice: LaunchChoice } | null>(null);
+const pendingLaunch = ref<{
+  session: string;
+  backend: 'tmux' | 'aplexer';
+  workspace: string | null;
+  choice: LaunchChoice;
+} | null>(null);
 /** Cleared when the launch lands; fires if it never does. See below. */
 let launchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1198,7 +1232,15 @@ function clearLaunchTimer(): void {
 }
 
 watch(
-  () => (pendingLaunch.value ? shells.shellIdFor(pendingLaunch.value.session) : null),
+  () =>
+    pendingLaunch.value
+      ? shells.shellIdFor(
+          sessionIdentityKey(pendingLaunch.value.session, {
+            backend: pendingLaunch.value.backend,
+            workspace: pendingLaunch.value.workspace ?? undefined,
+          }),
+        )
+      : null,
   (shellId) => {
     const pending = pendingLaunch.value;
     if (!pending || !shellId) return;
@@ -1233,7 +1275,13 @@ watch(
  */
 function armLaunch(session: string, choice: LaunchChoice): void {
   clearLaunchTimer();
-  pendingLaunch.value = { session, choice };
+  const meta = sessionMeta.value.get(session);
+  pendingLaunch.value = {
+    session,
+    backend: meta?.backend ?? 'tmux',
+    workspace: meta?.workspace ?? null,
+    choice,
+  };
   launchTimer = setTimeout(() => {
     if (pendingLaunch.value?.session !== session) return;
     pendingLaunch.value = null;
@@ -1278,7 +1326,12 @@ watch(
     const parked = parkedAgentLaunch.value;
     if (!parked) return;
     if (!tabs.value.some((tab) => tab.kind === 'session' && tab.session === parked.session)) return;
-    const choice = takeAgentLaunch(connection.connectionId, parked.session);
+    // The workspace proves the launch is this folder's: a same-named tag in
+    // another folder matches the tab above but must not steal the slot. Read
+    // from this folder's own rows; unknown (a row that lost its backend info)
+    // matches leniently rather than stranding the launch.
+    const workspace = sessionMeta.value.get(parked.session)?.workspace ?? null;
+    const choice = takeAgentLaunch(connection.connectionId, parked.session, Date.now(), workspace);
     if (!choice) return;
     // Through the one selection path, so arriving on a launched session leaves
     // the keyboard where a click would have — and the PTY the launch is
@@ -1686,7 +1739,7 @@ async function confirmStop(): Promise<void> {
     }
     selectAfterClose(session);
     openedSessions.value = openedSessions.value.filter((name) => name !== session);
-    composer.forget(composer.targetKey(connectionId, session));
+    composer.forget(composer.targetKey(connectionId, session, identityFor(session)));
   } finally {
     stopBusy.value = false;
     stopping.value = null;
@@ -2080,6 +2133,8 @@ function onFocusTerminal(): void {
           ref="composerRef"
           :connection-id="connection.connectionId"
           :session-name="activeSession"
+          :backend="activeSessionMeta?.backend"
+          :workspace="activeSessionMeta?.workspace"
           :agent-kind="agentKind"
           :connected="connection.state === 'connected'"
           @focus-terminal="onFocusTerminal"

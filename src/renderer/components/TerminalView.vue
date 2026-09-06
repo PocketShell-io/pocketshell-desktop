@@ -52,6 +52,7 @@ import { resolveTheme, terminalLinkTint } from '../themes';
 import { isTypingKey } from '../../shared/composerText';
 import { isShortcut } from '../../shared/shortcuts';
 import { ParseStallMonitor, type ParseStallReport } from '../parseStall';
+import { sessionIdentityKey } from '../sessionIdentity';
 import { recordDiagDetail, msSinceLastUnhandledError } from '../diag';
 import {
   repairIncompleteViewport,
@@ -130,6 +131,21 @@ const emit = defineEmits<{
 
 /** The tmux session this pane should be showing, or '' for a bare shell. */
 const targetSession = computed(() => props.sessionName ?? props.sessionKey ?? '');
+
+/**
+ * The shells-registry key for this pane.
+ *
+ * Same workspace rule as the join: a bare tag repeats across workspaces, so
+ * the registration carries the workspace for aplexer panes and two folders
+ * holding same-named tags resolve to their own PTYs. tmux names are
+ * host-global and stay bare. See `renderer/sessionIdentity.ts`.
+ */
+const registryKey = computed(() =>
+  sessionIdentityKey(targetSession.value, {
+    backend: props.backend,
+    workspace: props.workspace ?? undefined,
+  }),
+);
 
 /**
  * Terminal look & feel, transcribed from the user's Windows Terminal config.
@@ -725,8 +741,10 @@ async function showTarget(): Promise<void> {
   // Deliberately NO reset here: the tmux client never detached, so it still
   // owns the modes it set and will not be told to set them again.
 
-  // Publish it before the first byte can be typed at it.
-  registeredKey = props.sessionKey ?? '';
+  // Publish it before the first byte can be typed at it. Under the
+  // workspace-qualified registry key, so same-named aplexer tags in different
+  // folders never share a registration.
+  registeredKey = registryKey.value;
   shells.register(registeredKey, result.shellId);
   // Re-fit and push the geometry the pane has NOW, not the `cols`/`rows`
   // captured before the await. A join is an SSH channel, a login shell and

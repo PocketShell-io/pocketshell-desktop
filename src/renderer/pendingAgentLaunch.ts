@@ -55,10 +55,11 @@
  * (`FolderWorkspaceView.LAUNCH_TIMEOUT_MS`) is a different clock and only
  * starts once this slot has been collected.
  *
- * The slot is keyed by connection AND session name so a collector can never
- * take a launch meant for another host, and so a workspace whose tab bar does
- * not (yet) hold that session leaves it parked rather than arming a launch at
- * a terminal that will never exist.
+ * The slot is keyed by connection, session name, and (when known) workspace,
+ * so a collector can never take a launch meant for another host or another
+ * folder, and so a workspace whose tab bar does not (yet) hold that session
+ * leaves it parked rather than arming a launch at a terminal that will never
+ * exist.
  */
 import { shallowRef } from 'vue';
 import type { LaunchChoice } from '../shared/agentLaunch';
@@ -66,8 +67,16 @@ import type { LaunchChoice } from '../shared/agentLaunch';
 /** A launch waiting for a terminal, and when it was asked for. */
 export interface ParkedAgentLaunch {
   connectionId: string;
-  /** The tmux session the host actually created — never a predicted name. */
+  /** The session the host actually created — never a predicted name. */
   session: string;
+  /**
+   * The folder the session was started in (the canonical path the host
+   * resolved). A bare tag repeats across workspaces, so without this a
+   * workspace holding a same-named tag could collect a launch meant for
+   * another folder. Null for callers that only have a name — tmux names are
+   * host-global and match the old way.
+   */
+  workspace: string | null;
   choice: LaunchChoice;
   /** `Date.now()` at park time. See {@link LAUNCH_HANDOFF_TTL_MS}. */
   parkedAt: number;
@@ -104,8 +113,9 @@ export function parkAgentLaunch(
   session: string,
   choice: LaunchChoice,
   now: number = Date.now(),
+  workspace: string | null = null,
 ): void {
-  parkedAgentLaunch.value = { connectionId, session, choice, parkedAt: now };
+  parkedAgentLaunch.value = { connectionId, session, workspace, choice, parkedAt: now };
 }
 
 /**
@@ -117,11 +127,17 @@ export function parkAgentLaunch(
  * right one, and a "not mine" answer must not consume a launch that the next
  * workspace is about to claim. Only an expired slot is cleared on a miss,
  * because nothing will ever claim it.
+ *
+ * [workspace] is the collecting folder's address for the session, when known.
+ * The match is lenient on either side being unknown — a tmux row has no
+ * workspace, and an old park has none either — but two KNOWN workspaces must
+ * agree, or a same-named tag in another folder would steal the launch.
  */
 export function takeAgentLaunch(
   connectionId: string | null,
   session: string,
   now: number = Date.now(),
+  workspace?: string | null,
 ): LaunchChoice | null {
   const parked = parkedAgentLaunch.value;
   if (!parked) return null;
@@ -131,6 +147,7 @@ export function takeAgentLaunch(
   }
   if (!connectionId || parked.connectionId !== connectionId) return null;
   if (parked.session !== session) return null;
+  if (parked.workspace != null && workspace != null && parked.workspace !== workspace) return null;
   parkedAgentLaunch.value = null;
   return parked.choice;
 }

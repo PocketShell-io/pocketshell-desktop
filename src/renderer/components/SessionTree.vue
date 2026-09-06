@@ -73,6 +73,7 @@ import { editingTarget } from '../editingTarget';
 import { useFolderTree } from '../folderTree';
 import { canDropFolderAt, reorderFolders } from '../folderOrder';
 import { rootHostPath } from '../sessionRoots';
+import { sessionIdentityKey } from '../sessionIdentity';
 import { rootHeaderParts, type SessionDirectory, type SessionRootFolder } from '../sessionTree';
 import type { SessionAgentKind } from '../../shared/types';
 import { errorMessage } from '../../shared/errors';
@@ -752,7 +753,13 @@ async function confirmStopFolder(): Promise<void> {
         if (reason === null) reason = result.error ?? null;
         continue;
       }
-      composer.forget(composer.targetKey(connectionId, name));
+      composer.forget(
+        composer.targetKey(
+          connectionId,
+          name,
+          sessionIdentityKey(name, { backend: entry.backend, workspace: entry.workspace ?? undefined }),
+        ),
+      );
     }
   } finally {
     // Whatever the batch did, the latch must lift: a `stopBusy` left true

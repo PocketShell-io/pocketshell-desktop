@@ -70,7 +70,9 @@ describe('a short draft is handed to the shell on close', () => {
   it('Escape writes it to the pane, raw, and clears the draft', async () => {
     composer.setDraft(key, 'ls');
     await pressEscape();
-    expect(api.shell.input).toHaveBeenCalledWith('shell-1', 'ls');
+    // Fenced on the session (name, no workspace: a tmux row), so a stale
+    // shell id refuses main-side instead of writing into a stranger's pane.
+    expect(api.shell.input).toHaveBeenCalledWith('shell-1', 'ls', 'main', undefined);
     expect(composer.states[key]?.draft).toBe('');
     expect(composer.mode).toBe('hidden');
   });
@@ -78,7 +80,7 @@ describe('a short draft is handed to the shell on close', () => {
   it('Ctrl+` does exactly what Escape does', async () => {
     composer.setDraft(key, 'ls');
     await pressToggleChord();
-    expect(api.shell.input).toHaveBeenCalledWith('shell-1', 'ls');
+    expect(api.shell.input).toHaveBeenCalledWith('shell-1', 'ls', 'main', undefined);
     expect(composer.states[key]?.draft).toBe('');
     expect(composer.mode).toBe('hidden');
   });

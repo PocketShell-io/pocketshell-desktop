@@ -324,9 +324,20 @@ function persistNow(): void {
   // Access
   // -------------------------------------------------------------------------
 
-  /** The key a composer record lives under: `"$connectionId/$sessionName"`. */
-  function targetKey(connectionId: string | null, sessionName: string): string {
-    return `${connectionId ?? 'none'}/${sessionName}`;
+  /**
+   * The key a composer record lives under: `"$connectionId/$sessionKey"`.
+   *
+   * `sessionKey` defaults to the session name, which is the identity for tmux
+   * rows (names are host-global there). Callers with an aplexer row pass
+   * `sessionIdentityKey(name, row)` instead, so same-named tags in different
+   * folders keep separate drafts. See `renderer/sessionIdentity.ts`.
+   */
+  function targetKey(
+    connectionId: string | null,
+    sessionName: string,
+    sessionKey: string = sessionName,
+  ): string {
+    return `${connectionId ?? 'none'}/${sessionKey}`;
   }
 
   /**

@@ -80,4 +80,23 @@ describe('pendingAgentLaunch', () => {
     expect(takeAgentLaunch('conn-1', 'first', 1_200)).toBeNull();
     expect(takeAgentLaunch('conn-1', 'second', 1_200)).toMatchObject({ kind: 'codex' });
   });
+
+  it('refuses a same-named tag in another folder when both workspaces are known', () => {
+    // aplexer tags repeat across workspaces: a launch parked for folder A's
+    // `review` must not fire in folder B's `review`.
+    parkAgentLaunch('conn-1', 'review', CHOICE, 1_000, '/home/alexey/git/a');
+    expect(takeAgentLaunch('conn-1', 'review', 1_500, '/home/alexey/git/b')).toBeNull();
+    // And the miss leaves the slot alone for the right folder.
+    expect(takeAgentLaunch('conn-1', 'review', 1_600, '/home/alexey/git/a')).toEqual(CHOICE);
+  });
+
+  it('matches leniently when either side has no workspace', () => {
+    // tmux rows carry no workspace, and neither do old parks — both match the
+    // way they always did rather than stranding the launch.
+    parkAgentLaunch('conn-1', 'git-dataops-2', CHOICE, 1_000);
+    expect(takeAgentLaunch('conn-1', 'git-dataops-2', 1_500, '/home/alexey/git/dataops')).toEqual(CHOICE);
+
+    parkAgentLaunch('conn-1', 'review', CHOICE, 1_000, '/home/alexey/git/a');
+    expect(takeAgentLaunch('conn-1', 'review', 1_500)).toEqual(CHOICE);
+  });
 });
