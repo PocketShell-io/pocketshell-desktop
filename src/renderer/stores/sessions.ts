@@ -5,9 +5,9 @@ import type { ConnectionId, SessionSummary } from '../../shared/types';
 import { errorMessage } from '../../shared/errors';
 
 /**
- * Sessions store: the live tmux session tree for the active connection.
- * Refreshed from `pocketshell sessions list` (with a raw-tmux fallback baked
- * into the main process).
+ * Sessions store: the live session tree for the active connection.
+ * Refreshed from `a snapshot --json` merged over `pocketshell sessions list`
+ * (with a raw-tmux fallback baked into the main process).
  */
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<SessionSummary[]>([]);

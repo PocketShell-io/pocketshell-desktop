@@ -95,6 +95,16 @@ const props = defineProps<{
    * try to `switch-client` to something that is not a session.
    */
   sessionName?: string;
+  /**
+   * Which runtime owns the session. Absent means tmux. An aplexer session
+   * joins by UUID ([aplexerId]) or workspace+tag — never by bare tag, which
+   * is unique only within its workspace — so the workspace must ride along.
+   */
+  backend?: 'tmux' | 'aplexer';
+  /** Aplexer workspace. Required for an aplexer session without [aplexerId]. */
+  workspace?: string | null;
+  /** Aplexer UUID. Preferred join selector; survives renames. */
+  aplexerId?: string | null;
 }>();
 
 /**
@@ -357,11 +367,17 @@ async function requestShell(
 ): Promise<{ shellId: ShellId; switched: boolean }> {
   const session = targetSession.value;
   if (session) {
+    const aplexer = props.backend === 'aplexer';
     return api.shell.attachSession({
       connectionId: props.connectionId,
       sessionName: session,
       cols,
       rows,
+      // The pool keys (and joins) aplexer sessions by workspace+tag or UUID;
+      // the session name alone carries the tag but not the workspace.
+      ...(aplexer ? { backend: 'aplexer' as const, tag: session } : {}),
+      ...(aplexer && props.workspace ? { workspace: props.workspace } : {}),
+      ...(aplexer && props.aplexerId ? { aplexerId: props.aplexerId } : {}),
     });
   }
   const id = await api.shell.open({

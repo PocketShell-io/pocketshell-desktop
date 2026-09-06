@@ -158,8 +158,10 @@ describe('a failed tab rename is a sentence, and the sentence can be dismissed',
     await typeAndCommit(wrapper, 'import');
 
     // `git-x` is the folder-derived name, so the field edits the REMAINDER and
-    // the committed name is prefix + what was typed (workspaceTabs §4.3).
-    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'git-x-import');
+    // the committed name is prefix + what was typed (workspaceTabs §4.3). The
+    // fourth argument is the aplexer ref — undefined for a tmux row, which
+    // addresses by bare name.
+    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'git-x-import', undefined);
     // The point of the fix: the reason is ON SCREEN, not in a tooltip.
     expect(barError(wrapper)).toContain('already exists');
     // The field stays open and keeps its tint — the strip says why, the border

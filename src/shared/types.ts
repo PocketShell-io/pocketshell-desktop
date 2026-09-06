@@ -67,6 +67,12 @@ export interface BootstrapResult {
    */
   tmuxctl: ToolState;
   tmux: ToolState;
+  /**
+   * The aplexer CLI (`a`) — the MAIN session manager when present.
+   * Absent means the tmux path below serves every session; nothing warns,
+   * because that fallback is complete, not degraded.
+   */
+  aplexer: ToolState;
   installer: 'uv' | 'pipx' | null;
   daemonRunning: boolean | null;
   daemonEnabled: boolean | null;
@@ -129,6 +135,39 @@ export interface SessionSummary {
   attached: boolean;
   /** Working directory if reported, else null. */
   path: string | null;
+  /**
+   * Which runtime owns this row. `'tmux'` is the default and is also what an
+   * absent field means — every fixture, cache, and test written before
+   * aplexer landed is a tmux row without saying so.
+   */
+  backend?: 'tmux' | 'aplexer';
+  /**
+   * The aplexer workspace (canonical path) and tag. `name` carries the tag,
+   * so display, tab identity, and rename labelling work unchanged; these two
+   * are the ADDRESS the join/kill/rename commands aim at, because a tag alone
+   * is unique only within its workspace. `path` carries the workspace too
+   * (falling back to the workload cwd), which is what files the row under its
+   * folder with no inference. Set only when `backend === 'aplexer'`.
+   */
+  workspace?: string | null;
+  tag?: string | null;
+  /**
+   * The aplexer session's immutable UUID. Stable across renames — the join,
+   * kill, and rename all prefer it over `workspace:tag` when it is known.
+   * Set only when `backend === 'aplexer'`.
+   */
+  aplexerId?: string | null;
+  /**
+   * The aplexer profile the session was started with, when one was selected.
+   * Display only; the launch dialog does not read it back.
+   */
+  profile?: string | null;
+  /**
+   * The persisted aplexer phase (`running`, `exited`, …). Display only; the
+   * row is listed only while its worker is alive, so this is context rather
+   * than a liveness signal the UI must interpret.
+   */
+  aplexerPhase?: string | null;
   /**
    * Recorded agent kind from the host-side `@ps_agent_kind` tmux user option,
    * or null when the option is absent/unrecognised — a session we did not

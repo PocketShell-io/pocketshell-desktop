@@ -563,14 +563,15 @@ const folderMenu = ref<{
   label: string;
   startIn: string | null;
   /**
-   * The tmux names of every session in the folder, snapshotted at open time.
+   * The sessions in the folder, snapshotted at open time.
    *
    * Same rule as `startIn` below, and it matters more here: this is the list a
    * confirmed Stop kills. Re-read at click time it could have grown on the
    * poll, and the folder would lose a session the user was never shown and
-   * never agreed to lose.
+   * never agreed to lose. Each entry carries the row's aplexer address with
+   * it, because a tag alone does not address an aplexer session.
    */
-  sessions: string[];
+  sessions: { name: string; workspace: string | null; aplexerId: string | null; backend: 'tmux' | 'aplexer' }[];
   anchor: Box;
 } | null>(null);
 
@@ -601,7 +602,12 @@ function openFolderMenu(dir: SessionDirectory, e: MouseEvent): void {
   folderMenu.value = {
     label: dir.label,
     startIn: rootHostPath(dir.path, home.value),
-    sessions: dir.rows.map((row) => row.session.name),
+    sessions: dir.rows.map((row) => ({
+      name: row.session.name,
+      workspace: row.session.workspace ?? null,
+      aplexerId: row.session.aplexerId ?? null,
+      backend: row.session.backend ?? 'tmux',
+    })),
     anchor: pointAnchor(e.clientX, e.clientY),
   };
 }
@@ -651,7 +657,10 @@ function createInFolder(): void {
  * matters more from this panel than from the tab bar, because a folder row does
  * not show them. The one thing the user can see is a count.
  */
-const stopping = ref<{ label: string; sessions: string[] } | null>(null);
+const stopping = ref<{
+  label: string;
+  sessions: { name: string; workspace: string | null; aplexerId: string | null; backend: 'tmux' | 'aplexer' }[];
+} | null>(null);
 const stopBusy = ref(false);
 /**
  * A refused batch, reported under the tree beside the store's own error.
@@ -717,10 +726,19 @@ async function confirmStopFolder(): Promise<void> {
   const failed: string[] = [];
   let reason: string | null = null;
   try {
-    for (const name of target.sessions) {
+    for (const entry of target.sessions) {
+      const { name } = entry;
+      const killRef =
+        entry.backend === 'aplexer'
+          ? {
+              backend: 'aplexer' as const,
+              ...(entry.workspace ? { workspace: entry.workspace } : {}),
+              ...(entry.aplexerId ? { aplexerId: entry.aplexerId } : {}),
+            }
+          : undefined;
       let result: Awaited<ReturnType<typeof projects.killSession>>;
       try {
-        result = await projects.killSession(connectionId, name);
+        result = await projects.killSession(connectionId, name, killRef);
       } catch (e) {
         // A rejected invoke counts as a failed session and the batch moves
         // on — aborting the loop used to leave the remaining sessions
@@ -1236,22 +1254,22 @@ function fmtRelative(epochSeconds: number): string {
         <!-- One session: the tab menu's sentence, word for word, naming the
              session rather than counting it — and no list, which could only
              repeat the name the question already carries. -->
-        <p v-if="stopping.sessions.length === 1">Stop <code>{{ stopping.sessions[0] }}</code> ?</p>
+        <p v-if="stopping.sessions.length === 1">Stop <code>{{ stopping.sessions[0]?.name }}</code> ?</p>
         <template v-else>
           <p>
             Stop {{ sessionCountLabel(stopping.sessions.length) }} in
             <code>{{ stopping.label }}</code> ?
           </p>
           <ul class="stop-list">
-            <li v-for="name in stopping.sessions" :key="name"><code>{{ name }}</code></li>
+            <li v-for="entry in stopping.sessions" :key="entry.name"><code>{{ entry.name }}</code></li>
           </ul>
         </template>
         <p v-if="stopping.sessions.length === 1" class="muted">
-          This kills the tmux session on the host. Anything running in it stops, its scrollback
+          This kills the session on the host. Anything running in it stops, its scrollback
           goes, and there is no undo.
         </p>
         <p v-else class="muted">
-          This kills each tmux session on the host. Anything running in them stops, their
+          This kills each session on the host. Anything running in them stops, their
           scrollback goes, and there is no undo.
         </p>
         <footer class="actions">

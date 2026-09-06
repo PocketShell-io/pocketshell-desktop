@@ -23,6 +23,7 @@ import type { PortIntent } from '../main/portfwd/PortfwdStore.js';
 import type { ServedFolder } from '../main/portfwd/ServeService.js';
 import type { ForwardSpec } from '../shared/types.js';
 import type {
+  AplexerSessionRef,
   CloneProgress,
   CloneResult,
   CreateFolderRequest,
@@ -169,19 +170,27 @@ const api = {
     }): Promise<ShellId> => ipcRenderer.invoke(ipc.shell.open, payload),
 
     /**
-     * Show a tmux session in this connection's terminal.
+     * Show a session in this connection's terminal.
      *
      * The reply is deliberately NOT a bare ShellId. Main keeps one attached
-     * tmux client per visited session tab and may hand back the shell that tab
+     * client per visited session tab and may hand back the shell that tab
      * already owns. `switched: true` says that happened, and the caller must
-     * leave its terminal alone: the existing tmux client still owns the screen
+     * leave its terminal alone: the existing client still owns the screen
      * and a reset would drop the modes it set.
+     *
+     * `backend` + `workspace`/`tag`/`aplexerId` address an aplexer session:
+     * a tag alone is unique only within its workspace, so the join (and the
+     * pool key behind it) needs the workspace. Absent backend means tmux.
      */
     attachSession: (payload: {
       connectionId: string;
       sessionName: string;
       cols?: number;
       rows?: number;
+      backend?: 'tmux' | 'aplexer';
+      workspace?: string;
+      tag?: string;
+      aplexerId?: string;
     }): Promise<{ shellId: ShellId; switched: boolean }> =>
       ipcRenderer.invoke(ipc.shell.attachSession, payload),
 
@@ -192,10 +201,11 @@ const api = {
      * sequence — pass the session the write is FOR, and main refuses (returns
      * false) if the pooled shell is no longer associated with that session.
      * Without it the bytes go to whatever the shell is showing, which is what
-     * a live keystroke from the focused pane wants.
+     * a live keystroke from the focused pane wants. `workspace` narrows the
+     * fence for aplexer sessions, whose tags repeat across workspaces.
      */
-    input: (shellId: ShellId, data: string, sessionName?: string): Promise<boolean> =>
-      ipcRenderer.invoke(ipc.shell.input, shellId, data, sessionName),
+    input: (shellId: ShellId, data: string, sessionName?: string, workspace?: string): Promise<boolean> =>
+      ipcRenderer.invoke(ipc.shell.input, shellId, data, sessionName, workspace),
 
     /** Resize a shell's PTY. */
     resize: (shellId: ShellId, cols: number, rows: number): Promise<boolean> =>
@@ -336,28 +346,35 @@ const api = {
       ipcRenderer.invoke(ipc.projects.startSession, connectionId, request),
 
     /**
-     * Rename a live tmux session. Never throws: a refused rename comes back
+     * Rename a session. Never throws: a refused rename comes back
      * with `ok: false` and a `code` the UI can react to (`illegal-name`,
-     * `name-taken`, `rename-failed`).
+     * `name-taken`, `rename-failed`). Pass the row's aplexer ref (workspace
+     * and/or id) when the row is aplexer-backed — a tag alone does not
+     * address it.
      */
     renameSession: (
       connectionId: string,
       from: string,
       to: string,
+      ref?: AplexerSessionRef & { backend?: 'tmux' | 'aplexer' },
     ): Promise<RenameSessionResult> =>
-      ipcRenderer.invoke(ipc.projects.renameSession, connectionId, from, to),
+      ipcRenderer.invoke(ipc.projects.renameSession, connectionId, from, to, ref),
 
     /**
-     * Kill a live tmux session. Never throws: `ok: false` with
+     * Kill a session. Never throws: `ok: false` with
      * `code: 'not-found'` means the session was already gone, which is the
      * ordinary outcome of a tab bar that refreshes on a timer, and
-     * `code: 'kill-failed'` carries tmux's own sentence.
+     * `code: 'kill-failed'` carries the host's own sentence.
      *
      * The only destructive call on this surface — confirm before reaching for
-     * it.
+     * it. Pass the row's aplexer ref when the row is aplexer-backed.
      */
-    killSession: (connectionId: string, name: string): Promise<KillSessionResult> =>
-      ipcRenderer.invoke(ipc.projects.killSession, connectionId, name),
+    killSession: (
+      connectionId: string,
+      name: string,
+      ref?: AplexerSessionRef & { backend?: 'tmux' | 'aplexer' },
+    ): Promise<KillSessionResult> =>
+      ipcRenderer.invoke(ipc.projects.killSession, connectionId, name, ref),
 
     /** Subscribe to clone lifecycle events. Returns an unsubscribe fn. */
     onCloneProgress: (handler: (progress: CloneProgress) => void): Unsubscribe =>

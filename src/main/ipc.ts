@@ -3,6 +3,7 @@ import { ipc } from '../shared/channels.js';
 import { SshService } from './ssh/SshService.js';
 import { TmuxClientPool } from './ssh/TmuxClientPool.js';
 import { PocketshellClient } from './helper/PocketshellClient.js';
+import { AplexerClient } from './helper/AplexerClient.js';
 import { SftpService } from './sftp/SftpService.js';
 import { ForwardService } from './portfwd/ForwardService.js';
 import { ProjectsService } from './projects/ProjectsService.js';
@@ -33,13 +34,14 @@ import { registerPreviewIpc } from './ipc/previewIpc.js';
 export function registerIpcHandlers(deps: {
   ssh: SshService;
   helper: PocketshellClient;
+  aplexer: AplexerClient;
   sftp: SftpService;
   forwards: ForwardService;
   projects: ProjectsService;
   preview: HtmlPreviewService;
   getWindows: () => BrowserWindow[];
 }): void {
-  const { ssh, helper, sftp, forwards, projects, preview, getWindows } = deps;
+  const { ssh, helper, aplexer, sftp, forwards, projects, preview, getWindows } = deps;
 
   // Prompt attachments ride the SSH/SFTP services that are already here —
   // no second connection, no shelling out to scp.
@@ -71,10 +73,13 @@ export function registerIpcHandlers(deps: {
   // Connection liveness. 'lost' means the transport dropped; 'idle' is a clean
   // disconnect the user asked for.
   ssh.onCloseConnection((connectionId, reason) => {
-    // The pooled tmux clients die with their connection; forgetting them here
+    // The pooled clients die with their connection; forgetting them here
     // stops a reconnect that reuses the id from handing out clients that are
-    // no longer on the other end.
+    // no longer on the other end. The aplexer availability cache goes with
+    // them: a reconnect may land on a host where `a` was installed or removed
+    // since, and one probe per connection is the price of knowing.
     tmuxClients.release(connectionId);
+    aplexer.evict(connectionId);
     broadcast(ipc.ssh.state, {
       connectionId,
       state: reason === 'lost' ? 'lost' : 'idle',
@@ -84,6 +89,7 @@ export function registerIpcHandlers(deps: {
   const ctx: IpcContext = {
     ssh,
     helper,
+    aplexer,
     sftp,
     forwards,
     projects,

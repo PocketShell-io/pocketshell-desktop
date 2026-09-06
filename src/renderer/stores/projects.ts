@@ -6,6 +6,7 @@ import type { DirEntry } from '../../main/sftp/SftpService';
 import type { RepoEntry, ReposScopeState } from '../../main/projects/repos';
 import { errorMessage } from '../../shared/errors';
 import type {
+  AplexerSessionRef,
   CloneResult,
   CreateFolderResult,
   KillSessionResult,
@@ -304,7 +305,7 @@ export const useProjectsStore = defineStore('projects', () => {
   }
 
   /**
-   * Rename a live session.
+   * Rename a session.
    *
    * Thin on purpose. Every guard that matters — the alphabet, the
    * host-answered uniqueness check — runs in the main process, because a guard
@@ -314,17 +315,21 @@ export const useProjectsStore = defineStore('projects', () => {
    * per-session record and whichever tab is selected. Doing that here would
    * mean this store importing the composer store to fix up a key it does not
    * own.
+   *
+   * Pass the row's aplexer ref when it is aplexer-backed — a tag alone does
+   * not address such a row.
    */
   async function renameSession(
     connectionId: ConnectionId,
     from: string,
     to: string,
+    sessionRef?: AplexerSessionRef & { backend?: 'tmux' | 'aplexer' },
   ): Promise<RenameSessionResult> {
-    return api.projects.renameSession(connectionId, from, to);
+    return api.projects.renameSession(connectionId, from, to, sessionRef);
   }
 
   /**
-   * Stop a live session — kill its tmux session on the host
+   * Stop a session — kill it on the host, whichever runtime owns it.
    *
    *
    * Thin for the same reason `renameSession` is, and the debt the caller owes is
@@ -341,8 +346,9 @@ export const useProjectsStore = defineStore('projects', () => {
   async function killSession(
     connectionId: ConnectionId,
     name: string,
+    sessionRef?: AplexerSessionRef & { backend?: 'tmux' | 'aplexer' },
   ): Promise<KillSessionResult> {
-    return api.projects.killSession(connectionId, name);
+    return api.projects.killSession(connectionId, name, sessionRef);
   }
 
   /** Drop everything on disconnect: none of it is valid for another host. */

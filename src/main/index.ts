@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { ConnectionRegistry } from './ssh/ConnectionRegistry.js';
 import { SshService } from './ssh/SshService.js';
 import { PocketshellClient } from './helper/PocketshellClient.js';
+import { AplexerClient } from './helper/AplexerClient.js';
 import { SftpService } from './sftp/SftpService.js';
 import { ForwardService } from './portfwd/ForwardService.js';
 import { ProjectsService } from './projects/ProjectsService.js';
@@ -24,19 +25,20 @@ const __dir = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPa
 
 const registry = new ConnectionRegistry();
 const ssh = new SshService(registry);
-const helper = new PocketshellClient(ssh);
+const aplexer = new AplexerClient(ssh);
+const helper = new PocketshellClient(ssh, aplexer);
 const sftp = new SftpService(registry);
 const forwards = new ForwardService(ssh, registry);
-const projects = new ProjectsService(ssh, helper);
+const projects = new ProjectsService(ssh, helper, aplexer);
 const preview = new HtmlPreviewService(sftp);
 // Evict cached per-connection state owned by the application entrypoint (SFTP
-// wrapper, remote $HOME, live HTML previews) on close. ForwardService and
-// ServeService own their own close subscriptions: forwarding needs to
-// distinguish a lost transport from an explicit stop so reconnect can retain
-// the host's auto-forward preference.
+// wrapper, remote $HOME, aplexer availability, live HTML previews) on close. ForwardService and ServeService own their own close
+// subscriptions: forwarding needs to distinguish a lost transport from an
+// explicit stop so reconnect can retain the host's auto-forward preference.
 ssh.onCloseConnection((id) => {
   sftp.evict(id);
   projects.evict(id);
+  aplexer.evict(id);
   preview.evict(id);
 });
 
@@ -310,6 +312,7 @@ if (!gotLock) {
       registerIpcHandlers({
         ssh,
         helper,
+        aplexer,
         sftp,
         forwards,
         projects,

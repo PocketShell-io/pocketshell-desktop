@@ -86,20 +86,37 @@ export function registerTerminalIpc(ctx: IpcContext): void {
 
   // --- shell:attachSession -------------------------------------------------
   // How a session tab gets its PTY. Unlike `shell:open` this may hand back a
-  // PTY the renderer is already bound to: the pool keeps one tmux client per
+  // PTY the renderer is already bound to: the pool keeps one client per
   // session tab and holds it for the life of the tab, so a tab that is already
   // open is answered with its existing shell and no host work at all.
   // `switched` tells the renderer which of the two happened — true means "this
   // is the shell you already have, leave your terminal alone".
+  //
+  // The backend rides along because the pool keys (and joins) by runtime: a
+  // tmux name is host-global, while an aplexer tag repeats across workspaces.
+  // Absent backend means tmux, which is every caller written before aplexer.
   ipcMain.handle(
     ipc.shell.attachSession,
     async (
       _evt,
-      payload: { connectionId: string; sessionName: string; cols?: number; rows?: number },
+      payload: {
+        connectionId: string;
+        sessionName: string;
+        cols?: number;
+        rows?: number;
+        backend?: 'tmux' | 'aplexer';
+        workspace?: string;
+        tag?: string;
+        aplexerId?: string;
+      },
     ) => {
       return tmuxClients.attach(payload.connectionId, payload.sessionName, {
         cols: payload.cols,
         rows: payload.rows,
+        ...(payload.backend ? { backend: payload.backend } : {}),
+        ...(payload.workspace ? { workspace: payload.workspace } : {}),
+        ...(payload.tag ? { tag: payload.tag } : {}),
+        ...(payload.aplexerId ? { aplexerId: payload.aplexerId } : {}),
         onData: (shellId, data) => {
           broadcast(ipc.shell.data, { shellId, data: new Uint8Array(data) });
         },
@@ -126,8 +143,8 @@ export function registerTerminalIpc(ctx: IpcContext): void {
   // which always mean the pane as it is now) leave it off.
   ipcMain.handle(
     ipc.shell.input,
-    async (_evt, shellId: string, data: string, sessionName?: string) => {
-      if (sessionName && !tmuxClients.isShowing(shellId, sessionName)) return false;
+    async (_evt, shellId: string, data: string, sessionName?: string, workspace?: string) => {
+      if (sessionName && !tmuxClients.isShowing(shellId, sessionName, workspace)) return false;
       return ssh.shellInput(shellId, data);
     },
   );

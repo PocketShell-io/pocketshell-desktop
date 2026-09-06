@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron';
 import type { SshService } from '../ssh/SshService.js';
 import type { TmuxClientPool } from '../ssh/TmuxClientPool.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
+import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { SftpService } from '../sftp/SftpService.js';
 import type { ForwardService } from '../portfwd/ForwardService.js';
 import type { ProjectsService } from '../projects/ProjectsService.js';
@@ -21,6 +22,8 @@ import type { LocalFileReader } from '../attachments/LocalFileReader.js';
 export interface IpcContext {
   ssh: SshService;
   helper: PocketshellClient;
+  /** The aplexer client — the main session manager where `a` is installed. */
+  aplexer: AplexerClient;
   sftp: SftpService;
   forwards: ForwardService;
   projects: ProjectsService;

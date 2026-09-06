@@ -1,7 +1,7 @@
 import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import type { CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, ReposCloneOptions, ReposListRequest, ReposListResult, KillSessionResult, RenameSessionResult, StartSessionRequest, StartSessionResult } from '../projects/ProjectsService.js';
+import type { AplexerSessionRef, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, ReposCloneOptions, ReposListRequest, ReposListResult, KillSessionResult, RenameSessionResult, StartSessionRequest, StartSessionResult } from '../projects/ProjectsService.js';
 
 
 export function registerProjectsIpc(ctx: IpcContext): void {
@@ -72,11 +72,13 @@ export function registerProjectsIpc(ctx: IpcContext): void {
     },
   );
 
-  // A rename is two operations, not one: the host renames the tmux session,
-  // and the pool's note of which session its client is showing has to move
-  // with it. Doing the second here rather than in the service keeps the
-  // service free of the pool, and there is nowhere else both facts are in
-  // scope. See TmuxClientPool.renamed for what breaks if it is skipped.
+  // A rename is two operations, not one: the host renames the session, and
+  // the pool's note of which session its client is showing has to move with
+  // it. Doing the second here rather than in the service keeps the service
+  // free of the pool, and there is nowhere else both facts are in scope. See
+  // TmuxClientPool.renamed for what breaks if it is skipped. The aplexer ref
+  // (backend + workspace) moves the workspace-qualified pool key; without it
+  // the move misses and the renamed tab pays a full re-join.
   ipcMain.handle(
     ipc.projects.renameSession,
     async (
@@ -84,10 +86,11 @@ export function registerProjectsIpc(ctx: IpcContext): void {
       connectionId: string,
       from: string,
       to: string,
+      ref?: AplexerSessionRef & { backend?: 'tmux' | 'aplexer' },
     ): Promise<RenameSessionResult> => {
-      const result = await projects.renameSession(connectionId, from, to);
+      const result = await projects.renameSession(connectionId, from, to, ref);
       if (result.ok && result.sessionName) {
-        tmuxClients.renamed(connectionId, from, result.sessionName);
+        tmuxClients.renamed(connectionId, from, result.sessionName, ref);
       }
       return result;
     },
@@ -104,9 +107,14 @@ export function registerProjectsIpc(ctx: IpcContext): void {
   // needs dropping. See TmuxClientPool.killed.
   ipcMain.handle(
     ipc.projects.killSession,
-    async (_evt, connectionId: string, name: string): Promise<KillSessionResult> => {
-      const result = await projects.killSession(connectionId, name);
-      if (result.ok || result.code === 'not-found') tmuxClients.killed(connectionId, name);
+    async (
+      _evt,
+      connectionId: string,
+      name: string,
+      ref?: AplexerSessionRef & { backend?: 'tmux' | 'aplexer' },
+    ): Promise<KillSessionResult> => {
+      const result = await projects.killSession(connectionId, name, ref);
+      if (result.ok || result.code === 'not-found') tmuxClients.killed(connectionId, name, ref);
       return result;
     },
   );

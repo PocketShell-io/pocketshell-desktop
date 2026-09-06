@@ -66,6 +66,7 @@ const { registerPreviewIpc } = await import('../../src/main/ipc/previewIpc');
 
 const ssh = fakeService();
 const helper = fakeService();
+const aplexer = fakeService();
 const sftp = fakeService();
 const forwards = fakeService();
 const projects = fakeService();
@@ -79,6 +80,7 @@ const broadcast = vi.fn();
 const ctx = {
   ssh: ssh as never,
   helper: helper as never,
+  aplexer: aplexer as never,
   sftp: sftp as never,
   forwards: forwards as never,
   projects: projects as never,

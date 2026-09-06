@@ -18,7 +18,7 @@ Standard hardened Electron: three processes.
                                                                │
 ┌──────────────────────────────────────────────────────────────▼──────────────┐
 │  Main (Node, privileged — the only process that touches ssh2/keys/fs)        │
-│  - SshService, SftpService, ForwardService, TmuxClientPool                   │
+│  - SshService, SftpService, ForwardService, TmuxClientPool, AplexerClient     │
 │  - SshConfigParser, KnownHosts, PocketshellClient                            │
 │  - ConnectionRegistry (connection id → live ssh2 Client)                      │
 │  - PortfwdStore (electron-store); NO keychain — see the rule below           │
@@ -28,7 +28,8 @@ Standard hardened Electron: three processes.
                                                               ▼
                                               ┌────────────────────────────┐
                                               │  Remote dev box            │
-                                              │  tmux + pocketshell helper │
+                                              │  aplexer, or tmux +        │
+                                              │  pocketshell helper        │
                                               └────────────────────────────┘
 ```
 
@@ -101,18 +102,24 @@ holds strict options.
 
 ---
 
-## 3. The terminal model — helper-driven attach
+## 3. The terminal model — aplexer first, helper-driven attach beneath
 
 The Android app speaks the full `tmux -CC` control-mode protocol itself
 (per-pane VT rendering). The desktop port deliberately does **not** re-port
-that. Instead it uses the **helper-driven attach** model, chosen with the
-maintainer:
+that. Instead it attaches to persistent sessions over a tracked SSH shell
+channel, and the sessions themselves come from **aplexer** wherever the host
+has it (`a`), with the tmux helper path as the fallback:
 
-1. The session tree is fetched from `pocketshell sessions list --by
-   activity` over a normal SSH exec channel (fast, cheap, pollable).
+1. The session tree is fetched from `a snapshot --json` merged over
+   `pocketshell sessions list --by activity`, over normal SSH exec channels
+   (fast, cheap, pollable). A session listed by both is one session, read
+   authoritatively: aplexer addresses `workspace + tag` under an immutable
+   UUID, so its workspace is the folder-grouping key with no inference, and
+   its declared engine/profile replaces the `@ps_agent_kind` probe.
 2. The first visit to a session mounts an `xterm.js` and opens a tracked SSH
-   **shell** channel. The channel runs the helper-driven tmux join command;
-   tmux's real tiled layout renders in the terminal and owns the panes.
+    **shell** channel. The channel runs the session join — `a attach <id>`
+   for an aplexer session, the helper-driven tmux join otherwise;
+   the far end's real layout renders in the terminal and owns the panes.
 3. Each visited session tab keeps its own terminal mounted. Switching tabs is
    therefore a renderer visibility change, not a remote switch or repaint.
 4. Input goes over the PTY (`shell.stdin.write`); resize calls
@@ -121,14 +128,18 @@ maintainer:
    resume <id>` which creates a capped tmux session and attaches it the
    same way.
 
-`TmuxClientPool` keeps one tmux client per visited session, keyed beneath the
-SSH connection. Attach requests on one connection are serialized so PTYs that
+`TmuxClientPool` keeps one client per visited session tab, keyed beneath the
+SSH connection — by session name for tmux, by `workspace:tag` for aplexer,
+whose tags repeat across workspaces. Attach requests on one connection are serialized so PTYs that
 are still opening count toward the channel budget. The session-list enrichment
-result is retained as an attach hint: when present, the join tries that socket
+result is retained as an attach hint: when present, the tmux join tries that socket
 directly, with the socket sweep and `tmuxctl` kept as a stale-hint fallback.
 When no cached hint is available, the optional tmux-server locator runs after
 the PTY channel opens and updates the client in the background, so opening a
-tab does not wait for another SSH round trip. A connection keeps at most six
+tab does not wait for another SSH round trip. An aplexer join needs neither:
+one `a attach` spelling reaches every session the snapshot lists, by UUID,
+and reattach repaints the live screen on its own — so redraw is a no-op and
+the geometry probe answers `bare`. A connection keeps at most six
 live tab clients and evicts the least-recently-used tab beyond that. If `ssh2`
 reports a channel-open refusal, one LRU client is released and the PTY request
 is retried once; unrelated PTY errors still reach the terminal as errors.

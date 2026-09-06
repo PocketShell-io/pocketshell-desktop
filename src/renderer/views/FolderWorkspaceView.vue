@@ -409,6 +409,49 @@ const summary = computed(
 );
 
 /**
+ * What the pool needs to address each of this folder's sessions, by name.
+ *
+ * Tabs are keyed by session name and names are unique within a folder, so a
+ * name lookup is exact here. The backend decides the join the pane opens
+ * (tmux vs `a attach`) and the key the pool holds the client under; the
+ * workspace and id address an aplexer tag, which repeats across workspaces.
+ * Read from the folder's own rows — the same projection the tabs are built
+ * from — so the two cannot disagree about what a tab names.
+ */
+const sessionMeta = computed(() => {
+  const meta = new Map<
+    string,
+    { backend: 'tmux' | 'aplexer'; workspace: string | null; aplexerId: string | null }
+  >();
+  for (const row of folder.value?.rows ?? []) {
+    const s = row.session;
+    meta.set(s.name, {
+      backend: s.backend ?? 'tmux',
+      workspace: s.workspace ?? null,
+      aplexerId: s.aplexerId ?? null,
+    });
+  }
+  return meta;
+});
+
+/**
+ * The aplexer ref a kill/rename carries for [name], or undefined for a tmux
+ * row. Undefined is not "unknown" — it is the tmux address, which is the bare
+ * name — so callers pass the result straight through.
+ */
+function aplexerRefFor(
+  name: string,
+): { backend: 'tmux' | 'aplexer'; workspace?: string; aplexerId?: string } | undefined {
+  const m = sessionMeta.value.get(name);
+  if (!m || m.backend !== 'aplexer') return undefined;
+  return {
+    backend: 'aplexer',
+    ...(m.workspace ? { workspace: m.workspace } : {}),
+    ...(m.aplexerId ? { aplexerId: m.aplexerId } : {}),
+  };
+}
+
+/**
  * The engine recorded host-side for the active session, narrowed to what the
  * composer can route to. An agent session gets the slash-command catalog, a
  * shell never does (docs/COMPOSER.md §18).
@@ -1015,7 +1058,7 @@ async function commitRename(): Promise<void> {
   }
   if (next === target.session) return cancelRename();
 
-  const result = await projects.renameSession(connectionId, target.session, next);
+  const result = await projects.renameSession(connectionId, target.session, next, aplexerRefFor(target.session));
   if (!result.ok || !result.sessionName) {
     renameError.value = result.error ?? 'rename failed';
     return;
@@ -1630,7 +1673,7 @@ async function confirmStop(): Promise<void> {
   try {
     let result: Awaited<ReturnType<typeof projects.killSession>>;
     try {
-      result = await projects.killSession(connectionId, session);
+      result = await projects.killSession(connectionId, session, aplexerRefFor(session));
     } catch (e) {
       // A rejected invoke is a failed kill like any other. Let it escape and
       // `stopBusy` stays latched — the Stop button dead until remount.
@@ -1988,6 +2031,9 @@ function onFocusTerminal(): void {
               :ref="(el) => setTerminalRef(tab.session, el)"
               :connection-id="connection.connectionId"
               :session-key="tab.session"
+              :backend="sessionMeta.get(tab.session)?.backend"
+              :workspace="sessionMeta.get(tab.session)?.workspace"
+              :aplexer-id="sessionMeta.get(tab.session)?.aplexerId"
               :intercept-typing="interceptTyping && tab.session === terminalSession"
               @typed="onTyped"
               @paste-into-composer="onPasteIntoComposer"
@@ -2047,9 +2093,9 @@ function onFocusTerminal(): void {
          is a projection that strips the folder's prefix (§3.3), so two folders
          can both show a tab called `Terminal`, and the moment a user is asked
          to destroy something is the moment they must be certain which thing it
-         is. It also says what goes, because "Stop" undersells it — a tmux
-         session is usually an agent mid-task, and its scrollback and process
-         tree go with it.
+         is. It also says what goes, because "Stop" undersells it — a session
+          is usually an agent mid-task, and its scrollback and process
+          tree go with it.
 
          Escape and the backdrop cancel, and Cancel is the DEFAULT-looking
          button while Stop carries the error tint, so the dangerous half of the
@@ -2058,7 +2104,7 @@ function onFocusTerminal(): void {
       <div class="stop-confirm">
         <p>Stop <code>{{ stopping }}</code> ?</p>
         <p class="muted">
-          This kills the tmux session on the host. Anything running in it stops, its scrollback goes,
+          This kills the session on the host. Anything running in it stops, its scrollback goes,
           and there is no undo.
         </p>
         <footer class="actions">

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { GeometryProbe, ShellId } from '../../shared/types.js';
 import { clientTtyVar, sessionAttachCommand } from '../../shared/attachCommand.js';
+import { aplexerAttachCommand, type SessionBackend } from '../../shared/aplexer.js';
 import { tmuxServerArg } from '../projects/commands.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { SshService } from './SshService.js';
@@ -122,6 +123,21 @@ export interface AttachSessionOptions {
    */
   onData: (shellId: ShellId, data: Buffer) => void;
   onExit: (shellId: ShellId, exitCode: number) => void;
+  /**
+   * Which runtime owns the session. Absent means `'tmux'`.
+   *
+   * An aplexer attach joins by UUID when [aplexerId] is known, else by
+   * workspace+tag — never by bare tag, which is unique only within its
+   * workspace. The pool keys the client the same way, so two folders holding
+   * same-named tags hold two clients, not one aliasing the other.
+   */
+  backend?: SessionBackend;
+  /** Aplexer workspace. Required for an aplexer attach without [aplexerId]. */
+  workspace?: string;
+  /** Aplexer tag. Defaults to the session name, which carries the tag. */
+  tag?: string;
+  /** Aplexer UUID. Preferred join selector; survives renames. */
+  aplexerId?: string;
 }
 
 export interface AttachSessionResult {
@@ -144,6 +160,50 @@ export interface AttachSessionResult {
 }
 
 /**
+ * One attach, resolved to the identity the pool keys on.
+ *
+ * `name` is the display name — the tmux session name, or the aplexer tag the
+ * row carries as its name. `key` is the pool key: tmux names are host-global
+ * so the name alone keys them, while aplexer tags repeat across workspaces
+ * and key on workspace+tag. Two folders holding same-named tags therefore
+ * hold two clients rather than aliasing one.
+ */
+interface AttachTarget {
+  name: string;
+  key: string;
+  backend: SessionBackend;
+  workspace: string | null;
+  tag: string;
+  aplexerId?: string;
+}
+
+/** The pool key for (backend, name, workspace, tag). See {@link AttachTarget}. */
+function clientKey(
+  backend: SessionBackend,
+  name: string,
+  workspace?: string | null,
+  tag?: string | null,
+): string {
+  if (backend === 'aplexer') return `aplexer:${workspace ?? ''}:${tag ?? name}`;
+  return `tmux:${name}`;
+}
+
+/** Resolve an attach call's (name, options) into the pooled identity. */
+function resolveTarget(sessionName: string, opts: AttachSessionOptions): AttachTarget {
+  const backend = opts.backend ?? 'tmux';
+  const tag = opts.tag ?? sessionName;
+  const workspace = opts.workspace ?? null;
+  return {
+    name: sessionName,
+    key: clientKey(backend, sessionName, workspace, tag),
+    backend,
+    workspace,
+    tag,
+    ...(opts.aplexerId ? { aplexerId: opts.aplexerId } : {}),
+  };
+}
+
+/**
  * How many tmux clients one connection may hold at once.
  *
  * Six, against an `sshd` `MaxSessions` of 10. The four channels of headroom are
@@ -160,12 +220,25 @@ export interface AttachSessionResult {
  */
 export const MAX_LIVE_CLIENTS = 6;
 
-/** What the pool remembers about one live tmux client. */
+/** What the pool remembers about one live client. */
 interface SessionClient {
   shellId: ShellId;
   /** The session this client is attached to. Fixed for its whole life. */
   session: string;
-  /** tmux global-environment variable holding this client's tty. */
+  /**
+   * The pool key — `tmux:<name>` or `aplexer:<workspace>:<tag>`. Stored
+   * because eviction finds the record without knowing which runtime it is.
+   */
+  key: string;
+  /** Which runtime owns the session behind this client. */
+  backend: SessionBackend;
+  /** Aplexer workspace, or null for a tmux client. Fixed for its whole life. */
+  workspace: string | null;
+  /**
+   * tmux global-environment variable holding this client's tty. Empty for an
+   * aplexer client, which needs no handshake — `a attach` is one spelling
+   * that reaches every session the snapshot lists.
+   */
   ttyVar: string;
   /**
    * The tmux server this session lives on, discovered at join time via the
@@ -194,14 +267,15 @@ interface SessionClient {
 }
 
 export class TmuxClientPool {
-  /** connectionId -> sessionName -> its live client. */
+  /** connectionId -> pool key -> its live client. */
   private readonly clients = new Map<string, Map<string, SessionClient>>();
   /**
-   * connectionId -> sessionName -> its stable handshake token.
+   * connectionId -> pool key -> its stable handshake token.
    *
    * Kept even for sessions whose client has been evicted, so a re-join reuses
    * the same tmux variable instead of leaving another behind (see the class
    * comment). Tokens are strings; the map is bounded by sessions visited.
+   * Aplexer clients hold no token — the entry is simply never read for them.
    */
   private readonly tokens = new Map<string, Map<string, string>>();
   /** Ever-increasing stamp handed to a client each time it is used. */
@@ -267,10 +341,12 @@ export class TmuxClientPool {
     sessionName: string,
     opts: AttachSessionOptions,
   ): Promise<AttachSessionResult> {
-    const held = this.live(connectionId, sessionName);
+    const target = resolveTarget(sessionName, opts);
+    const held = this.live(connectionId, target.key);
     log('tmux', 'attach requested', {
       connectionId,
       sessionName,
+      backend: target.backend,
       held: held != null,
       liveClients: this.liveCount(connectionId),
     });
@@ -283,7 +359,7 @@ export class TmuxClientPool {
     }
 
     this.evictDownTo(connectionId, MAX_LIVE_CLIENTS - 1);
-    return this.joinWithCapacityRetry(connectionId, sessionName, opts);
+    return this.joinWithCapacityRetry(connectionId, target, opts);
   }
 
   /**
@@ -340,6 +416,12 @@ export class TmuxClientPool {
   async redraw(shellId: ShellId): Promise<boolean> {
     const held = this.clientForShell(shellId);
     if (!held) return false;
+    // An aplexer client repaints its live screen on every attach and follows
+    // the PTY size through SIGWINCH — there is no stale band a refresh could
+    // clear, so there is nothing to issue. True, not false: the repaint the
+    // caller wanted is already the steady state, and false would read as "no
+    // client to refresh".
+    if (held.backend === 'aplexer') return true;
     const connectionId = this.connectionForShell(shellId);
     if (!connectionId) return false;
     // One exec, one round trip: read the tty back out of the tmux global
@@ -430,6 +512,12 @@ export class TmuxClientPool {
   async windowSize(shellId: ShellId): Promise<GeometryProbe> {
     const held = this.clientForShell(shellId);
     if (!held) return { kind: 'bare' };
+    // No tmux behind an aplexer shell to ask — and no `window-size latest`
+    // second client that can move a window under us either, since concurrent
+    // attaches share one live terminal sized by the active device. `bare` is
+    // the honest answer: the renderer's reconcile loop stops probing, which
+    // is exactly right when there is nothing to drift.
+    if (held.backend === 'aplexer') return { kind: 'bare' };
     const connectionId = this.connectionForShell(shellId);
     if (!connectionId) return { kind: 'bare' };
     // Same shape as {@link redraw}: recover our client's tty from the global
@@ -484,23 +572,37 @@ export class TmuxClientPool {
    * token map moves with it so a later re-join of the renamed session still
    * overwrites its own tmux variable rather than adding one.
    *
+   * An aplexer rename changes the tag, never the id or the workspace, so the
+   * client moves from one workspace-qualified key to another; the PTY stays
+   * attached throughout, exactly like the tmux case. Pass [opts] with the
+   * row's backend and workspace so the right key moves.
+   *
    * Returns true when a record was actually updated, which is only a
    * diagnostic: a rename of a session this connection does not hold is a
    * perfectly ordinary no-op.
    */
-  renamed(connectionId: string, from: string, to: string): boolean {
-    const held = this.clients.get(connectionId)?.get(from);
+  renamed(
+    connectionId: string,
+    from: string,
+    to: string,
+    opts?: { backend?: SessionBackend; workspace?: string | null },
+  ): boolean {
+    const backend = opts?.backend ?? 'tmux';
+    const fromKey = clientKey(backend, from, opts?.workspace, from);
+    const held = this.clients.get(connectionId)?.get(fromKey);
     if (!held) return false;
     const byName = this.clients.get(connectionId)!;
-    byName.delete(from);
+    const toKey = clientKey(backend, to, opts?.workspace ?? held.workspace, to);
+    byName.delete(fromKey);
     held.session = to;
-    byName.set(to, held);
+    held.key = toKey;
+    byName.set(toKey, held);
 
     const tokens = this.tokens.get(connectionId);
-    const token = tokens?.get(from);
+    const token = tokens?.get(fromKey);
     if (tokens && token !== undefined) {
-      tokens.delete(from);
-      tokens.set(to, token);
+      tokens.delete(fromKey);
+      tokens.set(toKey, token);
     }
     log('tmux', 'session renamed under a live client', { connectionId, from, to });
     return true;
@@ -511,7 +613,7 @@ export class TmuxClientPool {
    *
    *
    * The mirror image of {@link renamed}, and the reason both exist: this pool
-   * keys clients by session NAME, so anything that changes what that name means
+   * keys clients by session key, so anything that changes what that key means
    * — or stops it meaning anything — has to be told, or the map keeps a record
    * of a session that is not there.
    *
@@ -535,12 +637,18 @@ export class TmuxClientPool {
    * Returns whether a live client was actually closed, which is diagnostic
    * only: killing a session no tab was showing is perfectly ordinary.
    */
-  killed(connectionId: string, session: string): boolean {
+  killed(
+    connectionId: string,
+    session: string,
+    opts?: { backend?: SessionBackend; workspace?: string | null },
+  ): boolean {
+    const backend = opts?.backend ?? 'tmux';
+    const key = clientKey(backend, session, opts?.workspace, session);
     const byName = this.clients.get(connectionId);
-    const held = byName?.get(session);
-    this.tokens.get(connectionId)?.delete(session);
+    const held = byName?.get(key);
+    this.tokens.get(connectionId)?.delete(key);
     if (!held || !byName) return false;
-    byName.delete(session);
+    byName.delete(key);
     // The tracker is consulted rather than trusted: the channel may already have
     // gone (an eviction, a drop), and `shellClose` on a stale id is a no-op we
     // would rather not log as a close that happened.
@@ -625,15 +733,29 @@ export class TmuxClientPool {
    * session is passed through, as before — terminal keystrokes come from the
    * focused pane and always mean whatever it is currently displaying, and a
    * shell this pool never opened cannot be misrouted in the first place.
+   *
+   * For an aplexer client the name alone is not the identity — two folders can
+   * hold same-named tags — so a caller that knows the workspace passes it and
+   * both halves must match. A caller that does not (terminal keystrokes never
+   * do) falls back to the name, which is the same answer the tmux case gives.
    */
-  isShowing(shellId: ShellId, sessionName: string): boolean {
-    const session = this.sessionForShell(shellId);
-    if (session === null) return true;
-    return session === sessionName;
+  isShowing(shellId: ShellId, sessionName: string, workspace?: string): boolean {
+    const held = this.clientForShell(shellId);
+    if (!held) return true;
+    if (held.session !== sessionName) return false;
+    if (
+      held.backend === 'aplexer' &&
+      workspace != null &&
+      held.workspace != null &&
+      held.workspace !== workspace
+    ) {
+      return false;
+    }
+    return true;
   }
 
   /**
-   * The remembered client for a session, but only if its channel is still
+   * The remembered client for a pool key, but only if its channel is still
    * tracked.
    *
    * The renderer closes the PTY when a terminal unmounts, and a dropped
@@ -641,12 +763,12 @@ export class TmuxClientPool {
    * class. Consulting the tracker rather than trusting the map is what keeps a
    * closed channel from being handed out as a live client.
    */
-  private live(connectionId: string, sessionName: string): SessionClient | undefined {
+  private live(connectionId: string, key: string): SessionClient | undefined {
     const byName = this.clients.get(connectionId);
-    const held = byName?.get(sessionName);
+    const held = byName?.get(key);
     if (!held) return undefined;
     if (this.ssh.shellTracker.get(held.shellId)) return held;
-    byName!.delete(sessionName);
+    byName!.delete(key);
     return undefined;
   }
 
@@ -701,7 +823,7 @@ export class TmuxClientPool {
       budget: MAX_LIVE_CLIENTS,
     });
     this.ssh.shellClose(victim.shellId);
-    byName.delete(victim.session);
+    byName.delete(victim.key);
     return true;
   }
 
@@ -713,19 +835,19 @@ export class TmuxClientPool {
    */
   private async joinWithCapacityRetry(
     connectionId: string,
-    sessionName: string,
+    target: AttachTarget,
     opts: AttachSessionOptions,
   ): Promise<AttachSessionResult> {
     try {
-      return await this.join(connectionId, sessionName, opts);
+      return await this.join(connectionId, target, opts);
     } catch (error) {
       if (!isChannelOpenFailure(error) || !this.evictOne(connectionId)) throw error;
       log('tmux', 'PTY open hit the SSH channel ceiling; retrying after one eviction', {
         connectionId,
-        session: sessionName,
+        session: target.name,
         error: String(error).slice(0, 200),
       });
-      return this.join(connectionId, sessionName, opts);
+      return this.join(connectionId, target, opts);
     }
   }
 
@@ -737,14 +859,24 @@ export class TmuxClientPool {
    * a fallback nobody could see. The pool no longer switches, so there is no
    * such fallback and nothing to explain: a join here is either the first time
    * a tab was opened or the return to an evicted one, and both are ordinary.
+   *
+   * An aplexer target joins with `a attach` by UUID (or workspace+tag) and
+   * skips the tmux handshake and socket aim entirely — neither exists outside
+   * tmux, and the attach repaints the live screen on its own.
    */
   private async join(
     connectionId: string,
-    sessionName: string,
+    target: AttachTarget,
     opts: AttachSessionOptions,
   ): Promise<AttachSessionResult> {
-    const ttyVar = clientTtyVar(this.tokenFor(connectionId, sessionName));
-    const hintedSocketPath = this.cachedSocketPath(connectionId, sessionName);
+    const isAplexer = target.backend === 'aplexer';
+    const ttyVar = isAplexer ? '' : clientTtyVar(this.tokenFor(connectionId, target.key));
+    const hintedSocketPath = isAplexer
+      ? undefined
+      : this.cachedSocketPath(connectionId, target.name);
+    const command = isAplexer
+      ? aplexerAttachCommand({ id: target.aplexerId, workspace: target.workspace, tag: target.tag })
+      : sessionAttachCommand(target.name, ttyVar, hintedSocketPath);
     // The session-server locator is advisory: it only aims later redraw and
     // geometry commands. It must not sit in front of the PTY open, because a
     // multi-socket probe is a full SSH exec round trip and the terminal can
@@ -762,7 +894,7 @@ export class TmuxClientPool {
     // so rather than so bytes get dropped.
     let id: ShellId | null = null;
     const shellId = await this.ssh.openTrackedShell(connectionId, {
-      command: sessionAttachCommand(sessionName, ttyVar, hintedSocketPath),
+      command,
       cols: opts.cols,
       rows: opts.rows,
       onData: (data) => {
@@ -774,7 +906,7 @@ export class TmuxClientPool {
         // channel dropped, or this pool evicted it. Drop the record so the
         // next attach joins rather than handing back a dead client.
         const byName = this.clients.get(connectionId);
-        if (byName?.get(sessionName)?.shellId === id) byName.delete(sessionName);
+        if (byName?.get(target.key)?.shellId === id) byName.delete(target.key);
         opts.onExit(id, exitCode);
       },
     });
@@ -784,16 +916,19 @@ export class TmuxClientPool {
       byName = new Map();
       this.clients.set(connectionId, byName);
     }
-    byName.set(sessionName, {
+    byName.set(target.key, {
       shellId,
-      session: sessionName,
+      session: target.name,
+      key: target.key,
+      backend: target.backend,
+      workspace: target.workspace,
       ttyVar,
       socketPath: hintedSocketPath ?? null,
       useOrder: ++this.useClock,
       lastUsedAt: Date.now(),
     });
-    if (hintedSocketPath === undefined) {
-      this.locateSocketPath(connectionId, sessionName, shellId);
+    if (hintedSocketPath === undefined && !isAplexer) {
+      this.locateSocketPath(connectionId, target.name, shellId);
     }
     return { shellId, switched: false };
   }
@@ -824,7 +959,7 @@ export class TmuxClientPool {
   }
 
   /**
-   * The handshake token for one (connection, session).
+   * The handshake token for one (connection, pool key).
    *
    * Per session rather than per connection, because there is now a client per
    * session and they must not share a tmux variable — the second join would
@@ -832,16 +967,16 @@ export class TmuxClientPool {
    * apart. Stable across re-joins of the same session, so an evicted tab that
    * is revisited overwrites its own entry rather than leaving another behind.
    */
-  private tokenFor(connectionId: string, sessionName: string): string {
+  private tokenFor(connectionId: string, key: string): string {
     let byName = this.tokens.get(connectionId);
     if (!byName) {
       byName = new Map();
       this.tokens.set(connectionId, byName);
     }
-    let token = byName.get(sessionName);
+    let token = byName.get(key);
     if (!token) {
       token = randomBytes(6).toString('hex');
-      byName.set(sessionName, token);
+      byName.set(key, token);
     }
     return token;
   }

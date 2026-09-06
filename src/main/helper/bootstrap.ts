@@ -69,10 +69,15 @@ export async function runBootstrap(
   // "pocketshell" chip and every click on a session failed in the terminal.
   // Probing it makes the one binary the join depends on part of the same
   // readiness answer the rest of the UI is already built on.
-  const [pocketshell, tmuxctl, tmux, installer] = await Promise.all([
+  //
+  // `a` (aplexer) is probed the same way: it is the MAIN session manager when
+  // present — listing, creating, attaching, stopping, and renaming all prefer
+  // it — and its absence simply runs the tmux path, so nothing warns on it.
+  const [pocketshell, tmuxctl, tmux, aplexer, installer] = await Promise.all([
     probeTool(ssh, connectionId, 'pocketshell'),
     probeTool(ssh, connectionId, 'tmuxctl'),
     probeTool(ssh, connectionId, 'tmux'),
+    probeTool(ssh, connectionId, 'a'),
     detectInstaller(ssh, connectionId),
   ]);
 
@@ -99,6 +104,7 @@ export async function runBootstrap(
     pocketshell,
     tmuxctl,
     tmux,
+    aplexer,
     installer,
     daemonRunning,
     daemonEnabled,

@@ -22,6 +22,7 @@
 
 import type { SshService } from '../ssh/SshService.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
+import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
 import { pathAwareCommand } from '../helper/bootstrap.js';
 import { firstNonEmptyLine, lastNonEmptyLine } from '../helper/parsers.js';
@@ -29,6 +30,7 @@ import {
   HOME_COMMAND,
   directoryExistsCommand,
   freeSessionNameCommand,
+  FREE_SESSION_NAME_MAX_SUFFIX,
   killSessionCommand,
   mkdirCommand,
   renameSessionCommand,
@@ -184,6 +186,23 @@ export interface ReposListRequest {
   limit?: number;
 }
 
+/**
+ * What the renderer knows about an aplexer-backed session, carried alongside
+ * a name-addressed kill/rename so main can aim at the right runtime.
+ *
+ * A tag alone is unique only within its workspace, so a bare name cannot
+ * address an aplexer session the way it addresses a tmux one. The renderer
+ * passes what the row already carries; main falls back to a snapshot lookup
+ * when it must (a stale caller, a deep link) and refuses rather than guesses
+ * when the name is ambiguous.
+ */
+export interface AplexerSessionRef {
+  /** Canonical workspace the session lives in. */
+  workspace?: string | null;
+  /** Immutable session UUID. Preferred: survives renames. */
+  aplexerId?: string | null;
+}
+
 export class ProjectsService {
   /**
    * Remote `$HOME` per connection. It cannot change for the life of a
@@ -195,6 +214,13 @@ export class ProjectsService {
   constructor(
     private readonly ssh: SshService,
     private readonly helper: PocketshellClient,
+    /**
+     * The aplexer client, when the app was wired with one. Start/kill/rename
+     * prefer it on hosts where `a` is installed; without it every call takes
+     * the tmux path it always took. Optional so existing constructions keep
+     * compiling.
+     */
+    private readonly aplexer?: AplexerClient,
   ) {}
 
   /** Drop cached per-connection state. Call on disconnect. */
@@ -417,6 +443,15 @@ export class ProjectsService {
     const base = resolveSessionName(request.customName ?? null, canonical, home);
 
     const policy = request.namePolicy ?? 'reuse';
+
+    // aplexer is the main session manager wherever `a` is installed: the
+    // create, the reuse check, and the free-name walk all run against the
+    // snapshot rather than against tmux. The tmux path below stays for hosts
+    // without it.
+    if (this.aplexer && (await this.aplexer.isAvailable(connectionId))) {
+      return this.startAplexerSession(connectionId, canonical, base, policy, failed);
+    }
+
     let name = base;
     let reused = false;
     if (policy === 'unique') {
@@ -497,6 +532,131 @@ export class ProjectsService {
   }
 
   /**
+   * Start a session through aplexer — the main path on hosts with `a`.
+   *
+   * The tag derivation is the SAME one the tmux path uses (`base` above), so
+   * a folder's session is called the same thing on both runtimes and the tab
+   * bar, the composer key, and the rename labelling work unchanged. The
+   * differences from the tmux flow are all consequences of the identity
+   * model: liveness and uniqueness are read from one snapshot (no per-name
+   * exec probes), and the free-name walk is client-side over that snapshot
+   * rather than a shell loop over tmux sockets.
+   *
+   * A finished record holding the pair is NOT a conflict: `a start` reclaims
+   * it (archives the corpse, creates the session), so only a LIVE holder
+   * counts for reuse and for the walk. The snapshot parser already drops dead
+   * records, which is what makes both reads correct without a second filter.
+   */
+  private async startAplexerSession(
+    connectionId: string,
+    folder: string,
+    base: string,
+    policy: SessionNamePolicy,
+    failed: (
+      code: StartSessionFailure,
+      error: string | null,
+      opts?: { folder?: string | null; via?: CreateSessionVia | null },
+    ) => StartSessionResult,
+  ): Promise<StartSessionResult> {
+    const aplexer = this.aplexer!;
+    if (policy === 'unique') {
+      const free = await this.freeAplexerTag(connectionId, folder, base);
+      if (free === null) {
+        return failed(
+          'name-unavailable',
+          `Could not ask the host for a free session name, so nothing was created. ` +
+            `Starting another session here would have re-opened "${base}" instead of ` +
+            `making a new one.`,
+          { folder },
+        );
+      }
+      return this.createAplexerSession(connectionId, folder, free, policy, failed);
+    }
+    const live = await aplexer.findSession(connectionId, folder, base);
+    if (live) {
+      return { ok: true, sessionName: base, folder, reused: true, via: 'aplexer', error: null, code: null };
+    }
+    return this.createAplexerSession(connectionId, folder, base, policy, failed);
+  }
+
+  /** Run `a start` and translate its three answers (created / refused-live / failed). */
+  private async createAplexerSession(
+    connectionId: string,
+    folder: string,
+    tag: string,
+    policy: SessionNamePolicy,
+    failed: (
+      code: StartSessionFailure,
+      error: string | null,
+      opts?: { folder?: string | null; via?: CreateSessionVia | null },
+    ) => StartSessionResult,
+  ): Promise<StartSessionResult> {
+    const aplexer = this.aplexer!;
+    const created = await aplexer.startSession(connectionId, { workspace: folder, tag });
+    if (created.ok) {
+      // Same guard as the tmux path: under `unique` the host must answer with
+      // the name it was asked for, or nothing is shown to have been made.
+      if (policy === 'unique' && created.tag !== tag) {
+        return failed(
+          'name-unavailable',
+          `Asked the host for a new session called "${tag}" and it answered with ` +
+            `"${created.tag ?? ''}", so it is not clear a new session was made. Nothing ` +
+            `here has been selected; check the host before trying again.`,
+          { folder, via: 'aplexer' },
+        );
+      }
+      if (created.tag) {
+        void this.helper
+          .treeRecordSession(connectionId, created.tag, folder)
+          .catch(() => undefined);
+      }
+      return {
+        ok: true,
+        sessionName: created.tag,
+        folder,
+        reused: false,
+        via: 'aplexer',
+        error: null,
+        code: null,
+      };
+    }
+    if (created.liveRefusal) {
+      // Lost the race: the pair went live between the snapshot check and the
+      // exec. Re-read; a live holder turns this into the reuse `reuse` means,
+      // and only a vanished one is a failure.
+      const live = await aplexer.findSession(connectionId, folder, tag);
+      if (live) {
+        return { ok: true, sessionName: tag, folder, reused: true, via: 'aplexer', error: null, code: null };
+      }
+    }
+    return failed('create-failed', created.error, { folder, via: 'aplexer' });
+  }
+
+  /**
+   * The first free `<base>`, `<base>-2`, … among a workspace's LIVE aplexer
+   * tags, or null when the host did not answer.
+   *
+   * Null fails closed upstream (see the tmux `freeSessionName` note for why
+   * inventing `[base]` would silently convert `unique` into `reuse`). An
+   * exhausted walk is the same answer: a folder with 200 live sessions is not
+   * a real state, and the bound stops a pathological host, not a real one.
+   */
+  private async freeAplexerTag(
+    connectionId: string,
+    workspace: string,
+    base: string,
+  ): Promise<string | null> {
+    const tags = await this.aplexer!.liveTags(connectionId, workspace);
+    if (tags === null) return null;
+    if (!tags.has(base)) return base;
+    for (let i = 2; i <= FREE_SESSION_NAME_MAX_SUFFIX; i += 1) {
+      const candidate = `${base}-${i}`;
+      if (!tags.has(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  /**
    * Rename a live tmux session.
    *
    * ## Why this is a service call and not a `send-keys`
@@ -547,6 +707,7 @@ export class ProjectsService {
     connectionId: string,
     from: string,
     to: string,
+    ref?: AplexerSessionRef,
   ): Promise<RenameSessionResult> {
     const target = sanitiseName(to);
     if (!/[A-Za-z0-9]/.test(target)) {
@@ -561,6 +722,14 @@ export class ProjectsService {
     // committing an unchanged label would find the session itself and report
     // its own name as taken.
     if (target === from) return { ok: true, sessionName: from, error: null, code: null };
+
+    // An aplexer-backed row renames its TAG within its workspace. The
+    // sanitised alphabet above is a subset of the tag alphabet (which adds
+    // `.`), so a name this accepts is a tag `a rename` accepts.
+    const aplexerId = await this.resolveAplexerId(connectionId, from, ref);
+    if (aplexerId !== null) {
+      return this.renameAplexerSession(connectionId, aplexerId, target);
+    }
 
     // Locate `from` FIRST, and aim the rename at its server: a rename can only
     // run on the server that holds the session, and the per-session-server
@@ -647,7 +816,27 @@ export class ProjectsService {
    * handler. The service reaches the host and stops
    * there.
    */
-  async killSession(connectionId: string, name: string): Promise<KillSessionResult> {
+  async killSession(
+    connectionId: string,
+    name: string,
+    ref?: AplexerSessionRef,
+  ): Promise<KillSessionResult> {
+    // An aplexer-backed row is killed by id. The lookup below also covers a
+    // caller that only has the workspace: one live tag-holder is unambiguous,
+    // and anything else falls through to the tmux probe rather than guessing.
+    const aplexerId = await this.resolveAplexerId(connectionId, name, ref);
+    if (aplexerId !== null) {
+      const killed = await this.aplexer!.killSession(connectionId, aplexerId);
+      if (killed.ok) return { ok: true, error: null, code: null };
+      if (killed.notFound) {
+        return {
+          ok: false,
+          error: `"${name}" is not running on this host any more.`,
+          code: 'not-found',
+        };
+      }
+      return { ok: false, error: killed.error, code: 'kill-failed' };
+    }
     const located = await this.helper.locateSession(connectionId, name);
     if (located.status === 'absent') {
       return {
@@ -683,6 +872,84 @@ export class ProjectsService {
       return { ok: false, error: detail || `Could not stop "${name}".`, code: 'kill-failed' };
     }
     return { ok: true, error: null, code: null };
+  }
+
+  /**
+   * The aplexer UUID for [name], or null when this is not an aplexer kill/rename.
+   *
+   * Three routes, in order. An explicit id from the row wins outright — it is
+   * exact by construction. Otherwise the workspace the row was filed under
+   * plus the name addresses `workspace + tag`, which the host enforces as
+   * unique. With neither, a snapshot scan for the bare tag still resolves when
+   * exactly one live session carries it.
+   *
+   * Null routes the caller to the tmux path, and that is deliberate in every
+   * direction it fails in: zero matches mean the name is not an aplexer tag at
+   * all (an ordinary tmux session, which the probe below handles), and several
+   * matches mean the bare name is ambiguous — but a tmux probe for that name
+   * answers `not-found` rather than killing wrong, because no tmux server
+   * holds an aplexer tag. The UI always passes the workspace for an aplexer
+   * row, so the ambiguous case needs a stale caller to reach it, and even
+   * then nothing destructive can misfire.
+   */
+  private async resolveAplexerId(
+    connectionId: string,
+    name: string,
+    ref?: AplexerSessionRef,
+  ): Promise<string | null> {
+    if (this.aplexer == null) return null;
+    if (!(await this.aplexer.isAvailable(connectionId))) return null;
+    if (ref?.aplexerId) return ref.aplexerId;
+    const records = await this.aplexer.snapshotRecords(connectionId);
+    if (ref?.workspace) {
+      return records.find((r) => r.workspace === ref.workspace && r.tag === name)?.id ?? null;
+    }
+    const holders = records.filter((r) => r.tag === name);
+    return holders.length === 1 ? holders[0]!.id : null;
+  }
+
+  /**
+   * Rename an aplexer session's tag, with the host-answered uniqueness check.
+   *
+   * The namespace is one workspace, not every server: the snapshot that
+   * resolved the id already answers whether [target] is taken there. A taken
+   * tag reads as `name-taken`, the same code the tmux path returns, so the
+   * rename field reacts identically whichever runtime owns the row.
+   */
+  private async renameAplexerSession(
+    connectionId: string,
+    id: string,
+    target: string,
+  ): Promise<RenameSessionResult> {
+    const records = await this.aplexer!.snapshotRecords(connectionId);
+    const self = records.find((r) => r.id === id);
+    if (!self) {
+      return {
+        ok: false,
+        sessionName: null,
+        error: 'That session is not running any more.',
+        code: 'rename-failed',
+      };
+    }
+    if (records.some((r) => r.id !== id && r.workspace === self.workspace && r.tag === target)) {
+      return {
+        ok: false,
+        sessionName: null,
+        error: `A session called "${target}" is already running on this host.`,
+        code: 'name-taken',
+      };
+    }
+    const renamed = await this.aplexer!.renameSession(connectionId, id, target);
+    if (renamed.ok) return { ok: true, sessionName: target, error: null, code: null };
+    if (renamed.notFound) {
+      return {
+        ok: false,
+        sessionName: null,
+        error: 'That session is not running any more.',
+        code: 'rename-failed',
+      };
+    }
+    return { ok: false, sessionName: null, error: renamed.error, code: 'rename-failed' };
   }
 
   /**
