@@ -171,7 +171,13 @@ provider, and an at-rest block tint (`terminalPathHighlights.ts`) that
 re-derives decorations for every row the renderer touches, so a path
 reads as one highlighted span at rest even when the remote CLI's own
 underline stopped at its first row; the tint is each theme's selection
-colour solidified over the terminal ground.
+colour solidified over the terminal ground. The pane spends almost its
+whole life on the alternate buffer — the tmux attach client is itself a
+full-screen program that opens with `smcup` — and the tint renders there
+all the same: xterm paints a decoration's background into the active
+buffer's cell spans on either buffer (`registerDecoration` is
+proposed-API, so the renderer constructs the terminal with
+`allowProposedApi`).
 
 ---
 

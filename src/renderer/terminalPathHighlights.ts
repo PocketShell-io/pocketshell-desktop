@@ -25,15 +25,34 @@
  * frame it was scanned in; the per-frame cost is one rescan of the dirty
  * rows, which is the price the old note already anticipated.
  *
- * Two API facts shape the rest:
+ * Three facts shape the rest:
  *
- *   - decorations exist only on the NORMAL buffer (`registerDecoration`
- *     returns `undefined` when the alternate buffer is active). That is
- *     where scrolled CLI output lives anyway; an interactive TUI canvas is
- *     repainted constantly and gets no at-rest highlighting.
  *   - a marker is created as an offset from the cursor's absolute line
  *     (`viewportY + cursorY`), so the highlighter re-derives the offset for
  *     every row it refreshes rather than holding markers across scrolls.
+ *
+ *   - the tint paints on the ACTIVE buffer, whatever it is — and that is
+ *     almost always the ALTERNATE one. This pane is always a tmux client,
+ *     and the attach client is itself a full-screen program whose first
+ *     bytes are `smcup` (`CSI ?1049h`, captured from tmux 3.4), so every
+ *     joined session draws on the alternate buffer and the normal buffer
+ *     holds only a bare shell. xterm registers markers and decorations on
+ *     either buffer, and its DOM renderer paints a decoration's
+ *     `backgroundColor` into the active buffer's cell spans (looked up by
+ *     absolute line), so no buffer special case is wanted here. Two
+ *     unrelated gates do exist but gate other things: `registerDecoration`
+ *     is proposed-API (TerminalView constructs the terminal with
+ *     `allowProposedApi` for it), and xterm's decoration-ELEMENT renderer
+ *     `display:none`s its elements on the alternate buffer — an element this
+ *     colour-only decoration never shows through.
+ *
+ *   - a refresh that would change nothing disposes and registers nothing.
+ *     Every decoration registration asks the renderer for a full repaint
+ *     (RenderService listens for registration), and a highlighter that
+ *     re-registered on every touched row — including the rows its own
+ *     repaint touches — would chase its own tail at frame rate. A row is
+ *     rewritten only when its anchor line, its segment list or the tint
+ *     actually changed.
  *
  * Decorations are keyed by viewport row and the whole viewport is revisited
  * on scroll (a scroll re-renders every row), so nothing survives long enough
@@ -43,9 +62,22 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from '@xterm/xterm';
 import { lastTextColumn, pathLinks, type TerminalPathContext } from './terminalLinks';
 
+interface RowSegment {
+  x: number;
+  width: number;
+}
+
 interface RowDecorations {
   marker: IMarker;
   decorations: IDecoration[];
+  segments: RowSegment[];
+  tint: string;
+}
+
+function sameSegments(a: RowSegment[], b: RowSegment[]): boolean {
+  return (
+    a.length === b.length && a.every((s, i) => s.x === b[i]?.x && s.width === b[i]?.width)
+  );
 }
 
 export class PathHighlighter {
@@ -76,24 +108,48 @@ export class PathHighlighter {
   }
 
   private refreshRow(row: number, baseY: number): void {
+    const buffer = this.term.buffer.active;
+    // `pathLinks` speaks 1-based absolute buffer lines, as xterm's own link
+    // provider contract does.
+    const line = baseY + row + 1;
+
+    // The segment list THIS row carries: one entry per link that spans it.
+    // A row that is neither the link's first nor its last has no endpoint of
+    // its own in the range — the range records two cells — so its segment is
+    // clamped to the row's own text: a reconstructed row stops short of the
+    // pane and the padding after it is not path.
+    const segments: RowSegment[] = [];
+    for (const link of pathLinks(this.term, line, this.context)) {
+      if (line < link.range.start.y || line > link.range.end.y) continue;
+      const rowEnd = lastTextColumn(this.term, line);
+      const startX = line === link.range.start.y ? link.range.start.x : 1;
+      const endX = line === link.range.end.y ? link.range.end.x : rowEnd;
+      const width = endX - startX + 1;
+      if (width <= 0) continue;
+      segments.push({ x: startX, width });
+    }
+
+    const tint = this.tint();
     const held = this.rows.get(row);
+    if (
+      held !== undefined &&
+      held.marker.line === line - 1 &&
+      held.tint === tint &&
+      sameSegments(held.segments, segments)
+    ) {
+      return;
+    }
+
     if (held !== undefined) {
       for (const decoration of held.decorations) decoration.dispose();
       held.marker.dispose();
       this.rows.delete(row);
     }
+    if (segments.length === 0) return;
 
-    const buffer = this.term.buffer.active;
-    if (buffer === this.term.buffer.alternate) return;
-    // `pathLinks` speaks 1-based absolute buffer lines, as xterm's own link
-    // provider contract does.
-    const line = baseY + row + 1;
-    const links = pathLinks(this.term, line, this.context);
-    if (links.length === 0) return;
-
-    // One marker per row; every link segment this row carries anchors to it.
-    // The marker is the buffer line the decorations describe, so it is
-    // created relative to the cursor's ABSOLUTE line (viewportY + cursorY).
+    // One marker per row; every segment anchors to it. The marker is the
+    // buffer line the decorations describe, so it is created relative to the
+    // cursor's ABSOLUTE line (viewportY + cursorY).
     const cursorLine = baseY + buffer.cursorY;
     const marker = this.term.registerMarker(line - 1 - cursorLine);
     if (marker === undefined || marker.line < 0) {
@@ -102,24 +158,13 @@ export class PathHighlighter {
     }
 
     const decorations: IDecoration[] = [];
-    for (const link of links) {
-      // The link spans one or more rows; this refresh concerns the segment on
-      // THIS row only. A row that is neither the link's first nor its last
-      // has no endpoint of its own in the range — the range records two cells
-      // — so its segment is clamped to the row's own text: a reconstructed
-      // row stops short of the pane and the padding after it is not path.
-      if (line < link.range.start.y || line > link.range.end.y) continue;
-      const rowEnd = lastTextColumn(this.term, line);
-      const startX = line === link.range.start.y ? link.range.start.x : 1;
-      const endX = line === link.range.end.y ? link.range.end.x : rowEnd;
-      const width = endX - startX + 1;
-      if (width <= 0) continue;
+    for (const segment of segments) {
       const decoration = this.term.registerDecoration({
         marker,
         anchor: 'left',
-        x: startX,
-        width,
-        backgroundColor: this.tint(),
+        x: segment.x,
+        width: segment.width,
+        backgroundColor: tint,
         layer: 'bottom',
       });
       if (decoration !== undefined) decorations.push(decoration);
@@ -129,7 +174,7 @@ export class PathHighlighter {
       marker.dispose();
       return;
     }
-    this.rows.set(row, { marker, decorations });
+    this.rows.set(row, { marker, decorations, segments, tint });
   }
 
   private clear(): void {

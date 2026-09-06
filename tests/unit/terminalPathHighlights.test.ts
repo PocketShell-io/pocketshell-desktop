@@ -30,7 +30,10 @@ interface RecordedDecoration {
 /**
  * A fake buffer wired for the highlighter: render handlers, cursor-relative
  * markers, and a registry of live decorations the tests can assert on. The
- * buffer starts on the NORMAL buffer; `setAlternate` flips it.
+ * buffer starts on the NORMAL buffer; `setAlternate` flips it. Decoration
+ * registration is accepted on EITHER buffer, mirroring xterm 6.0.0 — its
+ * alternate-buffer gate covers the decoration-ELEMENT renderer only, not the
+ * cell-colour path the tint goes through.
  */
 function fakeHighlightTerminal(
   rows: string[],
@@ -39,6 +42,7 @@ function fakeHighlightTerminal(
 ): {
   term: Terminal;
   decorations: RecordedDecoration[];
+  registrations: () => number;
   render: (start: number, end: number) => void;
   rewriteRow: (index: number, text: string) => void;
   setAlternate: (value: boolean) => void;
@@ -46,12 +50,12 @@ function fakeHighlightTerminal(
   const viewportY = options.viewportY ?? 0;
   const cursorY = options.cursorY ?? 0;
   let alternate = false;
+  let registered = 0;
   const cells = rows.map((row) => [...row.padEnd(width, ' ')].map((ch) => ({ chars: ch, width: 1 })));
   const decorations: RecordedDecoration[] = [];
   const renderHandlers: Array<(range: { start: number; end: number }) => void> = [];
-  const alternateBuffer: Record<string, never> = {};
 
-  const normalBuffer = {
+  const makeBuffer = () => ({
     viewportY,
     cursorY,
     getNullCell: () => ({ getChars: () => '', getWidth: () => 1 }),
@@ -68,7 +72,10 @@ function fakeHighlightTerminal(
         },
       };
     },
-  };
+  });
+
+  const normalBuffer = makeBuffer();
+  const alternateBuffer = makeBuffer();
 
   const term = {
     cols: width,
@@ -100,7 +107,7 @@ function fakeHighlightTerminal(
       width?: number;
       backgroundColor?: string;
     }) => {
-      if (alternate) return undefined;
+      registered++;
       const record: RecordedDecoration = {
         line: decorationOptions.marker.line,
         x: decorationOptions.x,
@@ -121,6 +128,7 @@ function fakeHighlightTerminal(
   return {
     term,
     decorations,
+    registrations: () => registered,
     render: (start: number, end: number) => {
       for (const handler of renderHandlers) handler({ start, end });
     },
@@ -191,7 +199,10 @@ describe('PathHighlighter', () => {
     highlighter.dispose();
   });
 
-  it('highlights nothing on the alternate buffer', () => {
+  it('highlights on the alternate buffer, where every tmux session lives', () => {
+    // `tmux attach` opens with `smcup` (CSI ?1049h, captured from tmux 3.4),
+    // so a joined session's whole transcript sits on the alternate buffer.
+    // Refusing that buffer used to silence the tint in every real pane.
     const fake = fakeHighlightTerminal([FIRST, 'overview.png'], 96);
     const highlighter = new PathHighlighter(fake.term, context, tint);
     highlighter.attach();
@@ -199,7 +210,32 @@ describe('PathHighlighter', () => {
 
     fake.render(0, 1);
 
-    expect(fake.decorations).toEqual([]);
+    expect(fake.decorations).toEqual([
+      { line: 0, x: 1, width: FIRST.length, backgroundColor: '#112233' },
+      { line: 1, x: 1, width: 'overview.png'.length, backgroundColor: '#112233' },
+    ]);
+    highlighter.dispose();
+  });
+
+  it('re-touching a row it already highlights registers nothing new', () => {
+    // Every registration asks xterm for a full repaint; repaints re-fire
+    // onRender. A highlighter that re-registered unchanged rows would chase
+    // its own tail at frame rate.
+    const fake = fakeHighlightTerminal([FIRST, 'overview.png'], 96);
+    const highlighter = new PathHighlighter(fake.term, context, tint);
+    highlighter.attach();
+
+    fake.render(0, 1);
+    const afterFirstPass = fake.registrations();
+    expect(afterFirstPass).toBe(2);
+
+    fake.render(0, 1);
+
+    expect(fake.registrations()).toBe(afterFirstPass);
+    expect(fake.decorations).toEqual([
+      { line: 0, x: 1, width: FIRST.length, backgroundColor: '#112233' },
+      { line: 1, x: 1, width: 'overview.png'.length, backgroundColor: '#112233' },
+    ]);
     highlighter.dispose();
   });
 
@@ -213,6 +249,40 @@ describe('PathHighlighter', () => {
     highlighter.dispose();
 
     expect(fake.decorations).toEqual([]);
+  });
+});
+
+describe('premises against the real parser (headless xterm)', () => {
+  it('a tmux attach stream lands on the alternate buffer, and the join works there', async () => {
+    const { Terminal: HeadlessTerminal } = (await import('@xterm/headless')).default;
+    const { pathLinks } = await import('../../src/renderer/terminalLinks');
+
+    // Pane width = the fragment's exact length, so the remote CLI's hard wrap
+    // broke the token at the margin — rule 1's shape.
+    const term = new HeadlessTerminal({
+      cols: FIRST.length,
+      rows: 6,
+      allowProposedApi: true,
+    });
+    // The first bytes of a real tmux 3.4 attach under a PTY: smcup, then each
+    // row drawn at an explicitly positioned cursor, SGR-styled by the CLI.
+    const stream =
+      '\x1b[?1049h\x1b[22;0;0t\x1b[H\x1b[2J' +
+      `\x1b[4;34m\x1b[2;1H${FIRST}\x1b[0m` +
+      '\x1b[3;1Hoverview.png\x1b[0m';
+    await new Promise<void>((resolve) => term.write(stream, resolve));
+
+    // The premise that decides where any of this can run: a joined session's
+    // transcript is on the ALTERNATE buffer, not scrollback.
+    expect(term.buffer.active).toBe(term.buffer.alternate);
+
+    const links = pathLinks(term as unknown as Terminal, 2, context);
+    expect(links).toHaveLength(1);
+    expect(links[0]?.range).toEqual({
+      start: { x: 1, y: 2 },
+      end: { x: 'overview.png'.length, y: 3 },
+    });
+    expect(links[0]?.text).toBe(FIRST + 'overview.png');
   });
 });
 

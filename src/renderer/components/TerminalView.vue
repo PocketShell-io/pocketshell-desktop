@@ -331,10 +331,11 @@ function fitTerminal(): void {
 /**
  * Repair xterm's 6.0.0 missing-viewport state before it can parse more output.
  *
- * The helper reads xterm's private core buffer because xterm 6.0.0 gates
- * `term.buffer.active` behind `allowProposedApi`, which the renderer does not
- * enable. It only appends the missing blank lines, preserving parser state and
- * the existing screen; no reset or remote repaint is needed.
+ * The repair reaches xterm's private core buffer because it must PUSH onto the
+ * buffer's line list, which no public API exposes (reading the grid through
+ * `term.buffer` is public; writing to it is not). It only appends the missing
+ * blank lines, preserving parser state and the existing screen; no reset or
+ * remote repaint is needed.
  */
 function repairTerminalBufferIfNeeded(): void {
   if (!term) return;
@@ -975,6 +976,11 @@ onMounted(async () => {
     fontFamily: resolveMonoStack(settings.monospaceFontFamily),
     fontSize: settings.terminalFontSize,
     theme: resolveTheme(settings.theme).terminal,
+    // `registerDecoration` — the at-rest path tint, terminalPathHighlights.ts —
+    // is proposed-API and THROWS without this flag. Nothing else in the app
+    // sits behind it: `term.buffer` is public API despite the repair comment
+    // below once claiming otherwise.
+    allowProposedApi: true,
   });
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
