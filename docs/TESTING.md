@@ -132,10 +132,14 @@ one run with `POCKETSHELL_SSH_PORT=3322`.
 
 The image includes OpenSSH + SFTP, `testuser`, tmux, git, Python 3, `curl`,
 `ss`/`netstat`, Node.js 22/npm, the pinned `pocketshell` and `tmuxctl` helpers,
-deterministic agent command stubs, and the byte-moving port-forward test
-responder. The entrypoint creates `~/git` and `~/tmp`, then starts the `main`
-and `build` tmux sessions. No provider credentials or network access are
-needed by the stubs.
+the pinned `aplexer` CLI (the app's main session manager; its glibc release
+binary runs under Alpine's `gcompat` — same install as the `helper` fleet
+image, see `tests-docker/Dockerfile.helper`), deterministic agent command
+stubs, and the byte-moving port-forward test responder. The entrypoint creates
+`~/git` and `~/tmp`, then seeds the `main` and `build` sessions under both
+tmux and aplexer; with `a` installed the app lists the aplexer pair, since
+`PocketshellClient` reads the snapshot alone on such a host. No provider
+credentials or network access are needed by the stubs.
 
 ### Tmux scrolling
 
@@ -208,12 +212,13 @@ committed `test_key` is a local fixture only — see §3 before using it.
 Verify the alias before opening the app:
 
 ```bash
-ssh pocketshell-local 'whoami; command -v pocketshell; command -v tmuxctl; tmux list-sessions'
+ssh pocketshell-local 'whoami; command -v pocketshell; command -v tmuxctl; command -v a; tmux list-sessions; a snapshot --json'
 sftp pocketshell-local
 ```
 
 Both commands should authenticate as `testuser`; the first should show the
-`main` and `build` sessions. For a one-off command without editing SSH config,
+`main` and `build` sessions in both the tmux list and the aplexer snapshot.
+For a one-off command without editing SSH config,
 use `-i tests-docker/test_key -p 3222 testuser@127.0.0.1`.
 
 On Windows, if OpenSSH reports that the private key is too accessible, tighten

@@ -14,7 +14,9 @@ RUN apk add --no-cache \
       bash \
       curl \
       git \
+      gcompat \
       iproute2 \
+      libgcc \
       net-tools \
       openssh-client \
       openssh-server \
@@ -33,6 +35,22 @@ RUN apk add --no-cache \
     && chmod 700 /home/testuser/.ssh \
     && python3 -m pip install --break-system-packages --no-cache-dir uv \
     && su testuser -c "uv tool install 'pocketshell==${POCKETSHELL_VERSION}' && uv tool install 'tmuxctl==${TMUXCTL_VERSION}'"
+
+# aplexer (`a`) — the app's MAIN session manager wherever it is installed
+# (src/main/helper/AplexerClient.ts); see Dockerfile.helper for why it comes
+# from the GitHub release rather than PyPI and why the version is pinned.
+# `gcompat` + `libgcc` (installed above) run its glibc binary under musl.
+ARG APLEXER_VERSION=0.1.4
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64) asset_arch=amd64 ;; \
+      aarch64) asset_arch=arm64 ;; \
+      *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    curl -fsSL -o /usr/local/bin/a "$base/a-linux-$asset_arch"; \
+    curl -fsSL -o /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
+    chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer
 
 ENV HOME=/home/testuser
 ENV PATH=/home/testuser/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
