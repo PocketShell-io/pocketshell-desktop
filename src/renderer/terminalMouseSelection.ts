@@ -26,7 +26,11 @@
  *
  *   - **Plain button-1 forces local selection.** The highlight is xterm's own:
  *     it persists after the release, and TerminalView's mouse-up copies it.
- *   - **Shift hands the gesture to the remote.** tmux runs its copy-mode
+ *   - **Shift forces local selection too.** Shift+drag is the older muscle
+ *     memory — the very convention xterm's stock bypass was built on — and
+ *     handing it to tmux brought the vanishing-highlight bug back under that
+ *     grip. Both grips now behave identically.
+ *   - **Alt hands the gesture to the remote.** tmux runs its copy-mode
  *     selection, its drag-end yanks, and the yank reaches the clipboard
  *     through the OSC 52 handler (osc52.ts). This is also the door back to
  *     tmux's own mouse gestures — focusing a pane inside a split, say.
@@ -34,10 +38,10 @@
  * Wheel and hover-motion reporting never went through this predicate and are
  * untouched, so tmux keeps scrolling pane history under the wheel.
  *
- * Inverting Shift is a semantics change for anyone who had learned the old
- * bypass, and it is bought deliberately: plain drag is the gesture the hand
- * actually makes, it now works, and Shift does exactly what a plain drag used
- * to do — select in tmux and vanish on release, copy and all.
+ * Alt is the remote door because both grips the hand actually uses — plain
+ * and Shift — belong to the local selection now, and no click gesture
+ * anywhere else in the renderer claims Alt (the app's Alt guards exist for
+ * chords and for AltGr, never for the mouse).
  *
  * ## The shape checks
  *
@@ -67,8 +71,8 @@ function selectionService(term: TermLike): SelectionServiceLike | null {
 }
 
 /**
- * Make plain button-1 select locally regardless of mouse reporting; Shift
- * keeps reporting to the remote.
+ * Make button-1 select locally regardless of mouse reporting — with Shift or
+ * without; only Alt leaves the event to the remote.
  *
  * Returns `true` when the predicate was replaced, `false` when xterm's
  * internals did not match the expected shape (an upgraded xterm — the caller
@@ -79,6 +83,6 @@ function selectionService(term: TermLike): SelectionServiceLike | null {
 export function forceLocalMouseSelection(term: TermLike): boolean {
   const svc = selectionService(term);
   if (!svc) return false;
-  svc.shouldForceSelection = (event) => !event.shiftKey;
+  svc.shouldForceSelection = (event) => !event.altKey;
   return true;
 }

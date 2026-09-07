@@ -3,13 +3,14 @@
  *
  * ## Why the pane wants this
  *
- * The pane is a tmux client, and a SHIFT+drag (plain drag selects in THIS pane
- * now — terminalMouseSelection.ts) or a tmux keyboard yank (`prefix+[` … `y`)
- * selects in TMUX: tmux paints the highlight, and the gesture's end runs its
- * copy — the drag-end also cancels copy-mode, so the highlight vanishes, which
- * is the vanishing that once read as "my selection disappeared" on the plain
- * path. The text's way out of the remote box is the escape sequence tmux
- * offers the outer terminal (`set-clipboard` defaults to `external`):
+ * The pane is a tmux client, and an ALT+drag (plain and Shift+drag select in
+ * THIS pane now — terminalMouseSelection.ts) or a tmux keyboard yank
+ * (`prefix+[` … `y`) selects in TMUX: tmux paints the highlight, and the
+ * gesture's end runs its copy — the drag-end also cancels copy-mode, so the
+ * highlight vanishes, which is the vanishing that once read as "my selection
+ * disappeared" on the plain path. The text's way out of the remote box is the
+ * escape sequence tmux offers the outer terminal (`set-clipboard` defaults to
+ * `external`):
  * `ESC ] 52 ; Pc ; Pt BEL`, with Pt the yanked text as base64. Nothing here
  * answered that sequence, so such a yank landed nowhere the user could paste
  * from. This decoder is the answer: TerminalView registers it as an OSC 52

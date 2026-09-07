@@ -17,10 +17,11 @@ import { createPinia, setActivePinia } from 'pinia';
  *
  * The fix replaces xterm's `SelectionService.shouldForceSelection` predicate
  * — the one hook its own code consults before reporting a mousedown — so a
- * plain button-1 press forces the LOCAL selection service (which then drags
- * and persists normally), and SHIFT keeps the old behaviour: the gesture goes
- * to tmux, whose yank arrives as OSC 52. terminalMouseSelection.ts documents
- * the mechanism and the shape-checked private-API access.
+ * button-1 press forces the LOCAL selection service (which then drags and
+ * persists normally) with or without Shift, and ALT keeps a hand-off to the
+ * remote: the gesture goes to tmux, whose yank arrives as OSC 52.
+ * terminalMouseSelection.ts documents the mechanism and the shape-checked
+ * private-API access.
  *
  * The wiring test below pins that TerminalView actually applies the patch at
  * mount, because the failure shape of this fix is silence: a future xterm
@@ -38,8 +39,8 @@ function fakeTerm(shouldForce: unknown): unknown {
   return { _core: { _selectionService: { shouldForceSelection: shouldForce } } };
 }
 
-function mouse(shift: boolean): MouseEvent {
-  return new MouseEvent('mousedown', { shiftKey: shift, bubbles: true });
+function mouse(shift: boolean, alt = false): MouseEvent {
+  return new MouseEvent('mousedown', { shiftKey: shift, altKey: alt, bubbles: true });
 }
 
 describe('forceLocalMouseSelection — the predicate', () => {
@@ -51,19 +52,34 @@ describe('forceLocalMouseSelection — the predicate', () => {
     expect(svc.shouldForceSelection(mouse(false))).toBe(true);
   });
 
-  it('keeps SHIFT as the hand-off to the remote', () => {
-    // Shift is the deliberate escape hatch back to tmux's own mouse
-    // gestures (copy-mode drag with its OSC 52 yank, pane focus in splits).
+  it('makes a SHIFT drag force local selection too — the muscle-memory grip', () => {
+    // Shift+drag is the older convention xterm's stock bypass was built on.
+    // An earlier revision of the patch handed Shift to tmux instead, which
+    // brought the vanishing highlight back under that grip — this pins the
+    // reversal.
     const term = fakeTerm(stockShouldForce);
     forceLocalMouseSelection(term);
     const svc = (term as { _core: { _selectionService: { shouldForceSelection: (e: MouseEvent) => boolean } } })
       ._core._selectionService;
-    expect(svc.shouldForceSelection(mouse(true))).toBe(false);
+    expect(svc.shouldForceSelection(mouse(true))).toBe(true);
+  });
+
+  it('keeps ALT as the hand-off to the remote', () => {
+    // Alt is the deliberate escape hatch back to tmux's own mouse gestures
+    // (copy-mode drag with its OSC 52 yank, pane focus in splits). Alt wins
+    // regardless of Shift, so the remote path is unambiguous.
+    const term = fakeTerm(stockShouldForce);
+    forceLocalMouseSelection(term);
+    const svc = (term as { _core: { _selectionService: { shouldForceSelection: (e: MouseEvent) => boolean } } })
+      ._core._selectionService;
+    expect(svc.shouldForceSelection(mouse(false, true))).toBe(false);
+    expect(svc.shouldForceSelection(mouse(true, true))).toBe(false);
   });
 
   it('replaces the stock predicate rather than wrapping it', () => {
     // The stock answer (shiftKey) must not survive anywhere in the decision:
-    // a wrapper that consulted it first would let Shift's old meaning leak.
+    // a wrapper that consulted it first would let Shift's old remote meaning
+    // leak back into the muscle-memory grip.
     const term = fakeTerm(stockShouldForce);
     forceLocalMouseSelection(term);
     const svc = (term as { _core: { _selectionService: { shouldForceSelection: unknown } } })
@@ -98,7 +114,8 @@ describe('forceLocalMouseSelection — the predicate', () => {
     const svc = (term as { _core: { _selectionService: { shouldForceSelection: (e: MouseEvent) => boolean } } })
       ._core._selectionService;
     expect(svc.shouldForceSelection(mouse(false))).toBe(true);
-    expect(svc.shouldForceSelection(mouse(true))).toBe(false);
+    expect(svc.shouldForceSelection(mouse(true))).toBe(true);
+    expect(svc.shouldForceSelection(mouse(false, true))).toBe(false);
   });
 });
 
@@ -206,7 +223,8 @@ describe('TerminalView applies the patch at mount', () => {
     expect(selectionService).not.toBeNull();
     expect(selectionService!.shouldForceSelection).not.toBe(stockShouldForce);
     expect(selectionService!.shouldForceSelection(mouse(false))).toBe(true);
-    expect(selectionService!.shouldForceSelection(mouse(true))).toBe(false);
+    expect(selectionService!.shouldForceSelection(mouse(true))).toBe(true);
+    expect(selectionService!.shouldForceSelection(mouse(false, true))).toBe(false);
     wrapper.unmount();
   });
 

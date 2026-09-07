@@ -29,11 +29,11 @@
 // The ask-then-adopt order in `showTarget` stays too. It costs nothing, and it
 // is what stops a re-attach closing a PTY main was about to hand back.
 //
-// Clipboard: a drag always selects IN THIS PANE (terminalMouseSelection.ts
-// forces that even while the remote owns the mouse) and copies on mouse-up
-// (see onDocumentMouseUp). SHIFT+drag — and a tmux keyboard yank — select in
-// tmux instead, and the yank comes back as OSC 52 (see the handler in
-// onMounted and osc52.ts). RIGHT-CLICK pastes into the shell. Neither paste
+// Clipboard: a drag always selects IN THIS PANE — plain or Shift+drag alike
+// (terminalMouseSelection.ts forces that even while the remote owns the
+// mouse) — and copies on mouse-up (see onDocumentMouseUp). ALT+drag — and a
+// tmux keyboard yank — select in tmux instead, and the yank comes back as
+// OSC 52 (see the handler in onMounted and osc52.ts). RIGHT-CLICK pastes into the shell. Neither paste
 // CHORD does — Ctrl/Cmd-V and Ctrl/Cmd-Shift-V are both claimed for the
 // prompt composer and leave as `paste-into-composer` (see onCustomKey). The
 // MIDDLE click does nothing at all (see onTerminalAuxClick): xterm's own
@@ -1223,11 +1223,11 @@ onMounted(async () => {
       () => ({ sessionName: targetSession.value }),
       () => terminalLinkTint(resolveTheme(settings.theme).terminal),
     ),
-    // OSC 52 -> clipboard. The receiving half of the tmux gesture: a
-    // SHIFT+drag (plain drag selects in THIS pane now — terminalMouseSelection.ts)
-    // selects in tmux copy-mode, and releasing yanks and dismisses the
-    // highlight, offering the text to this terminal as
-    // `ESC ] 52 ; Pc ; Pt BEL`. A tmux keyboard yank (prefix+[ … y) arrives
+    // OSC 52 -> clipboard. The receiving half of the tmux gesture: an
+    // ALT+drag (plain and Shift+drag select in THIS pane now —
+    // terminalMouseSelection.ts) selects in tmux copy-mode, and releasing
+    // yanks and dismisses the highlight, offering the text to this terminal
+    // as `ESC ] 52 ; Pc ; Pt BEL`. A tmux keyboard yank (prefix+[ … y) arrives
     // the same way. Answering it is what turns either into a real copy; see
     // osc52.ts for what is refused. Bound once against the terminal's
     // lifetime, like everything else in this array — the handler reads no
@@ -1242,10 +1242,12 @@ onMounted(async () => {
   // A plain drag must select in this pane even while the remote owns the
   // mouse — that ownership is exactly what made a selection's highlight
   // vanish under the hand (tmux dismissed it on drag-end), which the user
-  // read as "I can't select code". terminalMouseSelection.ts documents the
-  // private-API lever and its Shift escape hatch. A patch that could not
-  // apply is REPORTED rather than silent, because the failure shape is an
-  // xterm upgrade silently handing the old vanishing gesture back.
+  // read as "I can't select code". Shift+drag selects here too — the older
+  // muscle memory, and the grip that got the vanished highlight back when
+  // the first fix handed Shift to tmux. terminalMouseSelection.ts documents
+  // the private-API lever and the Alt hand-off to the remote. A patch that
+  // could not apply is REPORTED rather than silent, because the failure shape
+  // is an xterm upgrade silently handing the old vanishing gesture back.
   if (!forceLocalMouseSelection(term)) {
     recordDiagDetail(
       'terminal-selection',

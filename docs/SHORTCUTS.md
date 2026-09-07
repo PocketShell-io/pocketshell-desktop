@@ -23,20 +23,23 @@ everywhere: every call site in the app spells the test
 | right-click | Paste into the shell | Not a chord, and now the ONLY route to the shell's own paste. |
 | mouse-up after a drag | Copy the selection | Ditto. |
 | middle-click | Nothing — deliberately | xterm answers a middle-button `auxclick` by moving its helper textarea under the cursor, which lets the BROWSER's middle-click paste feed the clipboard to the shell silently. The pane cancels the `auxclick` and the press's default in the capture phase, before xterm sees either; mouse REPORTING still forwards press/release to the remote (`onTerminalAuxClick`). |
-| drag, release — mouse reporting ON | Select in the pane; copy on release | The same local selection as with reporting off (terminalMouseSelection.ts). The highlight persists. |
-| Shift+drag — mouse reporting ON | Select in TMUX instead | tmux paints its copy-mode highlight, and releasing yanks it; the yank reaches the pane as OSC 52 and lands in the clipboard, while tmux dismisses the highlight. |
+| drag or Shift+drag, release — mouse reporting ON | Select in the pane; copy on release | The same local selection as with reporting off (terminalMouseSelection.ts). The highlight persists. |
+| Alt+drag — mouse reporting ON | Select in TMUX instead | tmux paints its copy-mode highlight, and releasing yanks it; the yank reaches the pane as OSC 52 and lands in the clipboard, while tmux dismisses the highlight. |
 | drop a file on the pane | Attach it to the composer | Not a chord either. Emits the File objects to PromptComposer, which opens and stages them (COMPOSER.md §23.5). A tab drag carries a different mime type and is not claimed. |
 
-**A drag has two owners, decided by mouse reporting AND by Shift.** Plain
-drag always takes the LOCAL path — xterm's own selection, copied on mouse-up —
-because the remote-owned path took that gesture away and the user read the
-result ("I select some code and the highlight disappears") as selection being
-broken. terminalMouseSelection.ts is what forces it: with mouse reporting on,
-xterm consults `SelectionService.shouldForceSelection` before reporting a
-mousedown, and the pane replaces that predicate so plain button-1 forces the
-local selection service while Shift leaves the event to the remote. Wheel and
+**A drag has two owners, decided by mouse reporting AND by Alt.** Plain drag
+and Shift+drag always take the LOCAL path — xterm's own selection, copied on
+mouse-up — because the remote-owned path took that gesture away and the user
+read the result ("I select some code and the highlight disappears") as
+selection being broken, first under the plain grip and then, when the first
+fix handed Shift to tmux, under the Shift grip that fix had inherited from
+the old bypass. terminalMouseSelection.ts is what forces it: with mouse
+reporting on, xterm consults `SelectionService.shouldForceSelection` before
+reporting a mousedown, and the pane replaces that predicate so button-1
+forces the local selection service unless Alt is held — Alt is the event that
+leaves for the remote. Wheel and
 hover-motion reporting never pass through the predicate, so tmux keeps
-scrolling pane history under the wheel. On the Shift path tmux paints the
+scrolling pane history under the wheel. On the Alt path tmux paints the
 highlight and its drag-end (`copy-pipe; cancel`) dismisses it on release —
 the vanishing highlight now marks the explicit hand-off, and the yank is not
 lost: tmux offers it to the outer terminal as `ESC ] 52 ; … ` (OSC 52), and
