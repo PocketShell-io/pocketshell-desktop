@@ -164,12 +164,16 @@ describe('aplexer commands', () => {
     expect(byPair).toContain("a attach --workspace '/home/alexey/git/x' --tag 'review'");
   });
 
-  it('widens PATH in a subshell, never execs, and shouts on failure', () => {
+  it('widens PATH in a subshell, never execs, shouts on failure, ends with exit', () => {
     const command = aplexerAttachCommand({ workspace: '/w', tag: 'review' });
     expect(command).toMatch(/^\(\s*PATH=".*:\$PATH"; a attach /);
     expect(command).toContain(') || printf');
     expect(command).toContain('[PocketShell] could not join session');
     expect(command).not.toContain('exec ');
+    // The corpse-tab fix: the tab's shell must close when the attach ends, so
+    // the diagnostic prints first and the `exit` comes after it.
+    expect(command.trim().endsWith('; exit')).toBe(true);
+    expect(command.indexOf('; exit')).toBeGreaterThan(command.indexOf('printf'));
   });
 
   it('cannot be broken out of by a hostile tag', () => {

@@ -78,8 +78,9 @@
  * `tmux_api._run_tmux` makes when the helper itself shells out to `tmux`.
  *
  * The assignment sits inside a subshell so it lasts exactly as long as the
- * join. The user is left at their own login shell afterwards, with the PATH
- * their dotfiles gave them, not one this app edited behind them.
+ * join. Nothing of it outlives the join — nor does the login shell itself: the
+ * trailing `exit` (see "why the join ends with `exit`" above) closes the tab's
+ * shell once the join is over, so the PATH the app widened is gone with it.
  *
  * ## Why a failed join shouts
  *
@@ -88,12 +89,24 @@
  * indistinguishable from the app having done nothing at all. That ambiguity is
  * how the original bug survived: clicking a session looked like a no-op. The
  * `||` arm turns any non-zero exit — helper missing, session genuinely gone,
- * helper erroring — into a labelled line naming the session that failed.
+ * helper erroring — into a labelled line naming the session that failed. The
+ * line is printed BEFORE the shell exits (the `exit` below runs after the
+ * whole `||` expression), so the diagnostic is on the pane when the tab dies.
  *
- * Deliberately no `exec`: the command is run inside the session's login shell,
- * and without `exec` a detach or a failed join drops the user back at a live
- * prompt instead of closing the PTY out from under them — which is also what
- * makes the diagnostic above readable rather than a flash before teardown.
+ * ## Why the join ends with `exit`
+ *
+ * This PTY belongs to one session tab and nothing else — nobody types at the
+ * login shell behind it. What the tab shows must therefore be true for as
+ * long as the tab's channel lives, and a leftover prompt is the one state
+ * that breaks that: when the attach ends under it (a user detach, a
+ * worker-side disconnect, a dead session), the login shell kept the channel
+ * open, the pool kept handing back the dead client, and clicking the tab
+ * showed the corpse forever — the "switching between sessions doesn't work"
+ * report. The trailing `exit` closes the shell when the join ends for ANY
+ * reason, so the channel closes with it: the pool drops its record through
+ * the ordinary `onExit`, the renderer marks the pane gone through the
+ * ordinary `shell:exited`, and the next visit to the tab re-joins fresh.
+ * Deliberately still no `exec`: the diagnostic above must survive to print.
  */
 
 import { USER_BIN_PATH } from './userBinPath';
@@ -149,7 +162,7 @@ export function sessionAttachCommand(
   const join = directJoin
     ? `(${directJoin}) || (${locate}${locatedJoin})`
     : `${locate}${locatedJoin}`;
-  return `( PATH="${USER_BIN_PATH}:$PATH"; ${handshake}${join} ) || printf '${failure}' ${name}`;
+  return `( PATH="${USER_BIN_PATH}:$PATH"; ${handshake}${join} ) || printf '${failure}' ${name}; exit`;
 }
 
 // ---------------------------------------------------------------------------

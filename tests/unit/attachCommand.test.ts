@@ -99,7 +99,7 @@ describe('sessionAttachCommand', () => {
     expect(command).not.toContain('pocketshell sessions');
   });
 
-  it('scopes the PATH change to a subshell, leaving the login shell alone', () => {
+  it('scopes the PATH change to a subshell', () => {
     expect(command).toMatch(/^\(\s*PATH=/);
     // The assignment is inside the parens, not before them, and the subshell
     // stays open across the whole locate-and-join, closing only before the
@@ -117,8 +117,15 @@ describe('sessionAttachCommand', () => {
     expect(command).toContain('tmuxctl');
   });
 
-  it('does not exec, so a detach or a failed join leaves a live prompt', () => {
+  it('does not exec, and ends the tab shell when the join ends', () => {
     expect(command).not.toContain('exec ');
+    // The trailing `exit` is the corpse-tab fix: when the attach ends (detach,
+    // worker-side disconnect, dead session) the login shell behind the tab's
+    // PTY must close with it, so the pool drops the client and the next visit
+    // re-joins — never a live prompt parked behind a dead session. It comes
+    // last, after the `||` diagnostic, so a failed join still prints its line.
+    expect(command.trim().endsWith('; exit')).toBe(true);
+    expect(command.indexOf('; exit')).toBeGreaterThan(command.indexOf('printf'));
   });
 
   it('passes the name to printf as an argument, not as the format string', () => {

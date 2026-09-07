@@ -78,9 +78,10 @@ export function aplexerSelector(workspace: string, tag: string): string {
  *
  * The shape mirrors {@link sessionAttachCommand} on purpose: the same
  * subshell-scoped PATH widening (the `a` binary lives in `~/.local/bin`, which
- * a PTY login shell does not always have), no `exec` (a detach or a failed
- * join drops back to a live prompt instead of closing the PTY), and a
- * labelled `||` diagnostic so a failed join never reads as a no-op click.
+ * a PTY login shell does not always have), a labelled `||` diagnostic so a
+ * failed join never reads as a no-op click, and a trailing `exit` so the tab's
+ * shell dies with the join (see the "why the join ends with exit" note on
+ * {@link sessionAttachCommand}).
  *
  * The join is by UUID when [id] is known — renames change the tag, never the
  * id, so an id join cannot be orphaned the way a name join can — and by
@@ -113,6 +114,6 @@ export function aplexerAttachCommand(options: {
     'The aplexer session is gone, or `a` is not installed on this host any more.\\n';
   return (
     `( PATH="${USER_BIN_PATH}:$PATH"; a attach ${target} ) || ` +
-    `printf '${failure}' ${shellQuote(label)}`
+    `printf '${failure}' ${shellQuote(label)}; exit`
   );
 }

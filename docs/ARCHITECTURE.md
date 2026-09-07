@@ -124,6 +124,12 @@ has it (`a`), with the tmux helper path as the fallback:
     **shell** channel. The channel runs the session join — `a attach <id>`
    for an aplexer session, the helper-driven tmux join otherwise;
    the far end's real layout renders in the terminal and owns the panes.
+   The join owns its tab's PTY and ends with `exit`: when the attach ends for
+   any reason (a detach, a worker-side disconnect, a dead session, a failed
+   join after its diagnostic), the tab's login shell closes and the channel
+   with it, so the pool drops the client through the ordinary `onExit` and
+   the next visit to the tab re-joins fresh — a tab can never outlive its
+   attach into a live prompt parked behind a dead session.
 3. Each visited session tab keeps its own terminal mounted. Switching tabs is
    therefore a renderer visibility change, not a remote switch or repaint.
 4. Input goes over the PTY (`shell.stdin.write`); resize calls
