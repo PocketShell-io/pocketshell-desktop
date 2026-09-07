@@ -1771,6 +1771,7 @@ function setTerminalRef(session: string, el: unknown): void {
 const composerRef = ref<{
   typeInto: (text: string) => void;
   pasteFromSystemClipboard: () => Promise<void>;
+  acceptDroppedFiles: (files: File[]) => Promise<void>;
 } | null>(null);
 /**
  * The Files pane, for {@link focusActiveTab}.

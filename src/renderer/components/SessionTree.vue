@@ -75,7 +75,7 @@ import { canDropFolderAt, reorderFolders } from '../folderOrder';
 import { rootHostPath } from '../sessionRoots';
 import { sessionIdentityKey } from '../sessionIdentity';
 import { rootHeaderParts, type SessionDirectory, type SessionRootFolder } from '../sessionTree';
-import type { SessionAgentKind } from '../../shared/types';
+import type { SessionAgentKind, SessionSummary } from '../../shared/types';
 import { errorMessage } from '../../shared/errors';
 import { useStripDrag } from '../useStripDrag';
 
@@ -779,21 +779,27 @@ async function onRefresh(): Promise<void> {
 }
 
 /**
- * A folder-first session just came up on the host. Refresh so its folder
- * exists in the tree, then open that folder with the new session selected.
+ * A folder-first session just came up on the host: file it and open its
+ * folder, with the new session selected.
  *
- * The refresh is not optional and it is not merely a courtesy: the workspace
- * is addressed by FOLDER now, and the only thing the create returns is a
- * session name. The folder has to be looked up from a session list that
- * includes the new row.
+ * There is deliberately NO refresh here. The dialog's emit carries the full
+ * row — name, folder, backend, aplexer id (`StartSessionResult` projected by
+ * `summaryFromStartResult`) — so {@link sessions.addPending} puts it in the
+ * tree immediately and the lookup below finds the folder on the same tick.
+ * The refresh used to stand right here, awaited, and it is the slowest call
+ * in the app (`pocketshell sessions list` is a Python program under a login
+ * shell); standing between the click and the workspace it put the whole cost
+ * of a listing on the create path. The panel's five-second poll — and any
+ * other refresh — later replaces the optimistic row with the authoritative
+ * one; until then the row already knows everything the tree and the workspace
+ * ask of it.
  *
- * When the lookup misses — the listing has not caught up, or
- * `pocketshell sessions list` is broken on this host and we are on the raw-tmux
- * path — nothing is emitted and the panel simply shows what it has. That is a
- * deliberate downgrade from the old behaviour, which synthesised a summary and
- * routed to it: a session route only needed a name, and a folder route needs a
- * folder we do not have. Inventing one would put the user in a workspace for a
- * directory that does not exist.
+ * When the lookup misses — the grouping filed the row somewhere else, or not
+ * at all — nothing is emitted and the panel simply shows what it has. That is
+ * a deliberate downgrade from the old behaviour, which synthesised a summary
+ * and routed to it: a session route only needed a name, and a folder route
+ * needs a folder we do not have. Inventing one would put the user in a
+ * workspace for a directory that does not exist.
  *
  * This navigation now carries a second job it does not know about, and that is
  * the point of it not knowing: when the dialog collected an AGENT as well as a
@@ -803,13 +809,13 @@ async function onRefresh(): Promise<void> {
  * none. So the launch rides the route change the panel was already making,
  * rather than the panel growing a terminal-shaped responsibility.
  */
-async function onSessionStarted(name: string): Promise<void> {
+function onSessionStarted(summary: SessionSummary): void {
   creating.value = null;
-  if (connection.connectionId) await sessions.refresh(connection.connectionId);
+  sessions.addPending(summary);
   for (const root of roots.value) {
-    const dir = root.directories.find((d) => d.rows.some((r) => r.session.name === name));
+    const dir = root.directories.find((d) => d.rows.some((r) => r.session.name === summary.name));
     if (dir) {
-      emit('select', dir, name);
+      emit('select', dir, summary.name);
       return;
     }
   }

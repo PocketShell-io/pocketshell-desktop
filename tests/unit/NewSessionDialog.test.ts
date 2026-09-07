@@ -99,6 +99,21 @@ function button(wrapper: VueWrapper, label: string) {
   return wrapper.findAll('button').find((b) => b.text().startsWith(label));
 }
 
+/**
+ * The session names the dialog has emitted on `started`, lazily.
+ *
+ * The emit now carries the full optimistic row (`SessionSummary`, built by
+ * `summaryFromStartResult`) rather than a bare name — the panel files it as a
+ * pending session and navigates without a listing round trip — so the
+ * assertions read the row's `name` out of each payload. A function, not a
+ * value, so every read sees the emissions made up to that point.
+ */
+function startedNames(wrapper: VueWrapper) {
+  return expect(
+    (wrapper.emitted('started') ?? []).map((payload) => (payload[0] as { name: string }).name),
+  );
+}
+
 describe('NewSessionDialog startIn', () => {
   it('lands the browser on the given folder rather than on $HOME', async () => {
     await open(`${HOME}/git`);
@@ -281,7 +296,7 @@ describe('NewSessionDialog agent chain', () => {
     await button(wrapper, 'Create session')!.trigger('click');
     await flush(wrapper);
 
-    expect(wrapper.emitted('started')).toEqual([['git-dataops-2']]);
+    startedNames(wrapper).toEqual(['git-dataops-2']);
     expect(parkedAgentLaunch.value?.session).toBe('git-dataops-2');
   });
 });
@@ -301,7 +316,7 @@ describe('NewSessionDialog outcome', () => {
     await button(wrapper, 'Start shell')!.trigger('click');
     await flush(wrapper);
 
-    expect(wrapper.emitted('started')).toEqual([['git-dataops-2']]);
+    startedNames(wrapper).toEqual(['git-dataops-2']);
     // Not merely dismissed quickly — never rendered at all.
     expect(wrapper.find('.result-banner').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Started');
@@ -328,7 +343,7 @@ describe('NewSessionDialog outcome', () => {
     // And the session is still one click away — the button is the only reason
     // holding here is acceptable.
     await button(wrapper, 'Open session')!.trigger('click');
-    expect(wrapper.emitted('started')).toEqual([['git-dataops-2']]);
+    startedNames(wrapper).toEqual(['git-dataops-2']);
   });
 
   it('holds the panel on a failure, and navigates nowhere', async () => {
@@ -387,7 +402,7 @@ describe('NewSessionDialog busy mark', () => {
 
     finish({ ok: true, sessionName: 'git-dataops-2', folder: `${HOME}/git`, via: 'helper' });
     await flush(wrapper);
-    expect(wrapper.emitted('started')).toEqual([['git-dataops-2']]);
+    startedNames(wrapper).toEqual(['git-dataops-2']);
   });
 
   it('reserves the space for the mark when nothing is running', async () => {

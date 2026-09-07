@@ -74,11 +74,13 @@ import PopupMenu from './PopupMenu.vue';
 import { type Box } from '../../shared/popupPlacement';
 import { useConnectionStore } from '../stores/connection';
 import { displayPath, joinPosix, useProjectsStore } from '../stores/projects';
+import { useSessionsStore } from '../stores/sessions';
 import { FILE_ROW_CAP, matchesQuery, viewFileRows } from '../fileListView';
 import { parkAgentLaunch } from '../pendingAgentLaunch';
 import { KIND_LABELS, launchBlocker, type LaunchChoice } from '../../shared/agentLaunch';
 import type { RepoEntry } from '../../main/projects/repos';
 import type { StartSessionResult } from '../../main/projects/ProjectsService';
+import type { SessionSummary } from '../../shared/types';
 
 const props = withDefaults(
   defineProps<{
@@ -114,8 +116,8 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  /** The session is live on the host; open it. */
-  started: [session: string];
+  /** The session is live on the host; open it. Carries the row to file. */
+  started: [summary: SessionSummary];
   close: [];
 }>();
 
@@ -123,6 +125,7 @@ type Route = 'existing' | 'new' | 'clone';
 
 const connection = useConnectionStore();
 const projects = useProjectsStore();
+const sessions = useSessionsStore();
 
 const route = ref<Route>('existing');
 /** Name for the folder created by the `new` route. */
@@ -727,7 +730,14 @@ async function commit(choice: LaunchChoice | null): Promise<void> {
     return;
   }
 
-  emit('started', result.sessionName);
+  // The session row rides the emit, not just the name: the panel files it as
+  // a pending row (`sessions.addPending`) and navigates WITHOUT a listing
+  // round trip first, which is what used to sit between the click and the
+  // terminal. The workspace reads the row's backend, workspace and aplexer
+  // id straight off the tab bar, so the join attaches by UUID with no
+  // snapshot lookup of its own.
+  const summary = sessions.summaryFromStartResult(result, folder);
+  if (summary) emit('started', summary);
 }
 
 /** A clone failure the host classified — say which, not just "git failed". */
@@ -744,11 +754,15 @@ function cloneMessage(error: string | null, state?: string): string {
  * The button this belongs to is no longer the ordinary way out of a create —
  * `commit` emits `started` itself now. It survives for the raw-`tmux` hold
  * above, where the panel is on screen so that a warning gets read, and the
- * user still has to be able to carry on to the session they just made.
+ * user still has to be able to carry on to the session they just made. The
+ * banner's full result is in hand, so the row rides along exactly as it does
+ * on the direct path.
  */
 function onOpen(): void {
-  const name = outcome.value?.sessionName;
-  if (name) emit('started', name);
+  const outcome_ = outcome.value;
+  if (!outcome_?.sessionName) return;
+  const summary = sessions.summaryFromStartResult(outcome_, null);
+  if (summary) emit('started', summary);
 }
 
 /**

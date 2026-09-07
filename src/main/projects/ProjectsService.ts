@@ -140,6 +140,15 @@ export interface StartSessionResult {
   reused: boolean;
   /** Which create path ran; `tmux-fallback` means no memory cap. */
   via: CreateSessionVia | null;
+  /**
+   * The aplexer UUID of the created session, when the host handed one over
+   * (`a start --json` echoes the record). The renderer needs it to join by id
+   * WITHOUT waiting for the next snapshot — the optimistic row it builds from
+   * this result would otherwise cost the join its exact selector and push a
+   * workspace+tag lookup onto the attach. Null whenever the create did not go
+   * through aplexer, or the host's answer was unreadable.
+   */
+  aplexerId: string | null;
   error: string | null;
   code: StartSessionFailure | null;
 }
@@ -437,6 +446,7 @@ export class ProjectsService {
       folder: opts.folder ?? null,
       reused: false,
       via: opts.via ?? null,
+      aplexerId: null,
       error,
       code,
     });
@@ -549,6 +559,7 @@ export class ProjectsService {
       folder: canonical,
       reused,
       via: created.via,
+      aplexerId: null,
       error: null,
       code: null,
     };
@@ -601,7 +612,16 @@ export class ProjectsService {
       ? (records.find((r) => r.workspace === folder && r.tag === base) ?? null)
       : await aplexer.findSession(connectionId, folder, base);
     if (live) {
-      return { ok: true, sessionName: base, folder, reused: true, via: 'aplexer', error: null, code: null };
+      return {
+        ok: true,
+        sessionName: base,
+        folder,
+        reused: true,
+        via: 'aplexer',
+        aplexerId: live.id,
+        error: null,
+        code: null,
+      };
     }
     return this.createAplexerSession(connectionId, folder, base, policy, failed);
   }
@@ -643,6 +663,7 @@ export class ProjectsService {
         folder,
         reused: false,
         via: 'aplexer',
+        aplexerId: created.id,
         error: null,
         code: null,
       };
@@ -653,7 +674,16 @@ export class ProjectsService {
       // and only a vanished one is a failure.
       const live = await aplexer.findSession(connectionId, folder, tag);
       if (live) {
-        return { ok: true, sessionName: tag, folder, reused: true, via: 'aplexer', error: null, code: null };
+        return {
+          ok: true,
+          sessionName: tag,
+          folder,
+          reused: true,
+          via: 'aplexer',
+          aplexerId: live.id,
+          error: null,
+          code: null,
+        };
       }
     }
     return failed('create-failed', created.error, { folder, via: 'aplexer' });
