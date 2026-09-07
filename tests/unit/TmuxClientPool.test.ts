@@ -36,6 +36,8 @@ function makeSsh(options: { openDelayMs?: number } = {}): {
   calls: FakeCall[];
   /** Ids handed out by openTrackedShell, in order. */
   opened: ShellId[];
+  /** The commandMode each open was asked for, in order. */
+  openModes: ('typed' | 'exec' | undefined)[];
   /** Kill a shell the way a dropped channel or a renderer close would. */
   forget(id: ShellId): void;
   /** Every command exec() was asked to run, in order. */
@@ -51,6 +53,7 @@ function makeSsh(options: { openDelayMs?: number } = {}): {
 } {
   const calls: FakeCall[] = [];
   const opened: ShellId[] = [];
+  const openModes: ('typed' | 'exec' | undefined)[] = [];
   const liveShells = new Set<ShellId>();
   const execCalls: string[] = [];
   let execResult: ExecResult = { stdout: '', stderr: '', exitCode: 0 };
@@ -64,7 +67,10 @@ function makeSsh(options: { openDelayMs?: number } = {}): {
     shellTracker: {
       get: (id: ShellId) => (liveShells.has(id) ? { id } : undefined),
     },
-    openTrackedShell: async (_connectionId: string, o: { command?: string }): Promise<ShellId> => {
+    openTrackedShell: async (
+      _connectionId: string,
+      o: { command?: string; commandMode?: 'typed' | 'exec' },
+    ): Promise<ShellId> => {
       if (shellOpenError) {
         const error = shellOpenError;
         shellOpenError = null;
@@ -78,6 +84,7 @@ function makeSsh(options: { openDelayMs?: number } = {}): {
         }
         const id = `shell-${++counter}`;
         calls.push({ kind: 'open', detail: o.command ?? '' });
+        openModes.push(o.commandMode);
         liveShells.add(id);
         opened.push(id);
         return id;
@@ -100,6 +107,7 @@ function makeSsh(options: { openDelayMs?: number } = {}): {
     ssh,
     calls,
     opened,
+    openModes,
     forget: (id) => liveShells.delete(id),
     execCalls,
     answerExecWith: (result) => {
@@ -298,6 +306,19 @@ describe('TmuxClientPool', () => {
     expect(command).toContain(direct);
     expect(command.indexOf(direct)).toBeLessThan(command.indexOf('for __ps_s'));
     expect(harness.execCalls).toHaveLength(0);
+  });
+
+  it('runs the join as the PTY command, not typed into a login shell', async () => {
+    // The login shell was the join's largest fixed cost: the command could not
+    // start until the user's profile had finished. `'exec'` mode makes the
+    // join the channel's own command, so its first byte is the first byte
+    // after the channel opens.
+    const harness = makeSsh();
+    const pool = new TmuxClientPool(harness.ssh);
+
+    await pool.attach('c1', 'alpha', sink);
+
+    expect(harness.openModes).toEqual(['exec']);
   });
 
   it('retries a channel-ceiling failure after evicting one cached tab', async () => {

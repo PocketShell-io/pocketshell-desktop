@@ -895,6 +895,17 @@ export class TmuxClientPool {
     let id: ShellId | null = null;
     const shellId = await this.ssh.openTrackedShell(connectionId, {
       command,
+      // The join IS the channel: it runs directly under the PTY (an `exec`
+      // request with a pty) instead of being typed into an interactive login
+      // shell. The login shell was the join's largest fixed cost — the command
+      // could not start until the user's profile had finished, a large part of
+      // the 1.5-2 s a join was observed to take on a real host, and the
+      // session-create path this app is asked to drive under a second pays it
+      // on every new tab. The join commands widen their own PATH
+      // (`USER_BIN_PATH`), so they never needed the profile; and the channel
+      // closing when the join ends is exactly what each command's trailing
+      // `exit` already assumed (see attachCommand.ts).
+      commandMode: 'exec',
       cols: opts.cols,
       rows: opts.rows,
       onData: (data) => {

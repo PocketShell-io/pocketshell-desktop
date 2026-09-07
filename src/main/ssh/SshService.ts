@@ -243,6 +243,17 @@ export class SshService {
    *
    * @param command Optional command to run inside the PTY (e.g. `tmux attach -t main`).
    *                When omitted, an interactive shell is opened.
+   * @param commandMode How [command] reaches the far end. `'typed'` (the
+   *                default) opens an interactive login shell and writes the
+   *                command to its stdin as if the user had typed it, so a
+   *                command that ends leaves a live prompt — the cost is that
+   *                nothing runs until the user's profile has finished.
+   *                `'exec'` runs the command DIRECTLY under the PTY
+   *                (`exec` request with a pty): no login shell, no dotfiles —
+   *                the first byte of the command is the first byte after the
+   *                channel opens, and the channel closes when the command
+   *                exits. Session joins use `'exec'`; the join latency is
+   *                dominated by profile startup otherwise.
    */
   async openTrackedShell(
     connectionId: string,
@@ -251,25 +262,31 @@ export class SshService {
       rows?: number;
       term?: string;
       command?: string;
+      commandMode?: 'typed' | 'exec';
       onData: (data: Buffer) => void;
       onExit?: (exitCode: number) => void;
     },
   ): Promise<ShellId> {
     const rec = this.registry.require(connectionId);
-    const channel = await openShell(rec, {
+    const pty = {
       term: opts.term ?? PTY_TERM,
       cols: opts.cols ?? PTY_DEFAULT_COLS,
       rows: opts.rows ?? PTY_DEFAULT_ROWS,
-    });
+    };
+    const channel =
+      opts.commandMode === 'exec' && opts.command
+        ? await openExecWithPty(rec, opts.command, pty)
+        : await openShell(rec, pty);
     const id = this.shells.register({ channel, connectionId });
     channel.on('data', (chunk: Buffer) => opts.onData(chunk));
     channel.on('close', () => {
       opts.onExit?.(0);
       this.shells.remove(id);
     });
-    // If a command was requested, write it to the shell's stdin (the PTY runs
-    // an interactive login shell; we send the command as if the user typed it).
-    if (opts.command) {
+    // In the default mode the PTY runs an interactive login shell and the
+    // command is sent as if the user typed it; in `'exec'` mode the command is
+    // the channel and there is nothing to type it into.
+    if (opts.command && opts.commandMode !== 'exec') {
       channel.write(opts.command + '\n');
     }
     return id;
@@ -502,6 +519,39 @@ function openShell(
       }
       resolve(stream);
     });
+  });
+}
+
+/**
+ * Run [command] as the PTY itself: an `exec` request carrying a pty.
+ *
+ * The same timeout discipline as {@link openShell} — opens are queued per
+ * connection, so one hung open must not stall the others. The command runs
+ * under `sh -c` with sshd's plain environment; anything that needed the
+ * user's interactive PATH must widen it itself, the way the session join
+ * commands already do (`USER_BIN_PATH`).
+ */
+function openExecWithPty(
+  rec: ConnectionRecord,
+  command: string,
+  pty: { term: string; cols: number; rows: number },
+): Promise<ClientChannel> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Opening a shell timed out after ${OPEN_SHELL_TIMEOUT_MS / 1000}s`));
+    }, OPEN_SHELL_TIMEOUT_MS);
+    rec.client.exec(
+      command,
+      { pty: { term: pty.term, cols: pty.cols, rows: pty.rows } },
+      (err, stream) => {
+        clearTimeout(timer);
+        if (err || !stream) {
+          reject(err ?? new Error('exec with pty failed'));
+          return;
+        }
+        resolve(stream);
+      },
+    );
   });
 }
 
