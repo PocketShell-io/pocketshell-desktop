@@ -52,6 +52,17 @@
  *     arithmetic therefore runs against the render width inferred from the
  *     fullest nearby row ({@link inferWrapWidth}), never against the pane's
  *     live width.
+ *   - Claude Code's transcript paints its rows up to a small inset inside
+ *     the pane and cuts the token at that width wherever the width happens
+ *     to land — `…-b30c-ed8` / `60a6cb317…`, a UUID severed mid-hex — so
+ *     neither of the evidences above is present: the row is one or two
+ *     columns short of full (no rule 1) and the cut is at no opportunity
+ *     character (no rule 1b). Rule 1a reads the nearly-full row: within a
+ *     bounded few columns of the margin is still "ran out of room", provided
+ *     the continuation's first token could not have been placed in the
+ *     columns left over, and the tail does not already end looking like a
+ *     finished `name.ext` — which is what a COMPLETE path about to be
+ *     followed by the next line's prose looks like.
  *
  * Both rules are deliberately narrow, for the reason terminalPaths.ts's header
  * gives: joining two rows that were never one line can only invent a path that
@@ -112,7 +123,7 @@
  * runs regardless.
  */
 import type { IBuffer, IBufferCell, ILink, ILinkProvider, Terminal } from '@xterm/xterm';
-import { continuesPath, findPaths, stripFileScheme } from './terminalPaths';
+import { continuesPath, findPaths, HAS_EXTENSION, stripFileScheme } from './terminalPaths';
 import { useFilesStore } from './stores/files';
 import { useSessionsStore } from './stores/sessions';
 
@@ -146,6 +157,21 @@ const MAX_SCAN_CHARS = 2048;
  * guards, not this cap, are what keep normal prose from gluing together.
  */
 const MAX_JOIN_ROWS = 8;
+
+/**
+ * How many columns short of the margin a row may sit and still read as "ran
+ * out of room" for RULE 1a below.
+ *
+ * Full to the very last column (rule 1) is the strongest geometric evidence
+ * there is; nearly full is the next strongest, and nearly has to mean a
+ * bounded few. The renderers that wrap short of the margin reserve a small
+ * fixed inset — the Claude Code transcript the rule was written from
+ * measured at one to two columns (a 91-character row in a 92- or 93-cell
+ * pane) — so four covers the family without letting an ordinary word-wrap
+ * line, which can end anywhere, qualify. What bounds the risk the extra
+ * columns admit is the rule's own guards, not this number.
+ */
+const WRAP_SHORTFALL = 4;
 
 /**
  * The gutter a TUI puts in front of the continuation rows of a block it wrapped
@@ -258,8 +284,10 @@ function inferWrapWidth(buf: IBuffer, y0: number, scratch: IBufferCell): number 
  * Does [next] continue [prev], even though xterm did not flag it wrapped?
  *
  * [wrapWidth] is the inferred render width ({@link inferWrapWidth}) — the
- * width the fit arithmetic below is measured against, never the pane's live
- * width.
+ * width rule 1b's fit arithmetic is measured against, never the pane's live
+ * width. Rule 1a is the deliberate exception: its near-full claim is about
+ * the live margin, so its fit arithmetic runs against the row's own leftover
+ * columns.
  *
  * @returns how many leading CELLS of [next] to drop before joining (0 for a
  *   plain wrap, the gutter's width for a gutter-marked one), or null for "these
@@ -287,6 +315,7 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
   if (gutter === null) {
     const first = next.text.charAt(0);
     if (first === '' || first === ' ') return null;
+    const head = /^\S+/.exec(next.text)?.[0] ?? '';
 
     // RULE 1 — the hard wrap tmux repainted away.
     //
@@ -302,6 +331,45 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     // underline running through unrelated text.
     if (prev.lastCol === prev.width - 1) return 0;
 
+    // RULE 1a — the hard wrap that stopped a few columns SHORT of the margin.
+    //
+    // The Claude Code transcript of the sixth report paints its rows up to a
+    // small inset inside the pane and cuts the token where that inset lands —
+    // `…-b30c-ed8` / `60a6cb317…`, a UUID severed mid-hex. So rule 1's
+    // evidence is missing by a cell or two, and rule 1b's is missing because
+    // this wrapper wraps at its width, not at opportunity characters. A row
+    // ending within {@link WRAP_SHORTFALL} columns of the margin is still a
+    // row that ran out of room, and the continuation at column 0 still
+    // reconstructs it, under guards that name the difference between a cut
+    // token and a finished line:
+    //
+    //   - the continuation's first token could not have been placed in the
+    //     columns left over (`head.length > left`). The wrapper's own
+    //     arithmetic, run backwards: had the break fallen BETWEEN tokens, the
+    //     head would have been put on the row above when it fit. `…result.png`
+    //     three columns short plus `and cleaned the cache` refuses here, and
+    //     the head check is what refuses it — `and` had room.
+    //   - the continuation does not start with `/`. `…` plus `/x` is not a
+    //     path anyone wrote; it is two paths, and the second one is whole
+    //     already — the same refusal rule 1 makes no exception to.
+    //   - the tail does not already end extension-shaped ({@link HAS_EXTENSION}).
+    //     `…name.ext` is what a COMPLETE path looks like; a cut leaves a
+    //     fragment. This is the guard that refuses the misjoin whose head is
+    //     too long for the fit check to catch (`result.png` + `already`),
+    //     at the cost of a true cut that happens to leave a dotted fragment
+    //     (`…url.t` + `xt`) — the same trade rule 1b's opportunity
+    //     characters make.
+    const left = prev.width - 1 - prev.lastCol;
+    if (
+      head !== '' &&
+      !head.startsWith('/') &&
+      left <= WRAP_SHORTFALL &&
+      head.length > left &&
+      !HAS_EXTENSION.test(tail)
+    ) {
+      return 0;
+    }
+
     // RULE 1b — the break a wrapper puts INSIDE the token, at an opportunity
     // the token itself offers, rather than at the margin: hyphens (this app's
     // own CLI) and slashes (the markdown-rendering CLI of the "Cloudflare
@@ -312,10 +380,10 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     // shut:
     //
     //   - the tail ends with `-` or `/`. That is the break opportunity the
-    //     wrapper used, and the only evidence a row's end carries that the
-    //     token was cut rather than finished: a whole path landing anywhere
-    //     (`…/result.png` + `and cleaned up`) ends in something else and
-    //     never gets here.
+    //     wrapper used, and the one trace of a cut — rather than finished —
+    //     token a row's end carries that survives being far short of the
+    //     margin: a whole path landing anywhere (`…/result.png` + `and
+    //     cleaned up`) ends in something else and never gets here.
     //   - the continuation does not start with `/`. `…-` or `…/` plus `/x` is
     //     not a path anyone wrote; it is two paths, and the second one is
     //     whole already.
@@ -327,7 +395,6 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     //     guard stops constraining — the tail and head checks then carry the
     //     rule alone, which is the price of surviving resizes.
     if (!tail.endsWith('-') && !tail.endsWith('/')) return null;
-    const head = /^\S+/.exec(next.text)?.[0] ?? '';
     if (head === '' || head.startsWith('/')) return null;
     if (prev.lastCol + 1 + head.length <= wrapWidth) return null;
     return 0;

@@ -257,6 +257,40 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     expect(scanBufferLine(term, 3).text.trimEnd()).toBe(joined);
   });
 
+  it('joins a wrap cut mid-token a couple of columns short of the margin', () => {
+    // The "maven webhook URL" report, transcribed from the pane: Claude Code
+    // paints its rows up to a small inset inside the pane and cuts the token
+    // where that inset lands — here mid-hex, `…-b30c-ed8` / `60a6cb317…`. The
+    // row above ends two columns short of full, so rule 1's evidence is
+    // missing, and the cut is at `8`, so no opportunity character of rule
+    // 1b's is there either. Rule 1a reads it: nearly full, and the
+    // continuation's first token could not have been placed in the columns
+    // left over.
+    const FIRST =
+      '! cat /data/tmp/claude-1000/-home-alexey-git-ai-shipping-labs/5b319e9a-ca2a-4195-b30c-ed8';
+    const PATH =
+      '/data/tmp/claude-1000/-home-alexey-git-ai-shipping-labs/5b319e9a-ca2a-4195-b30c-ed860a6cb317/scratchpad/maven_webhook_url.txt';
+    const term = fakeScreen([FIRST, '60a6cb317/scratchpad/maven_webhook_url.txt'], FIRST.length + 2);
+
+    expect(scanBufferLine(term, 1).text.trimEnd()).toBe(`! cat ${PATH}`);
+    // Hovered on the continuation row: the same logical line.
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(PATH);
+  });
+
+  it('opens the whole mid-token-joined path, not the fragment a row ends at', () => {
+    const FIRST =
+      '! cat /data/tmp/claude-1000/-home-alexey-git-ai-shipping-labs/5b319e9a-ca2a-4195-b30c-ed8';
+    const PATH =
+      '/data/tmp/claude-1000/-home-alexey-git-ai-shipping-labs/5b319e9a-ca2a-4195-b30c-ed860a6cb317/scratchpad/maven_webhook_url.txt';
+    const term = fakeScreen([FIRST, '60a6cb317/scratchpad/maven_webhook_url.txt'], FIRST.length + 2);
+    const files = useFilesStore();
+
+    pathLinks(term, 1, () => ({ sessionName: 'git-foo' }))[0]?.activate(CLICK, PATH);
+    // Absolute, so the session's cwd is ignored — and the path is the UUID
+    // whole, not the truncated directory `…-b30c-ed8` the first row ends at.
+    expect(files.reveal).toBe(PATH);
+  });
+
   it('linkifies both report paths across their breaks, from the middle row', () => {
     const FIRST = 'Example: Cloudflare diagrams (2026/2026-06-17-cloudflare-workers-vectorize-agent/';
     const SECOND = 'diagrams) and its README (2026/2026-06-17-cloudflare-workers-vectorize-agent/';
@@ -519,6 +553,25 @@ describe('scanBufferLine — rows that must NOT be joined', () => {
     // up the word the wrapper put on the next row after it.
     const first = 'downloaded /tmp/out/result.png';
     expect(scan([first, 'and cleaned the cache'], first.length + 3)).toBe(first);
+  });
+
+  it('refuses a nearly full row whose head is too long for the fit check', () => {
+    // The sibling of the test above with a head that would NOT have fitted in
+    // the leftover columns, so the fit guard passes and the join is refused
+    // by the extension guard instead: `…result.png` is what a finished path
+    // looks like, and `already` is where the next sentence starts. A cut
+    // mid-token leaves a fragment, not a name with its extension on.
+    const first = 'downloaded /tmp/out/result.png';
+    expect(scan([first, 'already cleaned the cache'], first.length + 3)).toBe(first);
+  });
+
+  it('refuses a row that sits too far short of the margin to be nearly full', () => {
+    // Six columns short is a word wrap until a `-` or `/` says otherwise
+    // (rule 1b's business): the renderers rule 1a exists for sit within a
+    // bounded few columns of the margin. `set.tar` would not have fitted in
+    // the leftover columns, so the shortfall bound is what refuses here.
+    const first = 'wrote /data/backups/nightly';
+    expect(scan([first, 'set.tar done'], first.length + 6)).toBe(first);
   });
 
   it('refuses a hyphen row whose continuation would have fitted above', () => {

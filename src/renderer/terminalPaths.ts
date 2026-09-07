@@ -136,8 +136,15 @@ const NUMERIC_SEGMENT = /^\d+(?:\.\d+)?$/;
  */
 const HOSTNAME_LIKE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}$/i;
 
-/** A trailing `.ext`. Deliberately permissive about the extension itself. */
-const HAS_EXTENSION = /\.[A-Za-z0-9_-]{1,16}$/;
+/**
+ * A trailing `.ext`. Deliberately permissive about the extension itself.
+ *
+ * Shared with the join rules in terminalLinks.ts, which read it not as "this
+ * is a path" but as "this tail looks FINISHED": a fragment a wrapper cut
+ * mid-token rarely happens to end extension-shaped, while a whole path one
+ * line of prose is about to follow usually does.
+ */
+export const HAS_EXTENSION = /\.[A-Za-z0-9_-]{1,16}$/;
 
 /**
  * A `file://` URL is a path wearing a scheme, and everything it names is on
