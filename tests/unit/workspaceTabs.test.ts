@@ -12,7 +12,7 @@ import {
   renamedSessionName,
   stripSessionPrefix,
   tabAfterClose,
-  TERMINAL_LABEL,
+  MAIN_LABEL,
 } from '../../src/shared/workspaceTabs';
 import { sanitisePart, sessionBaseName } from '../../src/shared/sessionNameParts';
 
@@ -46,25 +46,25 @@ describe('stripSessionPrefix', () => {
 });
 
 describe('labelForRemainder', () => {
-  it('labels the empty remainder `Terminal`', () => {
-    // The folder's default session. It used to read `main`, which shared no
-    // word with the `Terminal 2` sitting next to it.
-    expect(labelForRemainder('')).toBe('Terminal');
-    expect(TERMINAL_LABEL).toBe('Terminal');
+  it('labels the empty remainder `main`', () => {
+    // The folder's default session — the unnumbered member of the family the
+    // numbered tabs continue.
+    expect(labelForRemainder('')).toBe('main');
+    expect(MAIN_LABEL).toBe('main');
   });
 
-  it('labels a purely numeric remainder `Terminal <n>`', () => {
+  it('labels a purely numeric remainder `main <n>`', () => {
     // This is what `freeSessionNameCommand`'s `-2`/`-3` walk produces.
-    expect(labelForRemainder('2')).toBe('Terminal 2');
-    expect(labelForRemainder('17')).toBe('Terminal 17');
+    expect(labelForRemainder('2')).toBe('main 2');
+    expect(labelForRemainder('17')).toBe('main 17');
   });
 
   it('numbers the family with a SPACE, not the name\'s hyphen', () => {
     // The tmux names really are `git-dtc-website-2`, but this is a display
     // label and every other numbered label on the bar is spaced (`Files 2`).
-    expect(labelForRemainder('2')).not.toBe('Terminal-2');
-    expect(labelForRemainder('')).toBe(TERMINAL_LABEL);
-    expect(labelForRemainder('2')).toBe(`${TERMINAL_LABEL} 2`);
+    expect(labelForRemainder('2')).not.toBe('main-2');
+    expect(labelForRemainder('')).toBe(MAIN_LABEL);
+    expect(labelForRemainder('2')).toBe(`${MAIN_LABEL} 2`);
   });
 
   it('keeps a clear name clear', () => {
@@ -74,7 +74,7 @@ describe('labelForRemainder', () => {
     expect(labelForRemainder('2fa')).toBe('2fa');
     // A remainder that IS the word keeps it verbatim too — no rewrite fires,
     // and the collision counter (not this function) deals with the repeat.
-    expect(labelForRemainder('Terminal')).toBe('Terminal');
+    expect(labelForRemainder('main')).toBe('main');
   });
 });
 
@@ -107,11 +107,11 @@ describe('buildWorkspaceTabs', () => {
       ],
       prefix,
     );
-    expect(tabs.map((t) => t.label)).toEqual(['Terminal', 'import']);
+    expect(tabs.map((t) => t.label)).toEqual(['main', 'import']);
   });
 
   it('renames the LABEL only — the id, the session and the remainder stand', () => {
-    // `Terminal` is what the tab reads. What it joins, what the route keys off
+    // `main` is what the tab reads. What it joins, what the route keys off
     // and what a rename edits are all still the tmux name and the stripped
     // remainder, so nothing downstream can be keyed off the display word.
     const tabs = buildWorkspaceTabs([{ name: 'git-dtc-website', created: 100 }], prefix);
@@ -119,7 +119,7 @@ describe('buildWorkspaceTabs', () => {
       kind: 'session',
       id: 'git-dtc-website',
       session: 'git-dtc-website',
-      label: 'Terminal',
+      label: 'main',
       remainder: '',
       created: 100,
     });
@@ -145,9 +145,9 @@ describe('buildWorkspaceTabs', () => {
     // One family, in creation order: the folder's default, then its `-2` and
     // `-3`, and the numbering reads as a list rather than as an exception.
     expect(tabs.map((t) => t.label)).toEqual([
-      'Terminal',
-      'Terminal 2',
-      'Terminal 3',
+      'main',
+      'main 2',
+      'main 3',
       'Files',
       'Files 2',
     ]);
@@ -174,7 +174,7 @@ describe('buildWorkspaceTabs', () => {
       ],
       prefix,
     );
-    expect(tabs.map((t) => t.label)).toEqual(['Terminal', 'nightly-build']);
+    expect(tabs.map((t) => t.label)).toEqual(['main', 'nightly-build']);
     expect(tabs[1]).toMatchObject({ remainder: null });
   });
 
@@ -254,7 +254,7 @@ describe('the bar order the arrows walk', () => {
 
   it('is built in the order it will be traversed', () => {
     expect(bar.map((t) => t.id)).toEqual(['git-dtc-website', 'git-dtc-website-2', 'f1', 'f2']);
-    expect(bar.map((t) => t.label)).toEqual(['Terminal', 'Terminal 2', 'Files', 'Files 2']);
+    expect(bar.map((t) => t.label)).toEqual(['main', 'main 2', 'Files', 'Files 2']);
   });
 });
 

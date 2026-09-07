@@ -235,7 +235,7 @@ describe('the folder workspace + menu creates a session', () => {
     startSession.mockResolvedValue(started('git-x-2'));
 
     const wrapper = await openWorkspace();
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
 
     await createVia(wrapper, 'shell');
 
@@ -243,8 +243,8 @@ describe('the folder workspace + menu creates a session', () => {
       folder: '~/git/x',
       namePolicy: 'unique',
     });
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Terminal 2']);
-    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('Terminal 2');
+    expect(tabLabels(wrapper)).toEqual(['main', 'main 2']);
+    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('main 2');
     expect(barError(wrapper)).toBeNull();
     // The keyboard follows the tab: the create ends in the new pane, not back
     // on the `+` button the dialog restored focus to. The first entry is the
@@ -304,7 +304,7 @@ describe('the folder workspace + menu creates a session', () => {
     expect(terminalFocusCalls).toEqual(['git-x']);
     expect(barError(wrapper)).toContain('git-x');
     expect(barError(wrapper)).toContain('already open');
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
   });
 
   it('says so when the host answers `reused`, even under a fresh name', async () => {
@@ -347,7 +347,7 @@ describe('the folder workspace + menu creates a session', () => {
 
     expect(shellInput).not.toHaveBeenCalled();
     expect(barError(wrapper)).toContain('git-elsewhere');
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
   });
 
   /**
@@ -359,7 +359,7 @@ describe('the folder workspace + menu creates a session', () => {
    */
   it('selects and focuses the queried tab when the open folder is handed a new session', async () => {
     const wrapper = await openWorkspace();
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
     expect(terminalFocusCalls).toEqual(['git-x']);
 
     useSessionsStore().sessions = [row('git-x'), row('git-x-2', 2)] as never;
@@ -367,8 +367,8 @@ describe('the folder workspace + menu creates a session', () => {
     route.query = { tab: 'git-x-2' };
     await flush();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Terminal 2']);
-    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('Terminal 2');
+    expect(tabLabels(wrapper)).toEqual(['main', 'main 2']);
+    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('main 2');
     expect(terminalFocusCalls).toEqual(['git-x', 'git-x-2']);
   });
 
@@ -386,8 +386,8 @@ describe('the folder workspace + menu creates a session', () => {
 
     const wrapper = await openWorkspace();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Terminal 2']);
-    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('Terminal 2');
+    expect(tabLabels(wrapper)).toEqual(['main', 'main 2']);
+    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('main 2');
     expect(terminalFocusCalls).toEqual(['git-x-2']);
   });
 
@@ -404,14 +404,14 @@ describe('the folder workspace + menu creates a session', () => {
     ] as never;
 
     const wrapper = await openWorkspace();
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
     expect(terminalFocusCalls).toEqual(['git-x']);
 
     route.params = { name: 'host', folder: '~/git/y' };
     await flush();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
-    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('Terminal');
+    expect(tabLabels(wrapper)).toEqual(['main']);
+    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('main');
     expect(terminalFocusCalls).toEqual(['git-x', 'git-y']);
   });
 

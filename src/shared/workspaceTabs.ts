@@ -65,7 +65,7 @@ export type WorkspaceTab =
  * What a folder's default session — the one named exactly after the folder —
  * reads as on the bar, and the stem the numbered ones are built from.
  */
-export const TERMINAL_LABEL = 'Terminal';
+export const MAIN_LABEL = 'main';
 
 /** Files tabs all read `Files`; a second one becomes `Files 2` by §3.4. */
 export const FILES_LABEL = 'Files';
@@ -80,7 +80,7 @@ export const FILES_LABEL = 'Files';
  * components with `-`, so `-` is the only boundary a derived name can have.
  *
  * An exact match returns the empty string — a real remainder, distinct from
- * null, and the one the bare `Terminal` label is for.
+ * null, and the one the bare `main` label is for.
  */
 export function stripSessionPrefix(name: string, prefix: string): string | null {
   if (prefix.length === 0) return null;
@@ -94,35 +94,32 @@ export function stripSessionPrefix(name: string, prefix: string): string | null 
  *
  * Two rewrites, and they are ONE family:
  *
- *   ""   -> `Terminal`
- *   "2"  -> `Terminal 2`
- *   "17" -> `Terminal 17`
+ *   ""   -> `main`
+ *   "2"  -> `main 2`
+ *   "17" -> `main 17`
  *
- * The empty remainder used to read `main`, the user's own first suggestion
- * ("if there is no prefix left we can call it main, or just terminal"). It was
- * the wrong half of the offer, and the bar said so: a folder's default session
- * read `main` and the very next one read `Terminal 2`, two unrelated words for
- * two sessions that differ only in which of them was created first. Nothing
- * about `main` predicts `Terminal 2`, and nothing about `Terminal 2` explains
- * `main`. Taking the other half of the offer makes the numbering legible —
- * `Terminal`, `Terminal 2`, `Terminal 3` is one list with a first element,
- * where the plain label reads as the unnumbered member rather than as a
- * different kind of thing. The user asked for exactly this: "for main let's
- * call it 'Terminal' so 'Terminal-2' makes more sense".
+ * The empty remainder is the folder's DEFAULT session — the one named exactly
+ * after the folder — and `main` is what it reads as: the unnumbered member of
+ * the list the numbered tabs continue. A default label sharing no word with
+ * its neighbours would break the list in two — nothing about `main` predicts
+ * a second tab numbered under a different word — so both halves take the same
+ * stem, and `main`, `main 2`, `main 3` reads as one family with a first
+ * element.
  *
- * The SPACE is deliberate, though the user typed `Terminal-2`. The hyphen is
- * real in the NAME — `freeSessionNameCommand` builds `git-red-stamp-2` and
- * `tmuxctl` joins that string — but this function returns a display label, and
- * a label that mimics the name's punctuation invites the reader to type it back
- * as one. Every other numbered label on this bar is spaced (`Files 2`, and
- * everything {@link numberCollisions} touches), so a spaced `Terminal 2` is the
- * bar's own convention rather than a second one.
+ * The SPACE is deliberate, though the underlying names join with a hyphen.
+ * The hyphen is real in the NAME — `freeSessionNameCommand` builds
+ * `git-red-stamp-2` and `tmuxctl` joins that string — but this function
+ * returns a display label, and a label that mimics the name's punctuation
+ * invites the reader to type it back as one. Every other numbered label on
+ * this bar is spaced (`Files 2`, and everything {@link numberCollisions}
+ * touches), so a spaced `main 2` is the bar's own convention rather than a
+ * second one.
  *
  * The digit rule is not a flourish. `freeSessionNameCommand`
  * (src/main/projects/commands.ts) walks `<base>-2`, `<base>-3` when a folder
  * needs a second session, so the remainder of the second session in
  * `~/git/dtc-website` is literally `2`. A tab labelled `2` sitting beside a tab
- * labelled `import` says nothing at all; `Terminal 2` says what it is. The user
+ * labelled `import` says nothing at all; `main 2` says what it is. The user
  * spelled out the condition — "if it's just a number".
  *
  * Anything else is the remainder verbatim: "if there is a clear name then we
@@ -130,8 +127,8 @@ export function stripSessionPrefix(name: string, prefix: string): string | null 
  * a name someone chose, so it is left alone.
  */
 export function labelForRemainder(remainder: string): string {
-  if (remainder === '') return TERMINAL_LABEL;
-  if (/^\d+$/.test(remainder)) return `${TERMINAL_LABEL} ${remainder}`;
+  if (remainder === '') return MAIN_LABEL;
+  if (/^\d+$/.test(remainder)) return `${MAIN_LABEL} ${remainder}`;
   return remainder;
 }
 
@@ -144,23 +141,22 @@ export function labelForRemainder(remainder: string): string {
  * on it. Alphabetical numbering would let a new `git-foo-aardvark` take the
  * plain label away from a tab that has had it all day.
  *
- * Note the bare `Terminal` label cannot collide with itself — two sessions with
+ * Note the bare `main` label cannot collide with itself — two sessions with
  * an empty remainder would both be named exactly `<prefix>`, and tmux permits
  * only one session per name. Collisions are real between a stripped remainder
  * and a foreign session that happens to be called the same thing, which is why
  * the rule is applied uniformly instead of special-cased per label kind.
  *
- * What the `main` -> `Terminal` rename does add is a way for this rule and
- * {@link labelForRemainder} to arrive at the same string from two directions: a
- * foreign session literally named `Terminal` sitting after the folder's default
- * is numbered to `Terminal 2`, which is also what a remainder of `2` produces.
- * That is a pre-existing shape of this one-pass counter (the same is already
- * true of a session named `Files 2` beside two Files tabs) — the counter reads
- * the labels it was handed, not the ones it writes — and it needs a folder to
- * hold a hand-made session named after the label itself before it can happen.
- * Left alone deliberately: this pass is display-only, and the ids underneath
- * stay distinct, so the cost is a repeated word on the bar and not an ambiguous
- * target.
+ * This rule and {@link labelForRemainder} can also arrive at the same string
+ * from two directions: a foreign session literally named `main` sitting after
+ * the folder's default is numbered to `main 2`, which is also what a remainder
+ * of `2` produces. That is a pre-existing shape of this one-pass counter (the
+ * same is already true of a session named `Files 2` beside two Files tabs) —
+ * the counter reads the labels it was handed, not the ones it writes — and it
+ * needs a folder to hold a hand-made session named after the label itself
+ * before it can happen. Left alone deliberately: this pass is display-only,
+ * and the ids underneath stay distinct, so the cost is a repeated word on the
+ * bar and not an ambiguous target.
  */
 export function numberCollisions<T extends { label: string }>(tabs: T[]): T[] {
   const seen = new Map<string, number>();
@@ -252,7 +248,7 @@ export function buildWorkspaceTabs(
  *   - a tab whose label IS the session name (`remainder === null`) commits the
  *     raw typed name, because there is no prefix to re-apply;
  *   - clearing the field renames the session TO the bare prefix, which is the
- *     bare `Terminal` tab — the one way to promote a session to its folder's
+ *     bare `main` tab — the one way to promote a session to its folder's
  *     default.
  *
  * Returns null when the input cannot become a legal session name at all, which

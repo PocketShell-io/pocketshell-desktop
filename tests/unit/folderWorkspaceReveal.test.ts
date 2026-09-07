@@ -136,13 +136,13 @@ describe('a terminal path revealed from the folder workspace', () => {
   it('opens a path outside the folder in a Files tab of its own', async () => {
     const wrapper = await openWorkspace();
     // No Files tab is seeded: the bar starts with the session tab only.
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
 
     useFilesStore().requestReveal(IMAGE);
     await flush();
 
     // One Files tab, opened for the click, and it is the one in front.
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
     expect(activeLabel(wrapper)).toBe('Files');
   });
 
@@ -168,7 +168,7 @@ describe('a terminal path revealed from the folder workspace', () => {
 
     // "a separate new tab", not one tab per image: the tab standing over that
     // directory serves the next click in it too.
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
   });
 
   it('expands a home-relative target before deciding it is outside', async () => {
@@ -179,7 +179,7 @@ describe('a terminal path revealed from the folder workspace', () => {
     await flush();
 
     expect(useFilesStore().reveal).toBe('.codex/generated_images/uuid/exec-3.png');
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
   });
 
   it('keeps a path INSIDE the folder in the Files tab that is already there', async () => {
@@ -189,7 +189,7 @@ describe('a terminal path revealed from the folder workspace', () => {
     useFilesStore().requestReveal('/home/me/git/x/src/main.ts');
     await flush();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
     expect(activeLabel(wrapper)).toBe('Files');
   });
 
@@ -202,7 +202,7 @@ describe('a terminal path revealed from the folder workspace', () => {
     useFilesStore().requestReveal('/home/me/git/x/src/main.ts');
     await flush();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
     expect(activeLabel(wrapper)).toBe('Files');
     expect(useFilesStore().reveal).toBe('/home/me/git/x/src/main.ts');
   });
@@ -219,7 +219,7 @@ describe('a terminal path revealed from the folder workspace', () => {
     useFilesStore().requestReveal(IMAGE);
     await flush();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
     expect(activeLabel(wrapper)).toBe('Files');
   });
 });

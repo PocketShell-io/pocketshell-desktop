@@ -141,19 +141,19 @@ describe('the close control on a workspace tab', () => {
   it('is on every tab, however the tab came to exist', async () => {
     const wrapper = await openWorkspace();
     // No Files tab is seeded: a workspace opens with its session tabs only.
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
-    expect(closeOf(wrapper, 'Terminal').exists(), 'Terminal').toBe(true);
+    expect(tabLabels(wrapper)).toEqual(['main']);
+    expect(closeOf(wrapper, 'main').exists(), 'main').toBe(true);
 
     await openFilesTab(wrapper);
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
     expect(closeOf(wrapper, 'Files').exists(), 'Files').toBe(true);
   });
 
   it('says Stop on a session tab and opens the named confirmation, killing nothing', async () => {
     const wrapper = await openWorkspace();
 
-    expect(closeOf(wrapper, 'Terminal').attributes('title')).toBe('Stop this session');
-    await closeOf(wrapper, 'Terminal').trigger('click');
+    expect(closeOf(wrapper, 'main').attributes('title')).toBe('Stop this session');
+    await closeOf(wrapper, 'main').trigger('click');
     await flush();
 
     const confirm = wrapper.find('.stub-overlay');
@@ -164,7 +164,7 @@ describe('the close control on a workspace tab', () => {
 
   it('does not move the user to a background tab whose × they clicked', async () => {
     const wrapper = await openWorkspace();
-    // A second session, so the Terminal tab has a background sibling to click
+    // A second session, so the main tab has a background sibling to click
     // at. Without it the tab is the active one and the assertion is vacuous.
     useSessionsStore().sessions.push({
       name: 'git-x-2',
@@ -174,12 +174,12 @@ describe('the close control on a workspace tab', () => {
       path: '/home/me/git/x',
     });
     await flush();
-    expect(activeLabel(wrapper)).toBe('Terminal');
+    expect(activeLabel(wrapper)).toBe('main');
 
-    await closeOf(wrapper, 'Terminal 2').trigger('click');
+    await closeOf(wrapper, 'main 2').trigger('click');
     await flush();
 
-    expect(activeLabel(wrapper)).toBe('Terminal');
+    expect(activeLabel(wrapper)).toBe('main');
     expect(wrapper.find('.stub-overlay').text()).toContain('git-x-2');
   });
 
@@ -189,7 +189,7 @@ describe('the close control on a workspace tab', () => {
 
     await closeOf(wrapper, 'Files').trigger('click');
     await flush();
-    expect(tabLabels(wrapper)).toEqual(['Terminal']);
+    expect(tabLabels(wrapper)).toEqual(['main']);
 
     // The session tab's × was never touched, so no stop dialog may be showing
     // and the kill count is still zero — the Files close went through
@@ -207,7 +207,7 @@ describe('the close control on a workspace tab', () => {
     useFilesStore().requestReveal(IMAGE);
     await flush();
 
-    expect(tabLabels(wrapper)).toEqual(['Terminal', 'Files']);
+    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
     expect(activeLabel(wrapper)).toBe('Files');
     expect(useFilesStore().reveal).toBe(IMAGE);
   });

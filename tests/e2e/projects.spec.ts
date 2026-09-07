@@ -213,7 +213,7 @@ test.describe('folder-first session creation + port panel controls', () => {
     // The session that opened is the one the picker previewed. Asserted on the
     // tooltip rather than the tab's text: a tab strips the folder's own prefix
     // from its label, so the only session in `~/<PROJECT_FOLDER>` is labelled
-    // `Terminal` (shared/workspaceTabs.ts) and the full name lives in `title`.
+    // `main` (shared/workspaceTabs.ts) and the full name lives in `title`.
     await expect(page.locator('.tab.active')).toHaveAttribute(
       'title',
       new RegExp(previewedName),

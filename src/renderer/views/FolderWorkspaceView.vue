@@ -5,7 +5,7 @@
 //
 // The tab bar is the whole idea:
 //
-//   [ main ] [ import ] [ Terminal 2 ] [ Files ] [+]
+//   [ main ] [ import ] [ main 2 ] [ Files ] [+]
 //
 // one tab per tmux session in the folder, then one or more Files tabs, session
 // tabs first. A session tab IS a terminal — there is no sub-navigation inside
@@ -1632,7 +1632,7 @@ function renameFromMenu(): void {
  *
  * The dialog names the SESSION, not the tab label. The label is a projection
  * that strips the folder prefix (§3.3), so two folders' tabs can both read
- * `Terminal` — and the one moment a user must be certain which thing is being
+ * `main` — and the one moment a user must be certain which thing is being
  * destroyed is the moment they are asked to confirm destroying it.
  */
 const stopping = ref<string | null>(null);
@@ -2146,7 +2146,7 @@ function onFocusTerminal(): void {
 
          It names the SESSION rather than the tab label, deliberately: the label
          is a projection that strips the folder's prefix (§3.3), so two folders
-         can both show a tab called `Terminal`, and the moment a user is asked
+         can both show a tab called `main`, and the moment a user is asked
          to destroy something is the moment they must be certain which thing it
          is. It also says what goes, because "Stop" undersells it — a session
           is usually an agent mid-task, and its scrollback and process
