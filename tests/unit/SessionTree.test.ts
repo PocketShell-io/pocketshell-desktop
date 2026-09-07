@@ -665,6 +665,27 @@ describe('SessionTree — stopping every session in a folder', () => {
     expect(wrapper.find('.stop-error').exists()).toBe(false);
   });
 
+  it('takes the rows down even when the listing still carries them', async () => {
+    // The window the bug lived in: `a kill` answers ok once the worker
+    // accepts the stop, and the record leaves the host's snapshot only when
+    // the worker has finished terminating the workload. This listing answers
+    // with the killed rows forever — the ordinary corpse a slow finalization
+    // leaves in every snapshot read inside that window — and the folder's
+    // rows must still come off the tree the moment the kills land, instead
+    // of sitting there looking live above a pane that already said
+    // "[process exited]".
+    const wrapper = await open(FOLDER);
+    await openStopConfirm(wrapper);
+    await wrapper.get('.stop-confirm .btn-danger').trigger('click');
+    await flush(wrapper);
+
+    expect(wrapper.text()).not.toContain('dataqna');
+    // The folder the confirm did not touch is untouched.
+    const headers = wrapper.findAll('.dir-header').map((h) => h.text());
+    expect(headers).toHaveLength(1);
+    expect(headers[0]).toContain('other');
+  });
+
   it('acts on the row under the cursor, not on the first one', async () => {
     const wrapper = await open(FOLDER);
     await openStopConfirm(wrapper, 1);
