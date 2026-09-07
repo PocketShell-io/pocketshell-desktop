@@ -120,16 +120,25 @@ has it (`a`), with the tmux helper path as the fallback:
    inference, and its declared engine/profile replaces the `@ps_agent_kind`
    probe. On a host without `a`, the legacy path runs instead:
    `pocketshell sessions list` preferred, `tmux list-sessions` beneath it.
+   A session this app JUST created does not wait for a listing: the start
+   result carries the row whole (name, folder, backend, aplexer UUID), the
+   sessions store files it as a pending row, and the next refresh — the
+   panel's five-second poll — replaces it with the authoritative one. The
+   create path therefore spends no listing round trip between the click and
+   the terminal.
 2. The first visit to a session mounts an `xterm.js` and opens a tracked SSH
     **shell** channel. The channel runs the session join — `a attach <id>`
    for an aplexer session, the helper-driven tmux join otherwise;
    the far end's real layout renders in the terminal and owns the panes.
-   The join owns its tab's PTY and ends with `exit`: when the attach ends for
-   any reason (a detach, a worker-side disconnect, a dead session, a failed
-   join after its diagnostic), the tab's login shell closes and the channel
-   with it, so the pool drops the client through the ordinary `onExit` and
-   the next visit to the tab re-joins fresh — a tab can never outlive its
-   attach into a live prompt parked behind a dead session.
+   The join IS its tab's channel: it runs directly under the PTY as the exec
+   request's command — no login shell, no profile startup ahead of it, which
+   was the join's largest fixed cost — and the channel closes when the join
+   ends for any reason (a detach, a worker-side disconnect, a dead session, a
+   failed join after its diagnostic). The pool drops the client through the
+   ordinary `onExit`, and the next visit to the tab re-joins fresh — a tab
+   can never outlive its attach into a live prompt parked behind a dead
+   session. While the join runs, the pane says so — a muted "Joining …" veil
+   that clears on the far end's first byte — instead of sitting black.
 3. Each visited session tab keeps its own terminal mounted. Switching tabs is
    therefore a renderer visibility change, not a remote switch or repaint.
 4. Input goes over the PTY (`shell.stdin.write`); resize calls
