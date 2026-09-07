@@ -65,6 +65,25 @@ import {
 /** How a session create was satisfied. */
 export type CreateSessionVia = 'helper' | 'tmux-fallback' | 'aplexer';
 
+/**
+ * The panel order for a LEGACY list: creation order, oldest first, name
+ * tiebreak — the order the panel has always shown, now pinned HERE rather
+ * than re-derived in the renderer.
+ *
+ * The renderer preserves the document order of whatever `listSessions`
+ * returns, so the order contract lives with the source that can honour it:
+ * the aplexer arm hands back the host's own `--sort` untouched, and the
+ * helper/tmux arms — whose tables carry no access time and whose row order is
+ * whatever the helper's `--by` and tmux happen to print — are straightened to
+ * this comparator. One stable key (created never moves) keeps the five-second
+ * poll from reshuffling a tmux-only host's panel.
+ */
+function byCreationOrder(a: SessionSummary, b: SessionSummary): number {
+  const byCreated = (a.created || a.activity || 0) - (b.created || b.activity || 0);
+  if (byCreated !== 0) return byCreated;
+  return a.name.localeCompare(b.name);
+}
+
 /** Outcome of {@link PocketshellClient.createSession}. Never thrown. */
 export interface CreateSessionOutcome {
   ok: boolean;
@@ -332,6 +351,10 @@ export class PocketshellClient {
    * does the legacy path run: `pocketshell sessions list` preferred, the
    * raw `tmux list-sessions` fallback beneath it. Returns [] when no server
    * of either kind is running (the canonical "empty" state, not an error).
+   *
+   * ORDER CONTRACT: what comes back is already in the order the panel shows
+   * it. The aplexer arm is the host's own sort, untouched; the legacy arms
+   * are {@link byCreationOrder}. The renderer groups but does not re-sort.
    */
   async listSessions(connectionId: string, sortBy: 'activity' | 'created' = 'activity'): Promise<SessionSummary[]> {
     if (this.aplexer) {
@@ -363,7 +386,8 @@ export class PocketshellClient {
           { enrichment, probe, helper },
         );
         log('sessions', `listed: [${merged.map((session) => session.name).join(", ")}]`);
-        return this.withRepoRoots(connectionId, merged);
+        const rows = await this.withRepoRoots(connectionId, merged);
+        return rows.sort(byCreationOrder);
       }
     }
     // Fallback: raw tmux with the same `::` shape the Android gateway uses.
@@ -384,7 +408,8 @@ export class PocketshellClient {
         ),
         { enrichment, probe, helper: tmux },
       );
-      return this.withRepoRoots(connectionId, merged);
+      const rows = await this.withRepoRoots(connectionId, merged);
+      return rows.sort(byCreationOrder);
     }
     // "no server running" / "not found" -> empty (not an error).
     return [];

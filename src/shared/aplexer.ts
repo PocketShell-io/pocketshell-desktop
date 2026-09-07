@@ -20,6 +20,20 @@ import { shellQuote, shellQuoteRemotePath } from './shellQuote';
 export type SessionBackend = 'tmux' | 'aplexer';
 
 /**
+ * A `--sort` key for the machine listing (`a list` / `a snapshot`, which are
+ * one API): the host's own banner documents
+ * `Sort: accessed · a list --sort name|created|accessed|activity`.
+ *
+ * The panel orders itself by THE ORDER THE HOST RETURNS — it no longer
+ * re-sorts client-side — so this key is the session list's whole ordering
+ * policy, chosen host-side where the timestamps are authoritative.
+ */
+export type AplexerSortKey = 'name' | 'created' | 'accessed' | 'activity';
+
+/** The sort the session panel asks the host for: `a`'s own default. */
+export const APLEXER_LIST_SORT: AplexerSortKey = 'accessed';
+
+/**
  * One element of `a snapshot --json`: the machine-readable session record.
  *
  * Only the fields this app reads are modelled. The full schema is versioned

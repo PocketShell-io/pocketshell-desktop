@@ -13,12 +13,14 @@ import { AplexerClient } from '../../src/main/helper/AplexerClient';
 import { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import {
   aplexerKillCommand,
-  aplexerRenameCommand,
   aplexerSnapshotCommand,
+  aplexerRenameCommand,
   aplexerStartCommand,
   isAplexerNotFound,
   isAplexerStartRefusal,
+  isAplexerUnknownFlag,
 } from '../../src/main/helper/AplexerClient';
+import { byOldestCreated } from '../../src/main/helper/aplexerParsers';
 import { TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import type { SshService } from '../../src/main/ssh/SshService';
 import type { ExecResult, ShellId } from '../../src/shared/types';
@@ -47,7 +49,7 @@ function record(overrides: Partial<AplexerSessionRecord> = {}): AplexerSessionRe
 }
 
 describe('parseAplexerSnapshot', () => {
-  it('parses the bare array newest-first', () => {
+  it('keeps the host document order — the sort is the host\'s business', () => {
     const stdout = JSON.stringify([record(), record({ id: 'other', tag: 'main' })]);
     const rows = parseAplexerSnapshot(stdout);
     expect(rows.map((r) => r.tag)).toEqual(['review', 'main']);
@@ -126,6 +128,27 @@ describe('isAplexerSessionLive', () => {
 describe('aplexer commands', () => {
   it('snapshots the machine API, never the human table', () => {
     expect(aplexerSnapshotCommand()).toBe('a snapshot --json');
+    // The host's banner: `Sort: accessed · a list --sort name|created|accessed|activity`.
+    expect(aplexerSnapshotCommand('accessed')).toBe('a snapshot --json --sort accessed');
+  });
+
+  it('tells a missing-flag refusal from a host that merely failed', () => {
+    expect(isAplexerUnknownFlag("error: unexpected argument '--sort' found")).toBe(true);
+    expect(isAplexerUnknownFlag('a: error: unrecognized option --sort')).toBe(true);
+    expect(isAplexerUnknownFlag('boom')).toBe(false);
+    expect(isAplexerUnknownFlag('a: registry locked')).toBe(false);
+  });
+
+  it('byOldestCreated straightens an unsorted snapshot, ties in document order', () => {
+    const rows = [
+      record({ id: 'b', tag: 'new', created_at_ms: 200 }),
+      record({ id: 'a', tag: 'old', created_at_ms: 100 }),
+      record({ id: 'c', tag: 'same', created_at_ms: 100 }),
+    ];
+    expect(byOldestCreated(rows).map((r) => r.tag)).toEqual(['old', 'same', 'new']);
+    // Not an in-place sort: the snapshot's own order stays intact for callers
+    // that did ask the host to sort.
+    expect(rows.map((r) => r.tag)).toEqual(['new', 'old', 'same']);
   });
 
   it('starts a shell session for a folder, quoted', () => {
@@ -287,6 +310,80 @@ describe('AplexerClient', () => {
     await expect(client.listSessions('c2')).resolves.toEqual([]);
   });
 
+  it('asks the host for its sort and hands the host order straight through', async () => {
+    const { ssh, execCalls, answerExecSequence } = makeSsh();
+    const client = new AplexerClient(ssh);
+    answerExecSequence([
+      { stdout: '/home/u/.local/bin/a\n', exitCode: 0 }, // command -v a
+      {
+        // The host's `--sort accessed` answer, deliberately in the OPPOSITE
+        // of creation order: the panel shows the host's order, not a re-sort.
+        stdout: JSON.stringify([
+          record({ tag: 'fresh', created_at_ms: 9_000 }),
+          record({ id: 'r2', tag: 'stale', created_at_ms: 1 }),
+        ]),
+        exitCode: 0,
+      },
+    ]);
+    const rows = (await client.listSessions('c1')) ?? [];
+    expect(rows.map((s) => s.name)).toEqual(['fresh', 'stale']);
+    expect(execCalls.filter((c) => c.includes('a snapshot'))).toEqual([
+      expect.stringContaining('--sort accessed'),
+    ]);
+    // The flag is remembered per connection: the next poll pays for the
+    // snapshot alone, no re-probing of what the host already answered.
+    await client.listSessions('c1');
+    expect(execCalls.filter((c) => c.includes('a snapshot'))).toHaveLength(2);
+  });
+
+  it('falls back to the unsorted snapshot, client-sorted, when the flag is refused', async () => {
+    const { ssh, execCalls, answerExecSequence, answerExec } = makeSsh();
+    const client = new AplexerClient(ssh);
+    answerExecSequence([
+      { stdout: '/home/u/.local/bin/a\n', exitCode: 0 }, // command -v a
+      { stdout: '', exitCode: 2, stderr: "error: unexpected argument '--sort' found" },
+      {
+        // The old host's newest-first default — straightened oldest-first,
+        // which is what such a host showed before the flag existed.
+        stdout: JSON.stringify([
+          record({ tag: 'new', created_at_ms: 200 }),
+          record({ id: 'r2', tag: 'older', created_at_ms: 100 }),
+        ]),
+        exitCode: 0,
+      },
+    ]);
+    await expect(client.listSessions('c1')).resolves.toEqual([
+      expect.objectContaining({ name: 'older' }),
+      expect.objectContaining({ name: 'new' }),
+    ]);
+    // The refusal is remembered: the next poll skips the flag entirely.
+    answerExec(
+      JSON.stringify([record({ tag: 'older', created_at_ms: 100 }), record({ id: 'r2', tag: 'new', created_at_ms: 200 })]),
+      0,
+    );
+    await client.listSessions('c1');
+    const snapshotCalls = execCalls.filter((c) => c.includes('a snapshot'));
+    expect(snapshotCalls).toHaveLength(3);
+    expect(snapshotCalls[2]).not.toContain('--sort');
+  });
+
+  it('retries the sort after a failure that is not a usage refusal', async () => {
+    const { ssh, execCalls, answerExecSequence, answerExec } = makeSsh();
+    const client = new AplexerClient(ssh);
+    answerExecSequence([
+      { stdout: '/home/u/.local/bin/a\n', exitCode: 0 }, // command -v a
+      { stdout: '', exitCode: 1, stderr: 'a: registry locked' }, // not a usage error
+      { stdout: JSON.stringify([record({ tag: 'old', created_at_ms: 1 })]), exitCode: 0 },
+    ]);
+    await expect(client.listSessions('c1')).resolves.toEqual([
+      expect.objectContaining({ name: 'old' }),
+    ]);
+    // One bad tick must not pin the connection to the fallback forever.
+    answerExec(JSON.stringify([record({ tag: 'sorted', created_at_ms: 9_000 })]), 0);
+    await client.listSessions('c1');
+    expect(execCalls.at(-1)).toContain('--sort accessed');
+  });
+
   it('starts, refuses live pairs, and reports failures with the host sentence', async () => {
     const { ssh, answerExec } = makeSsh();
     const client = new AplexerClient(ssh);
@@ -327,16 +424,18 @@ describe('PocketshellClient.listSessions', () => {
     answerExecSequence([
       { stdout: '/home/u/.local/bin/a\n', exitCode: 0 }, // command -v a
       {
+        // Host order, deliberately contradicting creation order: what the
+        // host sorted is what the panel shows.
         stdout: JSON.stringify([
-          record(),
-          record({ id: 'r2', tag: 'main', workspace: '/home/alexey/git/aplexer' }),
+          record({ tag: 'review', created_at_ms: 5_000 }),
+          record({ id: 'r2', tag: 'main', workspace: '/home/alexey/git/aplexer', created_at_ms: 9_000 }),
         ]),
         exitCode: 0,
       },
       { stdout: '', exitCode: 0 }, // the worktree probe: nothing is a worktree
     ]);
     const client = new PocketshellClient(ssh, new AplexerClient(ssh));
-    const rows = await client.listSessions('c1');
+    const rows = (await client.listSessions('c1')) ?? [];
     expect(rows.map((s) => s.name)).toEqual(['review', 'main']);
     expect(rows.every((s) => s.backend === 'aplexer')).toBe(true);
     expect(execCalls.some((c) => c.includes('pocketshell sessions list'))).toBe(false);
@@ -349,15 +448,19 @@ describe('PocketshellClient.listSessions', () => {
       { stdout: '', exitCode: 1 }, // command -v a: absent
       { stdout: '', exitCode: 1 }, // pocketshell sessions list: absent
       {
-        // tmux list-sessions fallback
-        stdout: 'main::1700000000::1700000100::1::/home/u/git/x\n',
+        // tmux list-sessions fallback, newest-created first — the legacy arm
+        // hands the panel creation order, oldest first, wherever the rows
+        // started.
+        stdout:
+          'work::1700000200::1700000200::1::/home/u/git/work\n' +
+          'main::1700000000::1700000100::1::/home/u/git/main\n',
         exitCode: 0,
       },
       { stdout: '', exitCode: 0 }, // the enrichment probe and worktree probe
     ]);
     const client = new PocketshellClient(ssh, new AplexerClient(ssh));
     const rows = await client.listSessions('c1');
-    expect(rows.map((s) => s.name)).toEqual(['main']);
+    expect(rows.map((s) => s.name)).toEqual(['main', 'work']);
     expect(execCalls.some((c) => c.includes('a snapshot'))).toBe(false);
   });
 });

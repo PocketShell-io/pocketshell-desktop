@@ -15,18 +15,34 @@
 
 import type { SshService } from '../ssh/SshService.js';
 import type { SessionSummary } from '../../shared/types.js';
-import type { AplexerSessionRecord } from '../../shared/aplexer.js';
+import type { AplexerSessionRecord, AplexerSortKey } from '../../shared/aplexer.js';
+import { APLEXER_LIST_SORT } from '../../shared/aplexer.js';
 import { pathAwareCommand } from './bootstrap.js';
 import { shellQuote, shellQuoteRemotePath } from '../../shared/shellQuote.js';
 import {
   aplexerRecordToSummary,
+  byOldestCreated,
   parseAplexerSnapshot,
 } from './aplexerParsers.js';
 import { log } from '../log.js';
 
-/** `a snapshot --json`: the machine API. Bare array, newest first. */
-export function aplexerSnapshotCommand(): string {
-  return 'a snapshot --json';
+/**
+ * `a snapshot --json`: the machine API — the same records `a list --json`
+ * prints, so the host's `--sort` applies here too. Without [sort] the host
+ * applies its own default; with one the panel's order is spelled out.
+ */
+export function aplexerSnapshotCommand(sort?: AplexerSortKey): string {
+  return sort === undefined ? 'a snapshot --json' : `a snapshot --json --sort ${sort}`;
+}
+
+/**
+ * True when [stderr] is the CLI refusing a flag it does not know — the
+ * argument-parser's usage error a host whose `a` predates `--sort` answers
+ * with. A host sentence that merely failed ("boom", a python traceback) does
+ * not match, so a transient failure is never mistaken for a missing feature.
+ */
+export function isAplexerUnknownFlag(stderr: string): boolean {
+  return /\bunexpected argument\b|\bunrecognized\b|\bunknown option\b/i.test(stderr);
 }
 
 /**
@@ -108,11 +124,20 @@ export class AplexerClient {
    */
   private readonly availableByConnection = new Map<string, boolean>();
 
+  /**
+   * `--sort` support per connection, same discipline as the availability
+   * probe: true after one sorted snapshot answered, false after the CLI
+   * refused the flag (an old host — every tick then goes straight to the
+   * unsorted exec), unknown until one of those happens.
+   */
+  private readonly sortSupportedByConnection = new Map<string, boolean>();
+
   constructor(private readonly ssh: SshService) {}
 
   /** Forget cached per-connection state. Call on disconnect. */
   evict(connectionId: string): void {
     this.availableByConnection.delete(connectionId);
+    this.sortSupportedByConnection.delete(connectionId);
   }
 
   /**
@@ -134,25 +159,63 @@ export class AplexerClient {
   }
 
   /**
-   * Live aplexer sessions as rows, or null when `a` is absent.
+   * Live aplexer sessions as rows in the host's own order, or null when `a`
+   * is absent.
    *
    * Null vs [] is the whole contract: null means "no aplexer here, run the
    * tmux path", [] means "aplexer answered and nothing is running". A failed
    * exec on a host that HAS `a` also answers [] — the snapshot is the whole
    * list on such a host, so the tree shows empty for that poll tick and
    * recovers on the next; the legacy tmux path is only for hosts without `a`.
+   *
+   * [sort] is what the host sorts the list by, and the list's order is the
+   * panel's order — the renderer does not re-sort. Hosts whose `a` predates
+   * `--sort` get {@link byOldestCreated} instead, which is what such a host
+   * showed before the flag existed.
    */
-  async listSessions(connectionId: string): Promise<SessionSummary[] | null> {
+  async listSessions(
+    connectionId: string,
+    sort: AplexerSortKey = APLEXER_LIST_SORT,
+  ): Promise<SessionSummary[] | null> {
     if (!(await this.isAvailable(connectionId))) return null;
-    return this.snapshotSummaries(connectionId);
+    return this.snapshotSummaries(connectionId, sort);
   }
 
-  /** The raw snapshot records, or [] on any failure. Never throws. */
-  async snapshotRecords(connectionId: string): Promise<AplexerSessionRecord[]> {
+  /**
+   * The raw snapshot records, or [] on any failure. Never throws.
+   *
+   * With [sort], the sorted command is tried first and its DOCUMENT ORDER is
+   * kept — that is the feature. When the host cannot do it yet (the flag is
+   * refused, remembered per connection) or the sorted exec dies mid-flight,
+   * the unsorted snapshot answers and is sorted client-side, so the order a
+   * host without the flag sees is the one it always saw.
+   */
+  async snapshotRecords(
+    connectionId: string,
+    sort?: AplexerSortKey,
+  ): Promise<AplexerSessionRecord[]> {
+    if (sort !== undefined && this.sortSupportedByConnection.get(connectionId) !== false) {
+      try {
+        const res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerSnapshotCommand(sort)));
+        if (res.exitCode === 0) {
+          this.sortSupportedByConnection.set(connectionId, true);
+          return parseAplexerSnapshot(res.stdout);
+        }
+        // Remember the refusal only when it IS one: a usage error means every
+        // future tick would fail the same way, while any other non-zero exit
+        // may be a one-off not worth pinning the connection to the fallback.
+        if (isAplexerUnknownFlag(res.stderr)) {
+          this.sortSupportedByConnection.set(connectionId, false);
+        }
+      } catch {
+        // Transport-level: fall through to the unsorted attempt this tick;
+        // the capability stays unknown and the next tick asks again.
+      }
+    }
     try {
       const res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerSnapshotCommand()));
       if (res.exitCode !== 0) return [];
-      return parseAplexerSnapshot(res.stdout);
+      return byOldestCreated(parseAplexerSnapshot(res.stdout));
     } catch {
       return [];
     }
@@ -268,9 +331,12 @@ export class AplexerClient {
     };
   }
 
-  /** Snapshot as session rows. [] on any failure — see {@link listSessions}. */
-  private async snapshotSummaries(connectionId: string): Promise<SessionSummary[]> {
-    const records = await this.snapshotRecords(connectionId);
+  /** Snapshot as session rows, in the host's order. [] on any failure — see {@link listSessions}. */
+  private async snapshotSummaries(
+    connectionId: string,
+    sort?: AplexerSortKey,
+  ): Promise<SessionSummary[]> {
+    const records = await this.snapshotRecords(connectionId, sort);
     const rows = records.map(aplexerRecordToSummary);
     if (rows.length > 0) {
       log('sessions', `listed via aplexer: [${rows.map((s) => s.name).join(', ')}]`);

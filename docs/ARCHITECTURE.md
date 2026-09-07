@@ -110,8 +110,13 @@ that. Instead it attaches to persistent sessions over a tracked SSH shell
 channel, and the sessions themselves come from **aplexer** wherever the host
 has it (`a`), with the tmux helper path as the fallback:
 
-1. The session tree is fetched from `a snapshot --json` over normal SSH exec
-   channels (fast, cheap, pollable). On a host with aplexer the snapshot is
+1. The session tree is fetched from `a snapshot --json --sort accessed` over
+   normal SSH exec
+   channels (fast, cheap, pollable) — the host sorts the list (its own
+   default; `a list --sort name|created|accessed|activity` is the surface)
+   and the app keeps that order for the panel, falling back to a
+   client-sorted unsorted snapshot on a host whose `a` predates the flag. On
+   a host with aplexer the snapshot is
    the WHOLE list — no tmux rows are merged beside it (merging used to list
    every session twice: once under its workspace, once as a name-only row
    from the tmux side that could not be placed, which is where the tree's
@@ -119,7 +124,8 @@ has it (`a`), with the tmux helper path as the fallback:
    immutable UUID, so its workspace is the folder-grouping key with no
    inference, and its declared engine/profile replaces the `@ps_agent_kind`
    probe. On a host without `a`, the legacy path runs instead:
-   `pocketshell sessions list` preferred, `tmux list-sessions` beneath it.
+   `pocketshell sessions list` preferred, `tmux list-sessions` beneath it,
+   both straightened to creation order.
    A session this app JUST created does not wait for a listing: the start
    result carries the row whole (name, folder, backend, aplexer UUID), the
    sessions store files it as a pending row, and the next refresh — the

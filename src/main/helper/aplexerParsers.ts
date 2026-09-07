@@ -1,15 +1,31 @@
 /**
  * Pure parsers for the aplexer CLI's machine-readable output.
  *
- * The contract is `a snapshot --json`: a bare JSON array of session records,
- * newest first, each carrying at least the required `session-v1` fields. All
- * functions are pure — string in, data out, no I/O — so they are pinned by
- * unit tests rather than by a host.
+ * The contract is `a snapshot --json` (the same records `a list --json`
+ * prints): a bare JSON array of session records, each carrying at least the
+ * required `session-v1` fields. Rows come back in the host's own order — with
+ * `--sort` the requested key, and on a host that has no `--sort` its
+ * newest-created-first default. All functions are pure — string in, data out,
+ * no I/O — so they are pinned by unit tests rather than by a host.
  */
 
 import type { SessionAgentKind, SessionSummary } from '../../shared/types.js';
 import type { AplexerSessionRecord } from '../../shared/aplexer.js';
 import { agentKindFromTmuxOption } from './parsers.js';
+
+/**
+ * Records oldest-created first, ties in document order (Array#sort is
+ * stable).
+ *
+ * The fallback order for a host whose `a` predates `--sort`: its unsorted
+ * default is newest-first, and oldest-first is what such a host showed in the
+ * panel before the flag existed. It is the same key the legacy helper table
+ * is pinned to in `PocketshellClient` — one notion of "no host sort" across
+ * both sources.
+ */
+export function byOldestCreated(records: AplexerSessionRecord[]): AplexerSessionRecord[] {
+  return [...records].sort((a, b) => a.created_at_ms - b.created_at_ms);
+}
 
 /**
  * Parse `a snapshot --json` into records. Unknown/truncated output -> [].
