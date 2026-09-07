@@ -24,7 +24,8 @@ services:
       args:
         POCKETSHELL_VERSION: ${POCKETSHELL_VERSION:-0.4.44}
         TMUXCTL_VERSION: ${TMUXCTL_VERSION:-0.3.5}
-        APLEXER_VERSION: ${APLEXER_VERSION:-0.1.4}
+        # Empty = aplexer's latest release at build time (see Dockerfile.instance).
+        APLEXER_VERSION: ${APLEXER_VERSION:-}
     image: pocketshell-test:instance
     environment:
       PS_TRAFFIC_PORT: ${PS_TRAFFIC_PORT:-8021}

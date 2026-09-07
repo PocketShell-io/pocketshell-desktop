@@ -132,9 +132,10 @@ one run with `POCKETSHELL_SSH_PORT=3322`.
 
 The image includes OpenSSH + SFTP, `testuser`, tmux, git, Python 3, `curl`,
 `ss`/`netstat`, Node.js 22/npm, the pinned `pocketshell` and `tmuxctl` helpers,
-the pinned `aplexer` CLI (the app's main session manager; its glibc release
-binary runs under Alpine's `gcompat` — same install as the `helper` fleet
-image, see `tests-docker/Dockerfile.helper`), deterministic agent command
+the `aplexer` CLI (the app's main session manager; latest release at build
+time — set `APLEXER_VERSION` to pin it — with its glibc release binary running
+under Alpine's `gcompat`; see `tests-docker/Dockerfile.helper` for the full
+rationale and the layer-cache caveat), deterministic agent command
 stubs, and the byte-moving port-forward test responder. The entrypoint creates
 `~/git` and `~/tmp`, then seeds the `main` and `build` sessions under both
 tmux and aplexer; with `a` installed the app lists the aplexer pair, since

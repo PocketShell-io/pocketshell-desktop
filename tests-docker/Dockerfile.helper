@@ -57,19 +57,28 @@ ENV PATH="/home/testuser/.local/bin:${PATH}"
 # above). `a` is the user-facing CLI and `aplexer` the per-session worker it
 # spawns — both must land on PATH.
 #
-# PIN THE VERSION, same rule as pocketshell/tmuxctl above: an unpinned
-# download means "whatever was there when this layer was first cached".
-# What the app parses is aplexer's snapshot schema and command surface
-# (src/main/helper/aplexerParsers.ts, tests/unit/aplexer.test.ts); bump
-# deliberately and re-check those when you do.
-ARG APLEXER_VERSION=0.1.4
+# UNPINNED BY DEFAULT, unlike pocketshell/tmuxctl above: aplexer is this
+# project's own tool and moves fast, and the fixture should exercise what a
+# freshly-set-up host would get — `releases/latest/download` redirects to
+# whatever the newest release is at fetch time. Set APLEXER_VERSION to pin a
+# known build when determinism matters. The catch either way is Docker's
+# layer cache: the redirect is only re-resolved when this layer actually
+# rebuilds, so a cached `compose up --build` keeps serving the version it
+# fetched before — force the fetch with `docker compose build --no-cache`.
+# The empty default matters: an ARG with NO default is never exported into
+# RUN, and `set -u` below would abort on the unset name.
+ARG APLEXER_VERSION=
 RUN set -eux; \
     case "$(uname -m)" in \
       x86_64) asset_arch=amd64 ;; \
       aarch64) asset_arch=arm64 ;; \
       *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
     esac; \
-    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    if [ -n "${APLEXER_VERSION}" ]; then \
+      base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    else \
+      base="https://github.com/alexeygrigorev/aplexer/releases/latest/download"; \
+    fi; \
     wget -q -O /usr/local/bin/a "$base/a-linux-$asset_arch"; \
     wget -q -O /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
     chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer

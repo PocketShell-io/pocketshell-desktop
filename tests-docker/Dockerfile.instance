@@ -38,16 +38,23 @@ RUN apk add --no-cache \
 
 # aplexer (`a`) — the app's MAIN session manager wherever it is installed
 # (src/main/helper/AplexerClient.ts); see Dockerfile.helper for why it comes
-# from the GitHub release rather than PyPI and why the version is pinned.
+# from the GitHub release rather than PyPI, why it is unpinned by default
+# (APLEXER_VERSION pins it), and the layer-cache caveat on re-fetching.
 # `gcompat` + `libgcc` (installed above) run its glibc binary under musl.
-ARG APLEXER_VERSION=0.1.4
+# Empty ARG default: an ARG with no default is never exported into RUN, and
+# `set -u` below would abort on the unset name.
+ARG APLEXER_VERSION=
 RUN set -eux; \
     case "$(uname -m)" in \
       x86_64) asset_arch=amd64 ;; \
       aarch64) asset_arch=arm64 ;; \
       *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
     esac; \
-    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    if [ -n "${APLEXER_VERSION}" ]; then \
+      base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    else \
+      base="https://github.com/alexeygrigorev/aplexer/releases/latest/download"; \
+    fi; \
     curl -fsSL -o /usr/local/bin/a "$base/a-linux-$asset_arch"; \
     curl -fsSL -o /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
     chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer
