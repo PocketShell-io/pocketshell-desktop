@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import { api } from '../ipc';
 import type { ConnectionId, SessionSummary } from '../../shared/types';
 import { errorMessage } from '../../shared/errors';
@@ -21,17 +21,17 @@ import type { StartSessionResult } from '../../main/projects/ProjectsService';
  * working inside a second".
  *
  * So the create hands back everything the row needs — name, folder, backend,
- * aplexer UUID (`StartSessionResult`) — and {@link addPending} files it here.
- * {@link sessions} merges pending rows over the fetched list, so the panel
- * tree, the workspace tab bar, `sessionMeta` and the aplexer join all see the
- * new session with zero round trips, and the first refresh — the panel's
- * five-second poll, most likely — replaces the optimistic row with the
- * authoritative one. A pending row that a refresh NEVER confirms is dropped
- * after {@link PENDING_TTL_MS}: the create is over by then, and a row only the
- * optimist believes in must not sit on the bar forever.
+ * aplexer UUID (`StartSessionResult`) — and {@link addPending} files it here,
+ * straight into {@link sessions}. The panel tree, the workspace tab bar,
+ * `sessionMeta` and the aplexer join all see the new session with zero round
+ * trips, and the next refresh replaces the list wholesale — the optimistic
+ * row gives way to the authoritative one, wherever it came from (the panel's
+ * five-second poll, most likely). A pending row that no refresh confirms is
+ * dropped after {@link PENDING_TTL_MS}: the create is over by then, and a row
+ * only the optimist believes in must not sit on the bar forever.
  */
 export const useSessionsStore = defineStore('sessions', () => {
-  const fetched = ref<SessionSummary[]>([]);
+  const sessions = ref<SessionSummary[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -50,7 +50,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     summary: SessionSummary;
     at: number;
   }
-  const pending = ref<PendingRow[]>([]);
+  const pendingRows = ref<PendingRow[]>([]);
 
   /**
    * The identity two rows must agree on to be the same session.
@@ -65,38 +65,45 @@ export const useSessionsStore = defineStore('sessions', () => {
     return `${s.workspace ?? ''}\u0000${s.name}`;
   }
 
-  /** The live list: pending rows not yet confirmed, over the fetched tree. */
-  const sessions = computed<SessionSummary[]>(() => {
-    if (pending.value.length === 0) return fetched.value;
-    const seen = new Set(fetched.value.map(identity));
-    const optimistic = pending.value
-      .filter((row) => !seen.has(identity(row.summary)))
-      .map((row) => row.summary);
-    return [...optimistic, ...fetched.value];
-  });
-
   /**
    * File an optimistic row for a session the host just confirmed.
    *
-   * Replaces any pending row with the same identity first — a second create
-   * for the same folder under the same name is the replace-the-slot case, not
-   * a duplicate.
+   * It goes straight onto {@link sessions} — the tree re-derives this tick —
+   * and onto the pending ledger, which is what lets the NEXT refresh tell
+   * "confirmed" from "never came true". Replaces any pending row with the
+   * same identity first: a second create under the same name is the
+   * replace-the-slot case, not a duplicate.
    */
   function addPending(summary: SessionSummary, now: number = Date.now()): void {
     const id = identity(summary);
-    pending.value = [
-      ...pending.value.filter((row) => identity(row.summary) !== id),
+    pendingRows.value = [
+      ...pendingRows.value.filter((row) => identity(row.summary) !== id),
       { summary, at: now },
     ];
+    sessions.value = [summary, ...sessions.value.filter((s) => identity(s) !== id)];
   }
 
-  /** Drop pending rows past their TTL, and ones the fetched list confirmed. */
-  function prunePending(now: number = Date.now()): void {
-    if (pending.value.length === 0) return;
-    const seen = new Set(fetched.value.map(identity));
-    pending.value = pending.value.filter(
-      (row) => now - row.at <= PENDING_TTL_MS && !seen.has(identity(row.summary)),
-    );
+  /**
+   * Fold the pending ledger into a freshly fetched list.
+   *
+   * A pending row whose identity the host now lists is confirmed — drop the
+   * ledger entry, the fetched row is the truth. One the host does not list is
+   * kept ONLY while it is inside its TTL, prepended so it stays at the top of
+   * the recency sort; past the TTL it was never real and is dropped.
+   */
+  function mergePending(fetched: SessionSummary[], now: number = Date.now()): SessionSummary[] {
+    if (pendingRows.value.length === 0) return fetched;
+    const seen = new Set(fetched.map(identity));
+    const stillPending: PendingRow[] = [];
+    const unconfirmed: SessionSummary[] = [];
+    for (const row of pendingRows.value) {
+      if (seen.has(identity(row.summary))) continue;
+      if (now - row.at > PENDING_TTL_MS) continue;
+      stillPending.push(row);
+      unconfirmed.push(row.summary);
+    }
+    pendingRows.value = stillPending;
+    return [...unconfirmed, ...fetched];
   }
 
   /**
@@ -121,8 +128,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (!options?.quiet) loading.value = true;
     error.value = null;
     try {
-      fetched.value = await api.helper.sessionsList(connectionId, 'activity');
-      prunePending();
+      sessions.value = mergePending(await api.helper.sessionsList(connectionId, 'activity'));
     } catch (e) {
       error.value = errorMessage(e);
     } finally {
@@ -179,8 +185,8 @@ export const useSessionsStore = defineStore('sessions', () => {
   // escape hatch for a caller that already knows the exact tmux name it wants.
 
   function clear(): void {
-    fetched.value = [];
-    pending.value = [];
+    sessions.value = [];
+    pendingRows.value = [];
     error.value = null;
   }
 
