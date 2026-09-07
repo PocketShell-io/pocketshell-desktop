@@ -124,9 +124,12 @@ export async function resetWorkspaceState(page: Page): Promise<void> {
 /**
  * Ask the FIXTURE (not the app) what sessions it is actually running, over a
  * plain ssh exec on the compose port. The point is to split one question in
- * two when a session tab vanishes: did the tmux session die on the host, or
+ * two when a session tab vanishes: did the session die on the host, or
  * did the app fail to list it? Both arrive in the test as "the button is
- * gone"; only the host can say which.
+ * gone"; only the host can say which. The fixture runs BOTH runtimes, and the
+ * app's panel reads the aplexer snapshot alone wherever `a` answers, so the
+ * snapshot is the dump's primary evidence; the tmux sweep and the helper
+ * list cover the fallback path.
  *
  * Best effort by design - called from a failure path that is already throwing.
  */
@@ -164,6 +167,8 @@ export function dumpFixtureSessionState(): string {
   return [
     'host tmux sweep:',
     probe(sweep),
+    'aplexer snapshot:',
+    probe('export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"; a snapshot --json 2>&1 | head -40'),
     'helper sessions list:',
     probe('export PATH="$HOME/.local/bin:$PATH"; pocketshell sessions list 2>&1 | head -20'),
   ].join('\n');

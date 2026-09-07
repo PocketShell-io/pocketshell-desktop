@@ -16,6 +16,25 @@ su testuser -c '
   fi
 '
 
+# Seed the same two sessions under aplexer. With `a` installed the app lists
+# from the aplexer snapshot ALONE (PocketshellClient.listSessions) — the tmux
+# seeds above are invisible to it — so these are the rows the E2E panel
+# assertions actually count. kill+forget first make the seed idempotent across
+# a `compose stop`/`up` cycle, where the container and its records survive but
+# the workers died with it: `a start` refuses a workspace+tag held by ANY
+# existing record, live or exited. The kill's settle sleep runs only when
+# there was something to kill (first boot takes no detour).
+su testuser -c '
+  for tag in main build; do
+    if a kill --workspace "$HOME" --tag "$tag" --signal KILL --grace-ms 500 \
+        >/dev/null 2>&1; then
+      sleep 1
+    fi
+    a forget --workspace "$HOME" --tag "$tag" --force >/dev/null 2>&1 || true
+    a start --workspace "$HOME" --tag "$tag" --json >/dev/null 2>&1 || true
+  done
+'
+
 # The standalone local instance supplies an overlay after the server exists.
 # The normal helper fixture leaves this unset, so its deterministic defaults
 # and tests are unchanged.

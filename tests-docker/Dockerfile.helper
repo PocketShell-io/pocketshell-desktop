@@ -10,7 +10,8 @@
 FROM pocketshell-test:tmux
 
 # python3 + pip + uv for installing the real helper. git for `repos` later.
-RUN apk add --no-cache python3 py3-pip git bash \
+# gcompat + libgcc run aplexer's glibc-linked release binary under musl (below).
+RUN apk add --no-cache python3 py3-pip git bash gcompat libgcc \
     && python3 -m pip install --break-system-packages --no-cache-dir uv
 
 # Install the real pocketshell helper + its tmuxctl runtime dependency.
@@ -43,6 +44,35 @@ RUN su testuser -c "uv tool install 'pocketshell==${POCKETSHELL_VERSION}' && uv 
     && mkdir -p /home/testuser/.local/bin
 
 ENV PATH="/home/testuser/.local/bin:${PATH}"
+
+# aplexer (`a`) — the app's MAIN session manager wherever it is installed
+# (src/main/helper/AplexerClient.ts): listing, creating, joining, stopping and
+# renaming all prefer it, and the helper-driven tmux path is only the fallback
+# for hosts without it. The fixture therefore needs `a`, or every E2E run
+# exercises the fallback world instead of the one users actually see.
+#
+# Installed from the GitHub release rather than `uv tool install aplexer`:
+# the PyPI wheels are manylinux (glibc) and refuse to install under Alpine's
+# musl, while the release binaries run under gcompat + libgcc (installed
+# above). `a` is the user-facing CLI and `aplexer` the per-session worker it
+# spawns — both must land on PATH.
+#
+# PIN THE VERSION, same rule as pocketshell/tmuxctl above: an unpinned
+# download means "whatever was there when this layer was first cached".
+# What the app parses is aplexer's snapshot schema and command surface
+# (src/main/helper/aplexerParsers.ts, tests/unit/aplexer.test.ts); bump
+# deliberately and re-check those when you do.
+ARG APLEXER_VERSION=0.1.4
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64) asset_arch=amd64 ;; \
+      aarch64) asset_arch=arm64 ;; \
+      *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    wget -q -O /usr/local/bin/a "$base/a-linux-$asset_arch"; \
+    wget -q -O /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
+    chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer
 
 # Stub provider CLIs + quse with deterministic, credential-free output.
 COPY agent-bin/ /usr/local/bin/

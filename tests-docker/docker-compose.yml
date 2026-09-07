@@ -4,8 +4,9 @@
 # Layers:
 #   ssh    (3202) — base ssh + sftp; core-ssh / core-sftp integration
 #   tmux   (3204) — + tmux; attach / terminal integration
-#   helper (3205) — + real `pocketshell` helper + stub agents + fixtures
-#                   (added in Phase 1; the helper image build is defined there)
+#   helper (3205) — + real `pocketshell` helper, `aplexer`, stub agents and
+#                   fixtures (added in Phase 1; the helper image build is
+#                   defined there)
 #   flaky  (3206) — + forced disconnect; reconnect tests (built with F12)
 #
 # Port choice: 3202-3206 is deliberately offset from the Android project's

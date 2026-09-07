@@ -119,10 +119,20 @@ test.describe('folder-first session creation + port panel controls', () => {
     }
     // Put the fixture back to its two seeded sessions. The container survives
     // a stop/start, so a session left running here would show up as a third
-    // row in session-nav.spec.ts, which counts them.
+    // row in session-nav.spec.ts, which counts them. The create went through
+    // the app's MAIN path — aplexer, on a host with `a` — so the cleanup aims
+    // there, not at tmux; the settle sleep lets the worker die before `forget`
+    // drops the record (an existing record would make the next run's
+    // `a start` for this folder refuse the tag).
     try {
       execInFixture([
-        previewedName ? `tmux kill-session -t "${previewedName}" 2>/dev/null || true` : 'true',
+        previewedName
+          ? `a kill --workspace "$HOME" --tag "${previewedName}" --signal KILL --grace-ms 500 2>/dev/null || true`
+          : 'true',
+        previewedName ? 'sleep 1' : 'true',
+        previewedName
+          ? `a forget --workspace "$HOME" --tag "${previewedName}" --force 2>/dev/null || true`
+          : 'true',
         `rm -rf "$HOME/${PROJECT_FOLDER}"`,
       ]);
     } catch {
