@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitisePart } from '../../src/shared/sessionNameParts';
+import { normalisePart, sanitisePart } from '../../src/shared/sessionNameParts';
 
 /**
  * These cases pin the ORDER of the replacements, not just their result: main
@@ -23,5 +23,26 @@ describe('sanitisePart', () => {
 
   it('leaves already-safe characters alone', () => {
     expect(sanitisePart('Abc_123-x')).toBe('Abc_123-x');
+  });
+});
+
+/**
+ * The rename field's as-you-type pass. It must apply the SAME character rules
+ * as `sanitisePart` — it is built on it, so drift is not possible — but it
+ * must NOT trim: a `-` is typed at the end of a field first, and an as-you-
+ * type edge trim eats it on landing, making `foo-bar` untypable.
+ */
+describe('normalisePart', () => {
+  it('applies the same character rules as sanitisePart', () => {
+    expect(normalisePart('a..b')).toBe('a_b');
+    expect(normalisePart('a  b')).toBe('a-b');
+    expect(normalisePart('!!a!!')).toBe('-a-');
+  });
+
+  it('keeps edge hyphens for the commit-time trim to take', () => {
+    expect(normalisePart('foo-')).toBe('foo-');
+    expect(normalisePart('-foo')).toBe('-foo');
+    expect(normalisePart('-')).toBe('-');
+    expect(sanitisePart('foo-')).toBe('foo');
   });
 });

@@ -404,3 +404,34 @@ describe('a committed rename is a relabel, not a reconnect', () => {
     ]);
   });
 });
+
+describe('the rename field takes a hyphen', () => {
+  function accepted(sessionName: string): unknown {
+    return { ok: true, sessionName, error: null, code: null };
+  }
+
+  it('does not eat a `-` typed at the end of the field', async () => {
+    // The commit's fire-and-forget refresh must land the RENAMED row, or it
+    // clobbers the optimistic one back to `main` (see `hostAccepts` above).
+    renameSession.mockImplementation(() => {
+      sessionsList.mockResolvedValue([row('git-x-foo-bar')]);
+      return Promise.resolve(accepted('git-x-foo-bar'));
+    });
+
+    const wrapper = await openWorkspace();
+    await beginRename(wrapper);
+    const input = wrapper.find('input.rename-input');
+    // The as-you-type pass used to be the full `sanitisePart`, whose edge
+    // trim strips a trailing `-` — so the hyphen vanished the moment it
+    // landed, and `foo-bar` could only ever be typed as `foobar`.
+    await input.setValue('foo-');
+    expect((input.element as HTMLInputElement).value).toBe('foo-');
+
+    await input.setValue('foo-bar');
+    await input.trigger('keydown.enter');
+    await flush(6);
+
+    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'git-x-foo-bar', undefined);
+    expect(wrapper.find('nav.tabs button.tab').text()).toContain('foo-bar');
+  });
+});

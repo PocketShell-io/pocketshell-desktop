@@ -66,7 +66,7 @@ import type { ConnectionId } from '../../shared/types';
 import { composerAgentKind } from '../../shared/composerSend';
 import { agentMark } from '../../shared/agentBadge';
 import { isShortcut } from '../../shared/shortcuts';
-import { sanitisePart, sessionBaseName } from '../../shared/sessionNameParts';
+import { normalisePart, sanitisePart, sessionBaseName } from '../../shared/sessionNameParts';
 import { adjacentIndex } from '../../shared/listNavigation';
 import { editingTarget } from '../editingTarget';
 import {
@@ -1079,13 +1079,18 @@ function cancelRename(): void {
 }
 
 /**
- * Strip illegal characters AS THE USER TYPES, with the same sanitiser the host
- * will apply. What is on screen is then what the session will be called, so a
- * rename never silently produces a different name from the one that was typed.
+ * Rewrite the characters a session name could not keep AS THE USER TYPES —
+ * but only those: `normalisePart`, not the full `sanitisePart`, because the
+ * edge trim cannot run per keystroke. A `-` is typed at the END of the field
+ * first, and a live trailing-strip ate it on landing, which made `foo-bar`
+ * untypable (it arrived as `foobar`). The commit still sanitises through
+ * `renamedSessionName`'s `sanitisePart`, so a name that merely ends in `-`
+ * commits trimmed — visible on the tab the moment the field closes — and
+ * every other keystroke leaves on screen exactly what will be committed.
  */
 function onRenameInput(event: Event): void {
   const el = event.target as HTMLInputElement;
-  const cleaned = sanitisePart(el.value);
+  const cleaned = normalisePart(el.value);
   if (cleaned !== el.value) el.value = cleaned;
   renameText.value = cleaned;
 }

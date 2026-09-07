@@ -11,17 +11,30 @@
  */
 
 /**
+ * The character rules of `sanitisePart` WITHOUT the edge trim: `.` and `:`
+ * collapse to `_` (tmux forbids both — `:` is its window/pane separator), then
+ * any other disallowed run collapses to a single `-`.
+ *
+ * This exists for the rename field, which sanitises AS THE USER TYPES. A `-`
+ * is typed at the END of the field first, so an as-you-type edge trim would
+ * eat every hyphen on landing and `foo-bar` could only ever be typed as
+ * `foobar`. Edge hyphens are still illegal in a committed name — the commit
+ * runs the full `sanitisePart` — so trimming stays a commit-time fact and
+ * typing only rewrites characters no name could keep. Built ON rather than
+ * beside `sanitisePart` so the two passes cannot drift.
+ */
+export function normalisePart(part: string): string {
+  return part.replace(/[.:]+/g, '_').replace(/[^A-Za-z0-9_-]+/g, '-');
+}
+
+/**
  * Normalise a single path component to tmux-safe characters.
  *
- * Order matters and mirrors tmuxctl: `.` and `:` collapse to `_` FIRST
- * (tmux forbids both in session names — `:` is its window/pane separator),
- * then any other disallowed run collapses to a single `-`, then leading and
- * trailing `-` are stripped.
+ * Order matters and mirrors tmuxctl: the `normalisePart` character rules
+ * first, then leading and trailing `-` are stripped.
  */
 export function sanitisePart(part: string): string {
-  return part
-    .replace(/[.:]+/g, '_')
-    .replace(/[^A-Za-z0-9_-]+/g, '-')
+  return normalisePart(part)
     .replace(/^-+/, '')
     .replace(/-+$/, '');
 }
