@@ -37,12 +37,10 @@ RUN apk add --no-cache \
     && su testuser -c "uv tool install 'pocketshell==${POCKETSHELL_VERSION}' && uv tool install 'tmuxctl==${TMUXCTL_VERSION}'"
 
 # aplexer (`a`) — the app's MAIN session manager wherever it is installed
-# (src/main/helper/AplexerClient.ts); see Dockerfile.helper for why it comes
-# from the GitHub release rather than PyPI, why it is unpinned by default
-# (APLEXER_VERSION pins it), and the layer-cache caveat on re-fetching.
-# `gcompat` + `libgcc` (installed above) run its glibc binary under musl.
-# Empty ARG default: an ARG with no default is never exported into RUN, and
-# `set -u` below would abort on the unset name.
+# (src/main/helper/AplexerClient.ts); see Dockerfile.helper for the full
+# rationale: GitHub release binaries (not PyPI) under gcompat + libgcc,
+# latest release resolved via the GitHub API and echoed into the build log,
+# APLEXER_VERSION to pin, and the layer-cache caveat on re-fetching.
 ARG APLEXER_VERSION=
 RUN set -eux; \
     case "$(uname -m)" in \
@@ -51,10 +49,14 @@ RUN set -eux; \
       *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
     esac; \
     if [ -n "${APLEXER_VERSION}" ]; then \
-      base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+      aplexer_version="${APLEXER_VERSION}"; \
     else \
-      base="https://github.com/alexeygrigorev/aplexer/releases/latest/download"; \
+      aplexer_version="$(curl -fsSL 'https://api.github.com/repos/alexeygrigorev/aplexer/releases/latest' \
+        | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')"; \
     fi; \
+    [ -n "${aplexer_version}" ] || { echo "could not resolve the latest aplexer release from the GitHub API" >&2; exit 1; }; \
+    echo "aplexer version: ${aplexer_version}"; \
+    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${aplexer_version}"; \
     curl -fsSL -o /usr/local/bin/a "$base/a-linux-$asset_arch"; \
     curl -fsSL -o /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
     chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer
