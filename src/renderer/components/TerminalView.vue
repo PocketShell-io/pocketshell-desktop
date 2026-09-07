@@ -35,7 +35,9 @@
 // tmux instead, and the yank comes back as OSC 52 (see the handler in
 // onMounted and osc52.ts). RIGHT-CLICK pastes into the shell. Neither paste
 // CHORD does — Ctrl/Cmd-V and Ctrl/Cmd-Shift-V are both claimed for the
-// prompt composer and leave as `paste-into-composer` (see onCustomKey).
+// prompt composer and leave as `paste-into-composer` (see onCustomKey). The
+// MIDDLE click does nothing at all (see onTerminalAuxClick): xterm's own
+// middle-click paste would feed the clipboard to the shell silently.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -894,6 +896,31 @@ async function pasteFromClipboard(): Promise<void> {
  */
 function onTerminalMouseDown(e: MouseEvent): void {
   if (e.button === 0) selecting = true;
+  // The middle button's own default — autoscroll, and on some platforms the
+  // paste itself — is cancelled here; see onTerminalAuxClick for the other
+  // half of the gesture.
+  else if (e.button === 1) e.preventDefault();
+}
+
+/**
+ * The middle click does NOTHING in the pane — deliberately, and the user asked
+ * for it that way. Left to itself, xterm answers a middle-button `auxclick` by
+ * moving its hidden helper textarea under the cursor (CoreBrowserTerminal,
+ * gated on Linux), which is exactly what lets the BROWSER'S middle-click paste
+ * fire: whatever the clipboard holds lands in the shell as typed input, with
+ * no chord and no confirmation. This swallows the event in the capture phase —
+ * stopPropagation keeps it from xterm's own listener on the terminal element,
+ * and preventDefault keeps it from the browser — so the gesture is inert. The
+ * `mousedown` half above cancels the same press's default.
+ *
+ * Mouse REPORTING is untouched: xterm forwards press and release through
+ * `mousedown`/`mouseup`, neither of which this stops or cancels, so a program
+ * inside tmux still sees the middle button. Only the LOCAL paste is gone.
+ */
+function onTerminalAuxClick(e: MouseEvent): void {
+  if (e.button !== 1) return;
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 /**
@@ -1227,6 +1254,7 @@ onMounted(async () => {
     );
   }
   containerEl.value?.addEventListener('mousedown', onTerminalMouseDown, true);
+  containerEl.value?.addEventListener('auxclick', onTerminalAuxClick, true);
   containerEl.value?.addEventListener('contextmenu', onTerminalContextMenu);
   document.addEventListener('mouseup', onDocumentMouseUp);
 
@@ -1314,6 +1342,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize);
   document.removeEventListener('mouseup', onDocumentMouseUp);
   containerEl.value?.removeEventListener('mousedown', onTerminalMouseDown, true);
+  containerEl.value?.removeEventListener('auxclick', onTerminalAuxClick, true);
   containerEl.value?.removeEventListener('contextmenu', onTerminalContextMenu);
   stopProbing();
   stallMonitor?.dispose();

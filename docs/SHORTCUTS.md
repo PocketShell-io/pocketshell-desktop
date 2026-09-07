@@ -22,6 +22,7 @@ everywhere: every call site in the app spells the test
 | *any printable key* | Opens the composer with the keystroke | Not a chord. Gated on the `typingOpensComposer` setting and on the composer being closed — and stood down after a short-draft hand-off (COMPOSER.md §12.2) until the panel is summoned again. |
 | right-click | Paste into the shell | Not a chord, and now the ONLY route to the shell's own paste. |
 | mouse-up after a drag | Copy the selection | Ditto. |
+| middle-click | Nothing — deliberately | xterm answers a middle-button `auxclick` by moving its helper textarea under the cursor, which lets the BROWSER's middle-click paste feed the clipboard to the shell silently. The pane cancels the `auxclick` and the press's default in the capture phase, before xterm sees either; mouse REPORTING still forwards press/release to the remote (`onTerminalAuxClick`). |
 | drag, release — mouse reporting ON | Select in the pane; copy on release | The same local selection as with reporting off (terminalMouseSelection.ts). The highlight persists. |
 | Shift+drag — mouse reporting ON | Select in TMUX instead | tmux paints its copy-mode highlight, and releasing yanks it; the yank reaches the pane as OSC 52 and lands in the clipboard, while tmux dismisses the highlight. |
 | drop a file on the pane | Attach it to the composer | Not a chord either. Emits the File objects to PromptComposer, which opens and stages them (COMPOSER.md §23.5). A tab drag carries a different mime type and is not claimed. |

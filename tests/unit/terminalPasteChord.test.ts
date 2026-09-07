@@ -303,6 +303,115 @@ describe('paste chord — delivery', () => {
 });
 
 /**
+ * The MIDDLE click is inert, on purpose.
+ *
+ * Left to itself, xterm answers a middle-button `auxclick` by moving its
+ * hidden helper textarea under the cursor (CoreBrowserTerminal, gated on
+ * Linux) — which is what turns the browser's OWN middle-click paste into a
+ * paste into the shell. The user reported exactly that: a stray middle press
+ * feeding the clipboard to the shell, with no chord and no confirmation. The
+ * fix swallows the event in the capture phase on the container, before xterm's
+ * listener on the terminal element runs, and cancels the `mousedown` half of
+ * the gesture too.
+ *
+ * jsdom has no middle-click default action, so — as with the chords in §4 of
+ * SHORTCUTS.md — what is asserted is the thing that makes the paste
+ * impossible: `defaultPrevented`, and the event never reaching the terminal
+ * element at all. Mouse reporting rides `mousedown`/`mouseup`, which these
+ * tests also pin as untouched, so a program inside tmux keeps its middle
+ * button even though the local paste is gone.
+ */
+describe('middle click — inert', () => {
+  /** A child of the container, standing in for the xterm element beneath it. */
+  function mountWithTerminalChild() {
+    const wrapper = mountTerminal();
+    const container = wrapper.element as HTMLElement;
+    const xtermEl = document.createElement('div');
+    container.appendChild(xtermEl);
+    return { wrapper, container, xtermEl };
+  }
+
+  function mouse(type: string, button: number): MouseEvent {
+    return new MouseEvent(type, { button, bubbles: true, cancelable: true });
+  }
+
+  it('cancels a middle auxclick and keeps it from xterm entirely', async () => {
+    const { wrapper, xtermEl } = mountWithTerminalChild();
+    const seenByXterm = vi.fn();
+    xtermEl.addEventListener('auxclick', seenByXterm);
+
+    const e = mouse('auxclick', 1);
+    xtermEl.dispatchEvent(e);
+    await settle();
+
+    expect(e.defaultPrevented).toBe(true);
+    expect(seenByXterm).not.toHaveBeenCalled();
+    expect(pasted).toEqual([]);
+    wrapper.unmount();
+  });
+
+  it('cancels a middle mousedown — the same gesture, other half', async () => {
+    // The middle press's own default (autoscroll; on some platforms the paste
+    // itself) is cancelled at mousedown as well, so nothing is left for the
+    // browser to do with the gesture.
+    const { wrapper, xtermEl } = mountWithTerminalChild();
+
+    const e = mouse('mousedown', 1);
+    xtermEl.dispatchEvent(e);
+    await settle();
+
+    expect(e.defaultPrevented).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('leaves mouse reporting alone: press and release pass through untouched', async () => {
+    // A program inside tmux sees the middle button through xterm's mousedown/
+    // mouseup forwarding. The suppression must never stop or cancel THOSE —
+    // only the local paste gesture dies, not the remote one. The auxclick
+    // guard stops propagation; mousedown must demonstrably still travel.
+    const { wrapper, container, xtermEl } = mountWithTerminalChild();
+    const seenByContainer = vi.fn();
+    container.addEventListener('mousedown', seenByContainer);
+
+    const press = mouse('mousedown', 1);
+    xtermEl.dispatchEvent(press);
+    const release = mouse('mouseup', 1);
+    xtermEl.dispatchEvent(release);
+    await settle();
+
+    expect(seenByContainer).toHaveBeenCalledTimes(1);
+    expect(press.defaultPrevented).toBe(true); // cancelled for the BROWSER only
+    expect(release.defaultPrevented).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('leaves every other button exactly as it was', async () => {
+    // Left still arms the copy-on-select and is not cancelled; right is the
+    // paste route and belongs to `contextmenu`, untouched by an auxclick
+    // guard that only ever fires for button 1.
+    const { wrapper, xtermEl } = mountWithTerminalChild();
+    const seenByXterm = vi.fn();
+    xtermEl.addEventListener('auxclick', seenByXterm);
+
+    const left = mouse('auxclick', 0);
+    xtermEl.dispatchEvent(left);
+    expect(left.defaultPrevented).toBe(false);
+    expect(seenByXterm).toHaveBeenCalledTimes(1);
+
+    const right = mouse('auxclick', 2);
+    xtermEl.dispatchEvent(right);
+    expect(right.defaultPrevented).toBe(false);
+    expect(seenByXterm).toHaveBeenCalledTimes(2);
+
+    const leftPress = mouse('mousedown', 0);
+    xtermEl.dispatchEvent(leftPress);
+    expect(leftPress.defaultPrevented).toBe(false);
+
+    wrapper.unmount();
+  });
+});
+
+/**
  * Plain Ctrl+V is the COMPOSER's.
  *
  * What this file can assert is the interception, and only the interception:
