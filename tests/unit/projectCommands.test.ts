@@ -3,7 +3,6 @@ import { shellQuote, shellQuoteRemotePath } from '../../src/shared/shellQuote';
 import {
   FREE_SESSION_NAME_MAX_SUFFIX,
   createSessionCommand,
-  directoryExistsCommand,
   fallbackCreateSessionCommand,
   freeSessionNameCommand,
   killSessionCommand,
@@ -75,11 +74,7 @@ describe('shellQuoteRemotePath', () => {
 });
 
 describe('directory commands', () => {
-  it('builds the existence pre-flight', () => {
-    expect(directoryExistsCommand('~/git/x')).toBe("[ -d $HOME/'git/x' ]");
-  });
-
-  it('builds `cd … && pwd -P`', () => {
+  it('builds `cd … && pwd -P` — the canonicalisation that also guards the start path', () => {
     expect(resolveDirectoryCommand('/var/log')).toBe("cd -- '/var/log' && pwd -P");
   });
 
@@ -89,7 +84,6 @@ describe('directory commands', () => {
 
   it('quotes a hostile folder path in every directory command', () => {
     for (const built of [
-      directoryExistsCommand(`/home/a/${HOSTILE}`),
       resolveDirectoryCommand(`/home/a/${HOSTILE}`),
       mkdirCommand(`/home/a/${HOSTILE}`),
     ]) {
@@ -223,7 +217,6 @@ describe('quote balance across every builder', () => {
         shellQuote(value),
         shellQuoteRemotePath(`/x/${value}`),
         shellQuoteRemotePath(`~/${value}`),
-        directoryExistsCommand(`/x/${value}`),
         resolveDirectoryCommand(`/x/${value}`),
         mkdirCommand(`/x/${value}`),
         sessionExistsCommand(value),

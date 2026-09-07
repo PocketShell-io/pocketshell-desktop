@@ -25,21 +25,21 @@ import { shellQuote, shellQuoteRemotePath } from '../../shared/shellQuote.js';
 export const FREE_SESSION_NAME_MAX_SUFFIX = 200;
 
 /**
- * Is [path] an existing directory? Exit 0 yes, non-zero no.
+ * Resolve a remote path to its canonical absolute form (`cd … && pwd -P`).
  *
- * This pre-flight is NOT optional. Re-measured on the Docker fixture (helper
- * 0.4.44): `pocketshell sessions create probe -c "$HOME/no/such/dir"` exits 0
- * and creates a session whose `session_path` is the missing directory — the
- * pane actually lands in `$HOME`. Without this check the desktop would report
- * "session created in ~/git/typo" for a session that is not there. The phone
- * runs the same guard (`remoteStartDirectoryExistsCommand`,
- * FolderListGateway.kt:1233).
+ * This one exec is the start path's folder guard as well as its
+ * canonicalisation: a non-zero exit means the directory could not be entered,
+ * and callers treat that as "not there". The guard used to be a separate
+ * `[ -d ]` pre-flight in front of this command, and it existed for a measured
+ * reason that still holds: the helper itself exits 0 for a missing `--cwd`
+ * (`pocketshell sessions create probe -c "$HOME/no/such/dir"` creates a
+ * session whose `session_path` is the missing directory and whose pane lands
+ * in `$HOME` — re-measured on the Docker fixture, helper 0.4.44; the phone
+ * runs the same guard, FolderListGateway.kt:1233). Folding the guard into the
+ * `cd` keeps the refusal while costing one login-shell round trip instead of
+ * two — the create is the latency-critical path, and every exec here pays the
+ * user's profile startup on top of the network.
  */
-export function directoryExistsCommand(path: string): string {
-  return `[ -d ${shellQuoteRemotePath(path)} ]`;
-}
-
-/** Resolve a remote path to its canonical absolute form (`cd … && pwd -P`). */
 export function resolveDirectoryCommand(path: string): string {
   return `cd -- ${shellQuoteRemotePath(path)} && pwd -P`;
 }

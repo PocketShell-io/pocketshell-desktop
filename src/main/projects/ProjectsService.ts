@@ -24,11 +24,11 @@ import type { SshService } from '../ssh/SshService.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
+import type { AplexerSessionRecord } from '../../shared/aplexer.js';
 import { pathAwareCommand } from '../helper/bootstrap.js';
 import { firstNonEmptyLine, lastNonEmptyLine } from '../helper/parsers.js';
 import {
   HOME_COMMAND,
-  directoryExistsCommand,
   freeSessionNameCommand,
   FREE_SESSION_NAME_MAX_SUFFIX,
   killSessionCommand,
@@ -283,7 +283,9 @@ export class ProjectsService {
         error: made.stderr.trim() || made.stdout.trim() || `mkdir exited ${made.exitCode}`,
       };
     }
-    return { ok: true, path: await this.canonicalise(connectionId, target), error: null };
+    // The folder was created one exec ago; if `pwd -P` still cannot resolve
+    // it, the path we asked for is the honest answer to report.
+    return { ok: true, path: (await this.canonicalise(connectionId, target)) ?? target, error: null };
   }
 
   /**
@@ -376,13 +378,22 @@ export class ProjectsService {
    * converge on.
    *
    * Sequence:
-   *  1. resolve `$HOME` (cached) and canonicalise the folder;
-   *  2. confirm the folder EXISTS — the helper does not (a `-c` pointing at a
-   *     missing directory still exits 0 and lands the pane in `$HOME`);
-   *  3. derive the name from the folder;
-   *  4. ask the host whether that session is already open, and — under the
+   *  1. resolve `$HOME` (cached) and canonicalise the folder — one exec whose
+   *     failure IS the missing-folder answer (`cd` cannot land in a directory
+   *     that is not there), so the old separate `[ -d ]` pre-flight is folded
+   *     into it;
+   *  2. derive the name from the folder;
+   *  3. ask the host whether that session is already open, and — under the
    *     `unique` policy — for the first free `-N` variant;
-   *  5. create, idempotently.
+   *  4. create, idempotently.
+   *
+   * Every exec here is a login shell (`/bin/sh -lc`), so it costs the user's
+   * profile startup as well as a round trip — the create is the latency-critical
+   * path of the whole app (the user's bar: click to a working agent inside a
+   * second), and serial round trips are what stood between the two. Two of the
+   * reads below are therefore issued TOGETHER: the canonicalisation and the
+   * aplexer snapshot (the free-name walk's input) are independent, and on an
+   * aplexer host the create waits on both.
    *
    * ## Why the `unique` policy fails CLOSED and `reuse` does not
    *
@@ -430,16 +441,25 @@ export class ProjectsService {
       code,
     });
 
-    const exists = await this.ssh.exec(
-      connectionId,
-      pathAwareCommand(directoryExistsCommand(folder)),
-    );
-    if (exists.exitCode !== 0) {
+    // The snapshot the aplexer branch will read, fetched CONCURRENTLY with the
+    // canonicalisation rather than after it — the two execs are independent,
+    // and the create behind them is the latency-critical path. On a tmux-only
+    // host this is one speculative exec that answers "command not found" and
+    // is discarded; it rides beside the canonicalise, so it costs no wall
+    // time there either.
+    const snapshot = this.aplexer
+      ? this.aplexer.snapshotRecords(connectionId)
+      : null;
+
+    // Canonicalise FIRST and read its failure as the missing-folder answer:
+    // `cd` cannot land in a directory that is not there. This exec used to be
+    // preceded by a separate `[ -d ]` probe making exactly the same claim, one
+    // login-shell round trip later — see {@link canonicalise} for why the
+    // probe is gone and this one carries the guard alone.
+    const canonical = await this.canonicalise(connectionId, folder);
+    if (canonical === null) {
       return failed('folder-missing', `Start folder does not exist on the host: ${folder}`);
     }
-    // Canonicalise AFTER the existence check so `~` and symlinked paths derive
-    // the same name as the folder the user browsed to.
-    const canonical = await this.canonicalise(connectionId, folder);
     const base = resolveSessionName(request.customName ?? null, canonical, home);
 
     const policy = request.namePolicy ?? 'reuse';
@@ -447,9 +467,12 @@ export class ProjectsService {
     // aplexer is the main session manager wherever `a` is installed: the
     // create, the reuse check, and the free-name walk all run against the
     // snapshot rather than against tmux. The tmux path below stays for hosts
-    // without it.
+    // without it. The snapshot fetched above feeds the whole branch; `null`
+    // records only mean "no pre-fetch happened" (no aplexer client wired) and
+    // the callee reads the host itself.
     if (this.aplexer && (await this.aplexer.isAvailable(connectionId))) {
-      return this.startAplexerSession(connectionId, canonical, base, policy, failed);
+      const records = (await snapshot) ?? undefined;
+      return this.startAplexerSession(connectionId, canonical, base, policy, failed, records);
     }
 
     let name = base;
@@ -557,10 +580,12 @@ export class ProjectsService {
       error: string | null,
       opts?: { folder?: string | null; via?: CreateSessionVia | null },
     ) => StartSessionResult,
+    /** A snapshot fetched by the caller, sparing this branch its own exec. */
+    records?: AplexerSessionRecord[],
   ): Promise<StartSessionResult> {
     const aplexer = this.aplexer!;
     if (policy === 'unique') {
-      const free = await this.freeAplexerTag(connectionId, folder, base);
+      const free = await this.freeAplexerTag(connectionId, folder, base, records);
       if (free === null) {
         return failed(
           'name-unavailable',
@@ -572,7 +597,9 @@ export class ProjectsService {
       }
       return this.createAplexerSession(connectionId, folder, free, policy, failed);
     }
-    const live = await aplexer.findSession(connectionId, folder, base);
+    const live = records
+      ? (records.find((r) => r.workspace === folder && r.tag === base) ?? null)
+      : await aplexer.findSession(connectionId, folder, base);
     if (live) {
       return { ok: true, sessionName: base, folder, reused: true, via: 'aplexer', error: null, code: null };
     }
@@ -645,8 +672,11 @@ export class ProjectsService {
     connectionId: string,
     workspace: string,
     base: string,
+    records?: AplexerSessionRecord[],
   ): Promise<string | null> {
-    const tags = await this.aplexer!.liveTags(connectionId, workspace);
+    const tags = records
+      ? new Set(records.filter((r) => r.workspace === workspace).map((r) => r.tag))
+      : await this.aplexer!.liveTags(connectionId, workspace);
     if (tags === null) return null;
     if (!tags.has(base)) return base;
     for (let i = 2; i <= FREE_SESSION_NAME_MAX_SUFFIX; i += 1) {
@@ -980,14 +1010,24 @@ export class ProjectsService {
     return lastNonEmptyLine(probe.stdout);
   }
 
-  /** `cd … && pwd -P`, falling back to the input when it cannot be resolved. */
-  private async canonicalise(connectionId: string, path: string): Promise<string> {
+  /**
+   * `cd … && pwd -P`, or **null when the directory could not be entered**.
+   *
+   * The null is load-bearing: this one exec is both the canonicalisation and
+   * the start path's folder guard. It used to fall back to the input on any
+   * failure, which forced `startSession` to run a separate `[ -d ]` probe in
+   * front of it to tell "missing" from "unresolvable" — a second login-shell
+   * round trip on the create path for an answer `cd`'s exit code already
+   * carries. The callers that genuinely have a fallback (`createFolder`, which
+   * made the directory itself one exec earlier) keep it at the call site.
+   */
+  private async canonicalise(connectionId: string, path: string): Promise<string | null> {
     const res = await this.ssh.exec(
       connectionId,
       pathAwareCommand(resolveDirectoryCommand(path)),
     );
-    if (res.exitCode !== 0) return path;
-    return firstNonEmptyLine(res.stdout) ?? path;
+    if (res.exitCode !== 0) return null;
+    return firstNonEmptyLine(res.stdout) ?? null;
   }
 }
 

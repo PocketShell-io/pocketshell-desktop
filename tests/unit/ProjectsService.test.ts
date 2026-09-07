@@ -62,7 +62,6 @@ function fakeSsh(responders: Responder[]): { ssh: SshService; commands: string[]
 }
 
 const homeResponder: Responder = (c) => (c.includes('printf %s "$HOME"') ? ok(HOME) : null);
-const dirExistsResponder: Responder = (c) => (c.includes('[ -d ') ? ok() : null);
 const pwdResponder: Responder = (c) => (c.includes('pwd -P') ? ok(`${HOME}/git/x\n`) : null);
 const noSessionResponder: Responder = (c) => (c.includes('has-session') ? fail(1) : null);
 
@@ -121,7 +120,6 @@ describe('ProjectsService.startSession', () => {
   it('runs the folder pre-flight, derives the name, and passes --cwd but not --mem', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       noSessionResponder,
       createResponder,
@@ -145,22 +143,26 @@ describe('ProjectsService.startSession', () => {
   it('refuses a folder that does not exist instead of creating a misplaced session', async () => {
     // The helper itself exits 0 for a missing --cwd and lands the pane in
     // $HOME, so this guard is the only thing between the user and a session
-    // that claims to be somewhere it is not.
+    // that claims to be somewhere it is not. The guard IS the canonicalise
+    // now: `cd` failing is the missing-folder answer, and no separate
+    // `[ -d ]` exec runs ahead of it.
     const { projects, commands } = service([
       homeResponder,
-      (c) => (c.includes('[ -d ') ? fail(1) : null),
+      (c) => (c.includes('pwd -P') ? fail(1) : null),
     ]);
     const out = await projects.startSession(CONN, { folder: '~/git/typo' });
     expect(out.ok).toBe(false);
     expect(out.code).toBe('folder-missing');
     expect(out.error).toContain('~/git/typo');
     expect(commands.some((c) => c.includes('sessions create'))).toBe(false);
+    // The collapse this asserts: $HOME plus ONE canonicalise exec, and the
+    // missing-folder refusal falls out of that exec's exit code.
+    expect(commands).toHaveLength(2);
   });
 
   it('reports reuse when the folder already has a session (idempotent, no second create)', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       (c) => (c.includes('has-session') ? ok() : null),
       createResponder,
@@ -175,7 +177,6 @@ describe('ProjectsService.startSession', () => {
   it('asks the HOST for a free name under the unique policy', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       (c) => (c.includes('__ps_n=') ? ok('git-x-2\n') : null),
       (c) => (c.includes('sessions create') ? ok('git-x-2\n') : null),
@@ -205,7 +206,6 @@ describe('ProjectsService.startSession', () => {
   it('refuses a unique start rather than reusing when the free-name probe fails', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       (c) => (c.includes('__ps_n=') ? fail(1) : null),
       createResponder,
@@ -221,7 +221,6 @@ describe('ProjectsService.startSession', () => {
   it('refuses a unique start whose probe answered with nothing readable', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       (c) => (c.includes('__ps_n=') ? ok('   \n\n') : null),
       createResponder,
@@ -241,7 +240,6 @@ describe('ProjectsService.startSession', () => {
   it('refuses a unique start whose create came back under another name', async () => {
     const { projects } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       (c) => (c.includes('__ps_n=') ? ok('git-x-2\n') : null),
       (c) => (c.includes('sessions create') ? ok('Welcome to example.com\ngit-x-2\n') : null),
@@ -256,7 +254,6 @@ describe('ProjectsService.startSession', () => {
   it('still creates under the reuse policy when the free-name probe is not run', async () => {
     const { projects } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       noSessionResponder,
       createResponder,
@@ -269,7 +266,6 @@ describe('ProjectsService.startSession', () => {
   it('uses the raw tmux create when the helper is absent', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       noSessionResponder,
       (c) => (c.includes('sessions create') ? fail(127, 'sh: pocketshell: not found') : null),
@@ -286,7 +282,6 @@ describe('ProjectsService.startSession', () => {
   it('surfaces a GENUINE create failure instead of downgrading to the uncapped fallback', async () => {
     const { projects, commands } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       noSessionResponder,
       (c) => (c.includes('sessions create') ? fail(1, 'tmuxctl: systemd-run refused') : null),
@@ -301,7 +296,6 @@ describe('ProjectsService.startSession', () => {
   it('takes the name the host echoes back over the one it asked for', async () => {
     const { projects } = service([
       homeResponder,
-      dirExistsResponder,
       pwdResponder,
       noSessionResponder,
       (c) => (c.includes('sessions create') ? ok('git-x-7\n') : null),
