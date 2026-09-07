@@ -336,10 +336,22 @@ describe('the folder workspace + menu creates a session', () => {
   });
 
   it('says so when the created session does not land in this folder', async () => {
-    // The create succeeded on the host, but the refreshed list files it
-    // elsewhere — so there is no tab here and no pane for a launch to wait on.
+    // The create succeeded on the host, but the folder it names is not the
+    // folder this workspace is keyed on — the usual cause is a session whose
+    // working directory groups elsewhere — so there is no tab here and no
+    // pane for a launch to wait on. The pending row trusts the result's
+    // folder, which is exactly what files it under the OTHER folder and off
+    // this bar.
     sessionsList.mockResolvedValue([row('git-x')]);
-    startSession.mockResolvedValue(started('git-elsewhere'));
+    startSession.mockResolvedValue({
+      ok: true,
+      sessionName: 'git-elsewhere',
+      folder: '/home/me/elsewhere',
+      reused: false,
+      via: 'helper',
+      error: null,
+      code: null,
+    });
 
     const wrapper = await openWorkspace();
     await createVia(wrapper, 'agent');

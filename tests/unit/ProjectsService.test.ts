@@ -131,6 +131,7 @@ describe('ProjectsService.startSession', () => {
       folder: `${HOME}/git/x`,
       reused: false,
       via: 'helper',
+      aplexerId: null,
       error: null,
       code: null,
     });

@@ -1309,8 +1309,9 @@ onBeforeUnmount(clearLaunchTimer);
  * A workspace the user merely passes through leaves the slot alone —
  * `takeAgentLaunch` only clears on a match — so the launch survives the trip.
  *
- * `immediate` because the panel refreshes the session list BEFORE navigating,
- * so the tab may already be present at mount and `tabs` may never change.
+ * `immediate` because the panel files the created session as a pending row
+ * BEFORE navigating, so the tab is usually already present at mount and
+ * `tabs` may never change.
  */
 watch(
   [parkedAgentLaunch, tabs],
