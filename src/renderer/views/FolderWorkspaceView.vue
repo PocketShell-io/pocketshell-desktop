@@ -343,7 +343,7 @@ function sessionTabTitle(session: string): string {
   const path = row?.path ?? null;
   if (path && path !== folderPath.value) lines.push(`running in ${path}`);
   if (row?.pathInferred) lines.push('folder inferred from the session name, not reported by tmux');
-  lines.push('click again to rename, right-click for more');
+  lines.push('double-click to rename, right-click for more');
   return lines.join('\n');
 }
 
@@ -761,26 +761,18 @@ function openDedicatedRevealTab(target: string): boolean {
   return true;
 }
 
+/** A click selects. The rename gesture is the tab's double-click (template). */
 function selectTab(tab: WorkspaceTab): void {
-  if (tab.id === selected.value || tab.id === activeTab.value?.id) {
-    // A click on the tab that is ALREADY current starts a rename, which is what
-    // makes "if I click on the tab I can rename it" coexist with "if I click on
-    // the tab I switch to it" — the browser/VS Code contract. Files tabs have
-    // no name on the host, so they are not renameable.
-    if (tab.kind === 'session') beginRename(tab);
-    return;
-  }
   goToTab(tab.id);
 }
 
 /**
  * Make [id] the visible tab and put the keyboard in it.
  *
- * The ONE selection path. A click reaches it through {@link selectTab} (which
- * only adds the click-the-active-tab-to-rename rule), and the tab chords reach
- * it directly, so a chord cannot end up doing something subtly different from a
- * click — which is the specific way the two would drift, since focus is the
- * half that is easy to forget.
+ * The ONE selection path. A click reaches it through {@link selectTab}, and the
+ * tab chords reach it directly, so a chord cannot end up doing something subtly
+ * different from a click — which is the specific way the two would drift, since
+ * focus is the half that is easy to forget.
  */
 function goToTab(id: string): void {
   if (id === activeTab.value?.id) return;
@@ -1606,7 +1598,7 @@ function openTabMenu(tab: WorkspaceTab, e: MouseEvent): void {
   };
 }
 
-/** Start a rename from the menu, since click-to-rename is undiscoverable. */
+/** Start a rename from the menu — the double-click's discoverable sibling. */
 function renameFromMenu(): void {
   const target = tabMenu.value;
   tabMenu.value = null;
@@ -1903,11 +1895,18 @@ function onFocusTerminal(): void {
             :title="tab.kind === 'session' ? sessionTabTitle(tab.session) : 'File browser'"
             draggable="true"
             @click="selectTab(tab)"
+            @dblclick="beginRename(tab)"
             @contextmenu.prevent="openTabMenu(tab, $event)"
             @dragstart="onTabDragStart(tab, $event)"
             @dragover="onTabDragOver(i, $event)"
             @drop.prevent="onTabDrop"
           >
+            <!-- The double-click is the rename gesture (the browser/VS Code
+                 contract), and it belongs on the TAB rather than in selectTab:
+                 a single click must never open an editor, and the first click
+                 of a double-click would fire selectTab before dblclick — so a
+                 click-again rule and this gesture could not coexist. Files tabs
+                 have no name on the host; beginRename declines them. -->
             <!-- The agent mark, and NOTHING when the kind is unknown or a plain
                  shell (src/shared/agentBadge.ts). A badge on every tab saying
                  "we don't know" would cost the same 12px and teach the eye to
@@ -1945,6 +1944,7 @@ function onFocusTerminal(): void {
               class="tab-close"
               title="Stop this session"
               @click.stop="askStopTab(tab)"
+              @dblclick.stop
             >
               <AppIcon name="close" :size="12" />
             </span>
@@ -1953,6 +1953,7 @@ function onFocusTerminal(): void {
               class="tab-close"
               title="Close this Files tab"
               @click.stop="closeFilesTab(tab.id)"
+              @dblclick.stop
             >
               <AppIcon name="close" :size="12" />
             </span>

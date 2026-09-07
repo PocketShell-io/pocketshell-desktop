@@ -233,3 +233,61 @@ describe('a failed tab rename is a sentence, and the sentence can be dismissed',
     expect(wrapper.find('input.rename-input').exists()).toBe(false);
   });
 });
+
+describe('the double-click is the rename gesture', () => {
+  it('opens the field when a session tab is double-clicked', async () => {
+    const wrapper = await openWorkspace();
+    await wrapper.find('nav.tabs button.tab').trigger('dblclick');
+    await flush(2);
+
+    // The field is open and holds the editable part — the remainder, since
+    // `git-x` is derived from the folder.
+    const input = wrapper.find('input.rename-input');
+    expect(input.exists()).toBe(true);
+    expect((input.element as HTMLInputElement).value).toBe('');
+  });
+
+  it('opens the field straight from a background tab, selecting it on the way', async () => {
+    sessionsList.mockResolvedValue([row('git-x'), row('git-x-2', 2)]);
+    useSessionsStore().sessions = [row('git-x'), row('git-x-2', 2)] as never;
+
+    const wrapper = await openWorkspace();
+    const tabs = wrapper.findAll('nav.tabs button.tab');
+    const background = tabs[1];
+    if (!background) throw new Error('no background session tab to double-click');
+    await background.trigger('dblclick');
+    await flush(2);
+
+    expect(wrapper.find('input.rename-input').exists()).toBe(true);
+  });
+
+  it('does NOT open the field on a single click, active tab included', async () => {
+    // The retired gesture: clicking the already-current tab used to start a
+    // rename. A double-click fires a click first, so the two gestures cannot
+    // coexist — and a click that opens an editor is a click that surprises.
+    const wrapper = await openWorkspace();
+    await wrapper.find('nav.tabs button.tab').trigger('click');
+    await flush(2);
+    expect(wrapper.find('input.rename-input').exists()).toBe(false);
+  });
+
+  it('leaves a Files tab alone', async () => {
+    // Files tabs have no name on the host, so there is nothing a rename could
+    // commit to. The tab is opened the way the user opens one, through the
+    // `+` menu — no Files tab is seeded.
+    const wrapper = await openWorkspace();
+    await wrapper.find('.tab.add').trigger('click');
+    const item = wrapper.findAll('.menu-item').find((b) => b.text() === 'New Files tab');
+    if (!item) throw new Error('no "New Files tab" item on the + menu');
+    await item.trigger('click');
+    await flush();
+
+    const filesTab = wrapper
+      .findAll('nav.tabs button.tab')
+      .find((b) => b.classes().includes('files'));
+    expect(filesTab).toBeDefined();
+    await filesTab!.trigger('dblclick');
+    await flush(2);
+    expect(wrapper.find('input.rename-input').exists()).toBe(false);
+  });
+});
