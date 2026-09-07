@@ -160,8 +160,8 @@ export interface AppSettings {
    * tick and every reconciliation is a chance to invent a row or lose one.
    *
    * **Empty is meaningful and is the default**, the same way `sessionRoots`'
-   * empty is: nothing arranged means the panel renders creation order, which is
-   * what it does for a user who never drags anything.
+   * empty is: nothing arranged means the panel renders the host's order, which
+   * is what it does for a user who never drags anything.
    *
    * PER HOST, keyed on the `~/.ssh/config` alias. The alias rather than the
    * connection id for the reason the tab order gives (§15.3): a connection id
@@ -395,9 +395,9 @@ const SETTING_SPECS: SettingSpecs = {
   // setting existed — the same rule the typography defaults follow. The map
   // is keyed by SSH config alias so one host's layout cannot leak into another.
   sessionRoots: { default: {}, parse: asRootMap },
-  // Empty means "creation order, as the host reported it", which is what the
-  // panel does for a user who has never dragged a row — the same rule every
-  // other default here follows.
+  // Empty means "the host's order, as the listing reported it", which is what
+  // the panel does for a user who has never dragged a row — the same rule
+  // every other default here follows.
   folderOrder: { default: {}, parse: normaliseFolderOrder },
   // Matches the helper's own `[default: skip-permissions]` and the phone's
   // first segment, so a fresh install opens the dialog on claude / skip ON.
@@ -640,7 +640,7 @@ export const useSettingsStore = defineStore('settings', () => {
    *
    * A read helper rather than a bare index, so every caller gets the same
    * answer for an alias that has never been arranged — an empty array, which is
-   * what `applyFolderOrder` reads as "use creation order" — instead of one
+   * what `applyFolderOrder` reads as "use the host's order" — instead of one
    * caller having to remember the `?? []` and another forgetting it. A blank
    * alias (no host connected yet) is answered the same way, because there is no
    * arrangement to have.

@@ -1,7 +1,7 @@
 # SESSIONLIST.md — Session panel: the folder view
 
 Status: **current.** The panel is `root -> folder`, TWO levels, rendered in
-creation order and draggable. The requirement that produced this shape, in the
+the host's order and draggable. The requirement that produced this shape, in the
 user's words:
 
 > "git -> folder -> session"
@@ -21,7 +21,7 @@ whose shape depended on its contents. All of that is gone. What survived:
 the display-label rules (§4), truncation (§5), the panel width (§7),
 registered roots (§12), and the `+` creation affordances (§0a).
 
-Two later revisions, in brief:
+Three later revisions, in brief:
 
 - **Revision 6 — the panel stops rearranging itself.** The recency sort is
   overturned: rows render in CREATION order (§6.0), draggable to override
@@ -32,6 +32,10 @@ Two later revisions, in brief:
   need to be shortened"): a label renders as ONE span with the standard
   `text-overflow: ellipsis`; the full name is read on hover from the row
   tooltip (§5).
+- **Revision 8 — the panel stops sorting.** Creation order — revision 6's own
+  answer — is delegated to the host: `a` sorts the session list (`--sort`,
+  `accessed` by default) and every level of the panel preserves that order
+  (§6.0).
 
 **What changed:** the panel is now `root -> folder`, two levels, one row per
 folder. There is no session level. Clicking a folder row opens a folder
@@ -244,13 +248,12 @@ Let `label = defaultLabelForPath(directoryKey(canonicalisePath(session.path), ho
 (sessionGrouping.ts) and `base = sanitisePart(label)` (the regex at
 src/shared/sessionNameParts.ts:21-27; see §8 for why it lives there).
 
-1. **Derived-name suppression is structural, and the test no longer gates any
-   rendering.** The old question — *is this session name just its folder
-   restated?* — now has a structural answer: a folder row never shows a
-   session name (its tooltip lists them, §3b), and the panel has no leaf row
-   to show one on. `isDerivedName` stays exported and tested: it still gates
-   `flattenSessions`' `showName`, and it is the shared statement of what
-   "derived" means, which §4.6's heuristic leans on.
+1. **Derived-name suppression is structural.** The old question — *is this
+   session name just its folder
+   restated?* — has a structural answer: a folder row never shows a session
+   name (its tooltip lists them, §3b), and the panel's leaf rows show the
+   session names themselves (§4's leaf), where a restated folder name is the
+   point rather than a bug. No derivation test gates any rendering.
 2. **Divergence** (worktree, custom name): folder `merry-sniffing-token`
    holding session `git-dtc-website` — the row the user circled, both labels
    truncated on one line, neither readable. Now the folder row says
@@ -323,51 +326,59 @@ the `labelHead`/`labelTail`/`nameHead`/`nameTail` fields are still exported
 and computed in `sessionGrouping.ts`, but the renderer no longer consumes
 them.
 
-## 6. Timestamp, sort, and finding "the session I was just in"
+## 6. Timestamp, order, and finding "the session I was just in"
 
 **Timestamp → compact relative.** `Aug 24, 01:10 PM` costs ~90px per row to
 say what a column of ages says better. Rows show `now` (<60s), `12m`, `3h`,
 `2d` (<7 days), then `Aug 12` — max ~6 characters ≈ 36px at `--fs-100`. The
 absolute form lives in the tooltip, and the strings refresh from a `now` ref
 ticked every 60s (activity only changes on store refresh, so this is cosmetic
-re-rendering). Since §6.0 the time no longer doubles as the sort key, so times
-run in no particular direction down a root — a real loss, paid deliberately.
+re-rendering). The time no longer doubles as a sort key — there is no
+client-side sort at all (§6.0) — so times run in no particular direction down
+a root — a real loss, paid deliberately.
 
-### 6.0 What ships: creation order
+### 6.0 What ships: the host's order
 
 > "let's not rearrange workspaces/sessions in here because it's confusing.
 > let's use wheveer order we had when creating."
 
-**Folder sort, within each root:** oldest `created` asc → case-insensitive
-label asc. **Row sort inside a folder:** oldest `created` asc → name asc.
-**Root sort:** registered roots in registered order (§12 — the comparator
-never consults them); derived roots by oldest `created` asc →
-case-insensitive label asc; `other` still pinned last however recent it is.
+That sentence produced creation order and kept faith until the host could
+sort. What ships now is its successor, from the same concern: **the panel
+orders nothing at all.** The main process asks the host to sort the listing —
+`a`'s surface is `a list --sort name|created|accessed|activity`, and the app
+requests its default, `accessed` — and every level of the panel preserves the
+document order of the list the store receives: rows inside a folder, folders
+inside a root (first appearance), derived roots (first appearance). Registered
+roots render in registered order (§12) and `other` is pinned last; the drag
+arrangement (§14) is a projection on top of all of it.
 
-A folder's and a derived root's key is the creation time of the **oldest**
-session in it. Oldest is the only member timestamp that does not move when the
-set changes: starting a session in a folder cannot change it, and killing any
-session but the first cannot either. A newest-session key would send a folder
-to the bottom of its root every time the user started something in it — at the
-exact moment they were looking at that folder. Both keys the old sort used
-move on their own, and that is the whole complaint: **`mostRecentActivity` is
-re-sampled every five seconds** (`POLL_MS`, SessionTree.vue:236), so a row
-whose folder produced output climbed while the user was reading the list; and
-**`attached` flips as a side effect of NAVIGATING**, so the row the user had
-just clicked jumped to the top of its root — the list rearranged itself in
-response to being used. `Ctrl+↑` / `Ctrl+↓` walk this same list, which raises
-the cost from untidy to hostile: a moving order means the keyboard lands
-somewhere other than where the eye aimed.
+Delegating answers the original complaint the same way creation order did, by
+removing the client's moving keys — and it goes one further: whether a row
+moves at all is now the host's decision and nobody else's. `a` owns the
+timestamps (activity, access, creation), so it owns the order they produce.
+The order survives the poll because the projection (`buildRows` /
+`buildDirectories` / `groupSessionsIntoRoots`) is a fold, not a sort — there
+is not one comparator left in the path.
 
-**What replaced attached-first.** Finding "the session I was just in" no
-longer needs the sort to do it: the row carries a green dot and a semibold
-label, the open folder carries the accent rail, and the arrow chords step
-between folders from wherever the user is. The marks stayed; only the movement
-went. *Agents-first stays dropped*, for the reason §6.1 gives — it was never a
-panel-level key; `isAgentSession` is still exported and still used by
-`groupSessionsByFolder`, the phone-parity anchor. Order recomputes on every
-store refresh, but it now recomputes to the **same answer**, which is the
-point.
+**Compatibility.** A host whose `a` predates `--sort` refuses the flag (the
+refusal is remembered per connection) and its unsorted snapshot —
+newest-created first — is straightened oldest-first in `PocketshellClient`:
+the order such a host already showed. The legacy helper path (no `a` at all)
+is pinned to that same creation order there. The order contract lives in main:
+`listSessions` returns the list already in the order the panel shows it.
+
+**The tab bar kept its own order.** `buildWorkspaceTabs` still sorts tabs by
+creation, on its own stability argument — a bar that reorders under the
+refresh timer moves the target between the click and the hit. The panel and
+the bar therefore list a folder's sessions differently, deliberately: the
+bar's rows are hit targets, the panel's rows are the host's list.
+
+`Ctrl+↑` / `Ctrl+↓` walk this same list, which is exactly why nothing
+client-side may rearrange it — the chord exists to move between the rows the
+user can see. The marks that answer "the session I was just in" without
+moving anything are unchanged: the green dot, the semibold label, the accent
+rail on the open folder. Agents-first stays dropped too: agent-ness is the row
+badge, a fact about a row, not a reason to move it.
 
 ### 6.1 SUPERSEDED — the recency sort
 
@@ -405,14 +416,13 @@ recency either.)*
 - **Three projections, one module, one row builder.**
   `src/renderer/sessionGrouping.ts` exports `groupSessionsIntoRoots` — what
   the panel renders (`SessionRootFolder = { key, label, directories,
-  sessionCount, created, mostRecentActivity, active, other, configured }`;
-  `SessionDirectory = { key, path, label, rows, created, mostRecentActivity,
+  sessionCount, mostRecentActivity, active, other, configured }`;
+  `SessionDirectory = { key, path, label, rows, mostRecentActivity,
   active, untracked, inferredRoot }`; `rows.length` is a count and nothing
-  else — the only reader left is the header's `≥ 2` count field, §3b);
-  `flattenSessions`, the row model's direct test surface; and
+  else — the only reader left is the header's `≥ 2` count field, §3b); and
   `groupSessionsByFolder`, the phone-parity LEAF grouping that nothing
   renders — the parity anchor, and the shape the folder-first creation flow
-  speaks. All three go through one private `buildRows`, so they cannot
+  speaks. All of them go through one private `buildRows`, so they cannot
   disagree about a label, and `buildRows` deliberately does not disambiguate:
   the correct scope differs (§4.5), so each projection applies
   `disambiguateLabels` over its own scope.
@@ -488,9 +498,10 @@ recency either.)*
    `[folder: SessionDirectory, session?: string]`, handled by
    `HostWorkspaceView.onSelectFolder`). The payload is stable across panel
    redesigns — the workspace side learns nothing of what changed here.
-4. **The order never moves on its own.** Creation order (§6.0) plus the
-   user's own arrangement (§14) recompute to the same answer on every poll,
-   so `Ctrl+↑`/`Ctrl+↓` land where the eye aimed.
+4. **The client never rearranges the list.** The order is the host's (§6.0)
+   with the user's arrangement (§14) on top, and the projection is a fold of
+   the list, not a sort of it — the client adds no movement of its own. A row
+   moves only when the host says so or the user does, and both are on purpose.
 
 ## 11. Still open, and the alternative we did not build
 
@@ -630,11 +641,11 @@ write uses the per-host map.
   broken setting. `SessionRootFolder` carries `configured` so the panel can
   say "registered in Settings — nothing running here" rather than leaving a
   bare `0` to be interpreted.
-- **Registered roots render in registered order; derived roots keep the
-  creation key** (§6.0). A declared list is itself an ordering, and re-sorting
-  it by activity would let the sessions store's refresh timer reshuffle the
-  panel's top level under the user's cursor. With nothing declared, creation
-  order is the only ordering there is.
+- **Registered roots render in registered order; derived roots follow the
+  host's list** (§6.0). A declared list is itself an ordering, and re-sorting
+  it by anything would let the sessions store's refresh timer reshuffle the
+  panel's top level under the user's cursor. With nothing declared,
+  first-appearance order in the host's list is the only ordering there is.
 - **The §4.6 name heuristic files into registered roots.** A REGISTERED root
   is stronger evidence than an inferred one, so with roots configured the
   candidate set is the registered list — a no-cwd session called
@@ -742,9 +753,9 @@ closed two dialogs and thrown away the browse.
 
 > "but I can also pull them up and down to rearraange"
 
-The second half of the sentence §6.0 answers the first half of. Creation order
-is what a row gets until the user moves it; a manual position wins once there
-is one. `src/renderer/folderOrder.ts` is the whole rule, with
+The second half of the sentence §6.0 answers the first half of. The host's
+order is what a row gets until the user moves it; a manual position wins once
+there is one. `src/renderer/folderOrder.ts` is the whole rule, with
 `tests/unit/folderOrder.test.ts` beside it.
 
 ### 14.1 The tab bar's same rule, one level up
@@ -761,8 +772,8 @@ otherwise follow it. The two are one gesture in the user's hands.
 **The stored value is a RANKING, not a list of rows** — with more force here
 than in the tab strip, since the folder set changes when sessions are created
 and killed AND on a five-second poll, across every root on the box. As a
-ranking, a new folder is unranked and lands at the bottom of its root (where
-creation order would have put it), a dead folder is simply absent, and a key
+ranking, a new folder is unranked and lands at the bottom of its root, a dead
+folder is simply absent, and a key
 naming nothing is inert.
 
 ### 14.2 A row may NOT leave its root

@@ -123,8 +123,9 @@ export const useSessionsStore = defineStore('sessions', () => {
    *
    * A pending row whose identity the host now lists is confirmed — drop the
    * ledger entry, the fetched row is the truth. One the host does not list is
-   * kept ONLY while it is inside its TTL, prepended so it stays at the top of
-   * the recency sort; past the TTL it was never real and is dropped.
+   * kept ONLY while it is inside its TTL, prepended so the row the user just
+   * asked for sits at the top of the list; past the TTL it was never real and
+   * is dropped.
    */
   function mergePending(fetched: SessionSummary[], now: number = Date.now()): SessionSummary[] {
     if (pendingRows.value.length === 0) return fetched;

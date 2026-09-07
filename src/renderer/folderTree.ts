@@ -57,7 +57,7 @@ export interface FolderTree {
    * for `hostname` or `connectionId` instead.
    */
   host: ComputedRef<string>;
-  /** Root sections, in panel order — creation order with the user's drags applied. */
+  /** Root sections, in panel order — the host's order with the user's drags applied. */
   roots: ComputedRef<SessionRootFolder[]>;
   /**
    * Every folder row, flattened in the order they are drawn — root by root,
@@ -94,10 +94,10 @@ export function useFolderTree(): FolderTree {
 
   const roots = computed(() =>
     // Derived first, the user's own arrangement on top. The ORDER OF THE TWO
-    // STEPS is the resolution of the two halves of one request: creation order
-    // is what a folder row gets until the user moves it, and a manual position
-    // wins once there is one. Same shape, same order, as the workspace's tab
-    // bar.
+    // STEPS is the resolution of the two halves of one request: the host's
+    // order is what a folder row gets until the user moves it, and a manual
+    // position wins once there is one. Same shape, same order, as the
+    // workspace's tab bar.
     //
     // A pure projection, deliberately: the sessions store refreshes every five
     // seconds and this recomputes each time, so the arrangement has to be

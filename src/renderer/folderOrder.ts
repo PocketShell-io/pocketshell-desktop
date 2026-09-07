@@ -6,8 +6,9 @@
  * > and down to rearraange"
  *
  * Two halves, and they are deliberately in two files. The first half — stop
- * moving on your own, use creation order — is a fact about the host and lives
- * in `sessionGrouping.ts` with the rest of the projection. The second half —
+ * moving on your own, show one order — is a fact about the host and lives
+ * in `sessionGrouping.ts` with the rest of the projection (the host's `--sort`
+ * order today; creation order before the host could sort). The second half —
  * the arrangement the user reached by dragging rows until the panel looked
  * right — is a preference about the panel, and it lives here.
  *
@@ -35,16 +36,15 @@
  *
  *   - **a NEW folder** — the user just started a session somewhere new — has no
  *     rank, sorts after everything that has one, and lands at the bottom of its
- *     root. That is where creation order would have put it anyway, so a folder
- *     the user has never arranged behaves identically whether or not they have
- *     arranged anything else;
+ *     root. A folder the user has never arranged behaves identically whether or
+ *     not they have arranged anything else;
  *   - **a REMOVED folder** — its last session was killed — is simply absent from
  *     the roots and leaves no hole, because nothing is positioned by index;
  *   - **an UNKNOWN key** — a folder that is gone, or one belonging to a host
  *     this order was not written for — ranks nothing and is inert.
  *
  * The sort is STABLE and the comparator only ever compares ranks, so two
- * unranked folders keep their creation order relative to each other.
+ * unranked folders keep their host-list order relative to each other.
  * `Array.prototype.sort` has been required to be stable since ES2019.
  */
 import type { SessionDirectory, SessionRootFolder } from './sessionTree';

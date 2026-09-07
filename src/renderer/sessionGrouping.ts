@@ -46,29 +46,31 @@
  * leaf level, and `canonicalisePath` / `defaultLabelForPath` remain the shared
  * label rules the folder-first creation flow also speaks.
  *
- * ## The panel's order is CREATION order (docs/SESSIONLIST.md §6, revised)
+ * ## The panel's order is the HOST's order (docs/SESSIONLIST.md §6)
  *
- * Everything the PANEL renders — roots, the folder rows inside them, and the
- * sessions inside a folder — is ordered oldest-created first, with a stable
- * label or name tiebreak. It used to be ordered by recency and attachment, and
- * the file still carries both of those as the phone's rules where the phone's
- * rules are what is being ported (`compareSessions`, used by
- * `groupSessionsByFolder`). What changed is the DESKTOP PANEL's three
- * comparators — `compareRows`, `compareDirectories`, `compareRoots` — each of
- * which has its own note on which moving key it dropped and why.
+ * The panel no longer sorts anything. The listing that reaches the sessions
+ * store is already in the order the host was asked for — `a` sorts it
+ * (`--sort accessed` today; see the order contract on
+ * `PocketshellClient.listSessions`) — and this file PRESERVES that document
+ * order: `buildRows` maps the store's array in place, and the tree derives
+ * both of its levels from first appearance in that same order. A row moves
+ * only when the host says so, which is the point of delegating: the helper
+ * owns the timestamps, so it owns the order they produce.
  *
- * The one-line reason, from the user: "let's not rearrange workspaces/sessions
- * in here because it's confusing. let's use wheveer order we had when
- * creating." The panel re-reads the host every five seconds (SessionTree's
- * `POLL_MS`), so a recency key is a key that moves rows while they are being
- * read, and `Ctrl+↑`/`Ctrl+↓` walk this same list.
- *
- * The user's MANUAL arrangement — dragging a folder row up or down — is not
- * here. It is a projection applied ON TOP of this one, in
- * `renderer/folderOrder.ts`, for the same reason the workspace's manual tab
- * order is separate from `buildWorkspaceTabs`: this module answers "what order
- * did these arrive in", which is a fact about the host, and that module answers
- * "where did the user put them", which is a preference about the panel.
+ * History, because both predecessors were deliberate. The recency sort
+ * rearranged rows under the cursor — the five-second poll re-samples
+ * `activity`, and `attached` flips as a side effect of navigating — and the
+ * user's fix was creation order: "let's not rearrange workspaces/sessions in
+ * here because it's confusing. let's use wheveer order we had when creating."
+ * Creation order kept faith until the host could sort, and the same concern
+ * (an order you can build muscle memory for) moved host-side once `a` grew
+ * `--sort`. What the client may still do with the order is ANSWER it, never
+ * change it — and the user's MANUAL arrangement is not here either. It is a
+ * projection applied ON TOP of this one, in `renderer/folderOrder.ts`, for
+ * the same reason the workspace's manual tab order is separate from
+ * `buildWorkspaceTabs`: this module answers "what order did the host hand
+ * us", which is a fact about the host, and that module answers "where did the
+ * user put them", which is a preference about the panel.
  */
 import type { SessionAgentKind, SessionSummary } from '../shared/types';
 
@@ -124,26 +126,6 @@ export function defaultLabelForPath(path: string): string {
 /** Last-activity epoch for a session, falling back to its creation time. */
 export function sessionActivity(session: SessionSummary): number {
   return session.activity || session.created || 0;
-}
-
-/**
- * Creation epoch for a session, falling back to its last activity.
- *
- * The mirror of {@link sessionActivity}, and it is what the PANEL now orders
- * by (docs/SESSIONLIST.md §6, revised). The fallback is the same defensive
- * shape and for the same reason: `parseSessionsList` fills both columns from
- * the helper's three-column table, and a host whose table yields one usable
- * timestamp must still produce a total order rather than a list of zeroes that
- * collapses onto the label tiebreak.
- *
- * The property that makes this the right key is that IT DOES NOT MOVE.
- * `activity` is re-sampled every five seconds by the panel's poll, so a row
- * ordered by it changes place while the user is looking at it; `created` is
- * fixed for the lifetime of the session, so a row ordered by it changes place
- * only when a session is created or killed — which the user did on purpose.
- */
-export function sessionCreated(session: SessionSummary): number {
-  return session.created || session.activity || 0;
 }
 
 /**
@@ -286,49 +268,6 @@ function tailSegments(path: string, count: number): string {
   return parts.slice(-count).join('/');
 }
 
-/**
- * Global row order (docs/SESSIONLIST.md §6, REVISED): CREATION order, oldest
- * first, ties broken on the name.
- *
- * ## What this replaced, and why
- *
- * It was `attached` desc -> activity desc -> name, and both of those keys move
- * on their own. `activity` is re-sampled by the panel's five-second poll, and
- * `attached` flips the moment the user opens a workspace — so the list
- * rearranged itself both while the user was reading it and as a side effect of
- * the user reading it. The report was one sentence: "let's not rearrange
- * workspaces/sessions in here because it's confusing. let's use wheveer order
- * we had when creating." A list that reorders itself is one you cannot build
- * muscle memory for, and `Ctrl+↑`/`Ctrl+↓` walk this
- * same list, so a moving order is not merely untidy — it makes the keyboard
- * land somewhere other than where the eye aimed.
- *
- * Creation order is the property being asked for: it is fixed for the lifetime
- * of a session, so the only thing that moves a row is creating or killing one.
- *
- * This is also the order the workspace's TAB BAR has always used, for exactly
- * the reason it now applies here too (`buildWorkspaceTabs`: "a bar that
- * reorders under the session store's refresh timer moves the target between
- * those two moments"). The two surfaces the user hits — panel
- * row and tab — no longer disagree about what order a folder's sessions are in.
- *
- * The name tiebreak is what keeps the order TOTAL on a host whose table reports
- * one timestamp for everything (`parseSessionsList` sets `activity === created`
- * from a three-column table), and it is a stable key rather than a moving one.
- *
- * The phone's agents-first key is still deliberately NOT applied here, for the
- * reason it never was: it is a *within-folder* tiebreak so a folder's shells
- * cannot bury its agent, and as a GLOBAL key it pins every agent above every
- * shell regardless of anything else. Agent-ness stays visible as the row badge.
- * `attached`-ness stays visible as the green dot and the semibold label, which
- * is where it belongs — a fact about a row, not a reason to move it.
- */
-function compareRows(a: SessionSummary, b: SessionSummary): number {
-  const byCreated = sessionCreated(a) - sessionCreated(b);
-  if (byCreated !== 0) return byCreated;
-  return a.name.localeCompare(b.name);
-}
-
 /** The shape {@link disambiguateLabels} needs: a path-derived label. */
 interface PathLabelled {
   label: string;
@@ -372,18 +311,6 @@ export function disambiguateLabels<T extends PathLabelled>(items: T[], pathOf: (
 }
 
 /**
- * Build one row per session, sorted, but NOT yet disambiguated.
- *
- * Disambiguation is left to the caller because its correct SCOPE differs
- * between the two projections: the flat list has to separate `~/git/foo` from
- * `~/work/foo` itself, while the tree already separates them with two root
- * headers and only needs to disambiguate within a root.
- *
- * Built on the same `canonicalisePath` / `defaultLabelForPath` /
- * `sessionActivity` rules as {@link groupSessionsByFolder}, so every
- * projection agrees about what a folder is called.
- */
-/**
  * The path a session GROUPS under, which is not always the path it runs in.
  *
  * A session in a linked git worktree groups under the repository the worktree
@@ -401,6 +328,41 @@ function groupingPath(session: SessionSummary): string {
   return canonicalisePath(session.repoRoot ?? session.path);
 }
 
+/**
+ * Build one row per session, in the order the sessions arrived, but NOT yet
+ * disambiguated.
+ *
+ * "The order the sessions arrived" is doing real work in that sentence: it is
+ * the host's order, and this function is a map, not a sort. The main process
+ * asks the host to sort the listing (`--sort accessed`; the order contract is
+ * on `PocketshellClient.listSessions`), the store keeps that document order,
+ * and a row moves only when the host says so. `Ctrl+↑`/`Ctrl+↓` walk this
+ * list, which is exactly why nothing here may rearrange it.
+ *
+ * It has been two other things. First recency — attached first, then activity
+ * — and both of those keys move on their own: `activity` is re-sampled by the
+ * panel's five-second poll, and `attached` flips the moment the user opens a
+ * workspace, so the list rearranged itself both while the user was reading it
+ * and as a side effect of the user reading it. Then creation order, the
+ * user's fix for that ("let's not rearrange workspaces/sessions in here
+ * because it's confusing"), which held until the host could sort.
+ *
+ * The workspace's TAB BAR is the one surface that still sorts by creation
+ * (`buildWorkspaceTabs`), on its own stability argument — a bar that reorders
+ * under the refresh timer moves the target between the click and the hit. The
+ * panel and the bar therefore order a folder's sessions differently now,
+ * deliberately: the bar's rows are HIT targets, the panel's rows are the
+ * host's list.
+ *
+ * Disambiguation is left to the caller because its correct SCOPE differs
+ * between the two projections: the flat list has to separate `~/git/foo` from
+ * `~/work/foo` itself, while the tree already separates them with two root
+ * headers and only needs to disambiguate within a root.
+ *
+ * Built on the same `canonicalisePath` / `defaultLabelForPath` /
+ * `sessionActivity` rules as {@link groupSessionsByFolder}, so every
+ * projection agrees about what a folder is called.
+ */
 export function buildRows(sessions: SessionSummary[]): SessionRow[] {
   const counts = new Map<string, number>();
   for (const session of sessions) {
@@ -408,7 +370,7 @@ export function buildRows(sessions: SessionSummary[]): SessionRow[] {
     counts.set(path, (counts.get(path) ?? 0) + 1);
   }
 
-  return [...sessions].sort(compareRows).map((session) => {
+  return sessions.map((session) => {
     const folderPath = groupingPath(session);
     const untracked = folderPath === UNTRACKED_PATH;
     // An untracked session has no folder to name it after, so its own name is

@@ -617,9 +617,10 @@ describe('SessionTree — stopping every session in a folder', () => {
     await wrapper.get('.menu-stub .menu-item.danger').trigger('click');
   }
 
-  // Timestamps ascend with the row order the assertions expect, because the
-  // panel renders CREATION order now (docs/SESSIONLIST.md §6): `dataqna` was
-  // started before `other`, and its second session after both.
+  // The rows arrive in the order the assertions expect: the panel renders
+  // the host's order (docs/SESSIONLIST.md §6), and the fixture lists its
+  // sessions the way the host would print them — `dataqna` first, its second
+  // session after it, `other` last.
   const FOLDER = [
     session('git-dataqna', `${HOME}/git/dataqna`, 200),
     session('git-dataqna-2', `${HOME}/git/dataqna`, 250),

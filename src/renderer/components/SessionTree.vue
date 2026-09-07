@@ -1136,8 +1136,8 @@ function fmtRelative(epochSeconds: number): string {
                 {{ badge }}
               </span>
               <!-- The folder's age is its NEWEST session's, and it is now
-                   INDEPENDENT of where the row sits: the list is ordered by
-                   creation and by the user's own arrangement, so times run in
+                   INDEPENDENT of where the row sits: the list is in the host's
+                   order plus the user's own arrangement, so times run in
                    no particular direction down a root. That is a cost of the
                    change and it is paid deliberately — an order you can predict
                    is worth more than one that happened to double as a sort key

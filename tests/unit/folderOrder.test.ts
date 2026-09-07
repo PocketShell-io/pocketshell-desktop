@@ -26,13 +26,13 @@ import type { SessionSummary } from '../../src/shared/types';
 
 const HOME = '/home/alexey';
 
-/** Terse SessionSummary factory. `created` is what the panel now orders by. */
+/** Terse SessionSummary factory — timestamps only feed the row's displayed age. */
 function session(name: string, path: string | null, created: number): SessionSummary {
   return { name, created, activity: created, attached: false, path };
 }
 
 /**
- * `git/a`, `git/b`, `git/c` and `tmp/d`, created in that order — so the derived
+ * `git/a`, `git/b`, `git/c` and `tmp/d`, LISTED in that order — so the derived
  * order is alphabetical too and a reordering is unmistakable in the assertion.
  */
 function tree(): SessionRootFolder[] {
@@ -128,9 +128,10 @@ describe('applyFolderOrder', () => {
     ]);
   });
 
-  it('sinks an UNRANKED folder to the bottom of its root, keeping creation order there', () => {
-    // A folder the user has never dragged lands where creation order would have
-    // put it anyway, so arranging one root does not scramble the rest.
+  it('sinks an UNRANKED folder to the bottom of its root, keeping list order there', () => {
+    // A folder the user has never dragged lands after every ranked one, and
+    // the unranked ones keep the host's relative order, so arranging one root
+    // does not scramble the rest.
     expect(drawn(applyFolderOrder(tree(), ['~/git/c']))).toEqual([
       '~/git/c',
       '~/git/a',

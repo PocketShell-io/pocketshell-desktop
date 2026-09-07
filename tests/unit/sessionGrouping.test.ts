@@ -340,9 +340,9 @@ describe('groupSessionsIntoRoots', () => {
   }
 
   it('renders one root per $HOME child, holding that root directories', () => {
-    // Timestamps ascend in the order the assertions expect, because the panel
-    // renders CREATION order now (§6): `dataops` was made before `pocketshell`,
-    // and both before anything in `tmp`.
+    // The sessions arrive in the order the assertions expect: the panel
+    // preserves the host's order (§6), so the tree folds the list without
+    // rearranging it.
     const roots = groupSessionsIntoRoots(
       [
         session('git-dataops', '/home/alexey/git/dataops', 100),
@@ -504,7 +504,7 @@ describe('groupSessionsIntoRoots', () => {
     expect(roots.map((r) => r.label)).toEqual(['git', OTHER_LABEL]);
   });
 
-  it('orders derived roots by OLDEST creation, then case-insensitive label', () => {
+  it('keeps derived roots in the order the host listed them', () => {
     const roots = groupSessionsIntoRoots(
       [
         session('a', '/home/alexey/first/a', 100),
@@ -513,18 +513,21 @@ describe('groupSessionsIntoRoots', () => {
       ],
       home,
     );
-    expect(roots.map((r) => r.label)).toEqual(['first', 'second', 'third']);
+    // First appearance in the list: `third` holds the newest session and
+    // still renders where the host put it, not where its timestamp or its
+    // label would sort it.
+    expect(roots.map((r) => r.label)).toEqual(['first', 'third', 'second']);
     // The age is still the NEWEST activity — it is what the header displays,
-    // and it is no longer what the header sorts on. Two different questions,
+    // and it is not what the header sorts on. Two different questions,
     // two fields.
-    expect(roots[0]!.created).toBe(100);
     expect(roots[0]!.mostRecentActivity).toBe(100);
   });
 
   it('does not move a root when its newest activity changes', () => {
     // The poll re-samples `activity` every five seconds. Under the old
-    // recency sort that was enough to swap two headers under the cursor; under
-    // creation order the two lists are identical.
+    // recency sort that was enough to swap two headers under the cursor; the
+    // projection preserves the order it is given, so the two lists are
+    // identical — the order changes only when the host's list does.
     const before = groupSessionsIntoRoots(
       [
         { name: 'a', created: 100, activity: 100, attached: false, path: '/home/alexey/one/a' },
@@ -544,9 +547,11 @@ describe('groupSessionsIntoRoots', () => {
     expect(after.map((r) => r.label)).toEqual(['one', 'two']);
   });
 
-  it('takes a root creation key from its OLDEST session, so a new one cannot move it', () => {
-    // The property the whole revision turns on. `two` holds the newest session
-    // on the box and still sits second, because it was started second.
+  it('orders roots by first appearance, so a new root cannot displace them', () => {
+    // `two` holds the newest session on the box and still sits where its
+    // first row landed. The client never reorders on its own — where a
+    // brand-new root appears is the host's decision (its sort), applied
+    // verbatim.
     const roots = groupSessionsIntoRoots(
       [
         session('one-a', '/home/alexey/one/a', 100),
@@ -556,18 +561,19 @@ describe('groupSessionsIntoRoots', () => {
       home,
     );
     expect(roots.map((r) => r.label)).toEqual(['one', 'two']);
-    expect(roots[1]!.created).toBe(200);
   });
 
-  it('breaks a root tie on a case-insensitive label', () => {
+  it('keeps the arrival order of roots that the host tied', () => {
+    // Equal timestamps arrive in the order the host printed them and stay
+    // that way — there is no client-side tiebreak left to invent an order.
     const roots = groupSessionsIntoRoots(
       [session('x', '/home/alexey/Beta/x', 100), session('y', '/home/alexey/alpha/y', 100)],
       home,
     );
-    expect(roots.map((r) => r.label)).toEqual(['alpha', 'Beta']);
+    expect(roots.map((r) => r.label)).toEqual(['Beta', 'alpha']);
   });
 
-  it('orders directories by OLDEST creation, then case-insensitive label', () => {
+  it('orders directories by first appearance in the host\'s list', () => {
     const roots = groupSessionsIntoRoots(
       [
         session('git-first', '/home/alexey/git/first', 10),
@@ -576,25 +582,26 @@ describe('groupSessionsIntoRoots', () => {
       ],
       home,
     );
-    expect(roots[0]!.directories.map((d) => d.label)).toEqual(['first', 'second', 'third']);
+    // Arrival order, not creation order: `third` is the youngest folder and
+    // stays where the host put it.
+    expect(roots[0]!.directories.map((d) => d.label)).toEqual(['first', 'third', 'second']);
   });
 
-  it('breaks a directory tie on a case-insensitive label, not on anything that moves', () => {
-    // A host whose table reports one timestamp for everything still gets a
-    // total order, and it is one that survives a poll.
+  it('keeps the arrival order of directories that the host tied', () => {
     const [git] = groupSessionsIntoRoots(
       [session('x', '/home/alexey/git/Beta', 100), session('y', '/home/alexey/git/alpha', 100)],
       home,
     );
-    expect(git!.directories.map((d) => d.label)).toEqual(['alpha', 'Beta']);
+    expect(git!.directories.map((d) => d.label)).toEqual(['Beta', 'alpha']);
   });
 
-  it('does NOT move an attached folder to the top of its root any more', () => {
-    // The key that was dropped, pinned as dropped. Attaching happens as a side
-    // effect of OPENING a folder workspace, so the old comparator rearranged
-    // the panel in response to the panel being used — the row the user had just
-    // clicked jumped out from under the cursor. The mark stays (`active`), the
-    // movement went (docs/SESSIONLIST.md §6).
+  it('does not move an attached folder on its own', () => {
+    // Pinned as a property of the projection: the client never reorders on
+    // `active`. Opening a folder workspace used to jump its row to the top of
+    // its root — the list rearranging itself in response to being used
+    // (docs/SESSIONLIST.md §6). Whether attaching moves a row NOW is the
+    // host's decision — its `--sort accessed` will — and the client applies
+    // that answer verbatim on the next poll. The mark stays (`active`).
     const roots = groupSessionsIntoRoots(
       [
         session('git-old', '/home/alexey/git/old', 100),
@@ -607,11 +614,11 @@ describe('groupSessionsIntoRoots', () => {
     expect(roots[0]!.directories.find((d) => d.label === 'live')!.active).toBe(true);
   });
 
-  it('orders a branch by creation too, so the panel and the tab bar agree', () => {
-    // `buildWorkspaceTabs` has always sorted session tabs by `created`, oldest
-    // first. This is the panel arriving at the same
-    // order, so a folder's tooltip and the bar it opens list its sessions the
-    // same way round.
+  it('keeps the host\'s row order inside a branch', () => {
+    // Rows are not re-sorted to match the tab bar: the bar still orders by
+    // creation (`buildWorkspaceTabs`, its own stability argument), and the
+    // panel shows the host's order. The two surfaces disagree on purpose —
+    // the bar's rows are hit targets, the panel's rows are the host's list.
     const [git] = groupSessionsIntoRoots(
       [
         session('git-app-new', '/home/alexey/git/app', 900),
@@ -620,16 +627,16 @@ describe('groupSessionsIntoRoots', () => {
       home,
     );
     expect(git!.directories[0]!.rows.map((r) => r.session.name)).toEqual([
-      'git-app-live',
       'git-app-new',
+      'git-app-live',
     ]);
   });
 
-  it('takes a directory creation key from its OLDEST session, so a new one cannot move it', () => {
-    // The folder-level half of the same property, and the reason `created` is a
-    // MIN: starting a second session in `app` must not send `app` to the bottom
-    // of `git` — which is exactly what a newest-session key would do, at the
-    // moment the user was looking at that folder.
+  it('gains a session in a folder without moving any folder', () => {
+    // The client-side half of the property the panel rests on: a second
+    // session in `app` reorders nothing anywhere — the projection only ever
+    // folds the host's list. Whether the host moves `app` afterwards is its
+    // sort's decision, not ours.
     const [git] = groupSessionsIntoRoots(
       [
         session('git-app-a', '/home/alexey/git/app', 100),
@@ -639,7 +646,7 @@ describe('groupSessionsIntoRoots', () => {
       home,
     );
     expect(git!.directories.map((d) => d.label)).toEqual(['app', 'zoo']);
-    expect(git!.directories[0]!.created).toBe(100);
+    expect(git!.directories[0]!.rows.map((r) => r.session.name)).toEqual(['git-app-a', 'git-app-b']);
   });
 
   it('marks a root active when any session under it is attached', () => {
