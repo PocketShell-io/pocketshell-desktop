@@ -41,6 +41,7 @@ import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { api } from '../ipc';
+import AppIcon from './AppIcon.vue';
 import { useShellsStore } from '../stores/shells';
 import { createPathLinkProvider } from '../terminalLinks';
 import { PathHighlighter } from '../terminalPathHighlights';
@@ -127,10 +128,60 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'typed', text: string): void;
   (e: 'paste-into-composer'): void;
+  (e: 'drop-into-composer', files: File[]): void;
 }>();
 
 /** The tmux session this pane should be showing, or '' for a bare shell. */
 const targetSession = computed(() => props.sessionName ?? props.sessionKey ?? '');
+
+// ---------------------------------------------------------------------------
+// The join veil
+// ---------------------------------------------------------------------------
+//
+// Between asking main for this pane's PTY and the far end's first byte, the
+// pane is a black rectangle — and a black rectangle after a click reads as
+// "broken", which is exactly the report it produced ("is something happening?
+// or it's not working?"). The join takes a channel, a PTY and an attach —
+// subjectively seconds on a real link — and nothing else in the pane says
+// any of that is under way. So while the wait lasts, the pane says so.
+//
+// The veil clears on the FIRST byte that reaches xterm through {@link
+// paneWrite}, whichever it is: a byte means the far end is producing output,
+// which is the thing "is it working?" is actually asking. It re-arms on every
+// re-join (the repair paths all funnel through {@link showTarget}), so a pane
+// that goes silent again says so again. The error paths write their message
+// through paneWrite too, so a failed join clears its own veil by becoming
+// readable.
+const joinPending = ref(false);
+let joinPendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * How long a join may be silent before the veil appears.
+ *
+ * Short enough that the user never has time to conclude "broken" — that
+ * verdict forms in well under a second — and long enough that the common
+ * fast join (a pooled client, a warm connection) never flashes the veil at
+ * all, which would read as noise rather than as state.
+ */
+const JOIN_VEIL_DELAY_MS = 250;
+
+function beginJoinPending(): void {
+  if (joinPendingTimer !== null) clearTimeout(joinPendingTimer);
+  joinPendingTimer = setTimeout(() => {
+    joinPendingTimer = null;
+    joinPending.value = true;
+  }, JOIN_VEIL_DELAY_MS);
+}
+
+function endJoinPending(): void {
+  if (joinPendingTimer !== null) {
+    clearTimeout(joinPendingTimer);
+    joinPendingTimer = null;
+  }
+  joinPending.value = false;
+}
+
+onBeforeUnmount(endJoinPending);
 
 /**
  * The shells-registry key for this pane.
@@ -526,6 +577,9 @@ function bindShellStream(): void {
  */
 function paneWrite(data: string | Uint8Array): void {
   if (!term) return;
+  // The far end produced output: whatever the pane was waiting for, it is no
+  // longer the thing the veil was saying. See the join-veil note above.
+  endJoinPending();
   repairTerminalBufferIfNeeded();
   stallMonitor?.write(term, data);
 }
@@ -667,6 +721,9 @@ function queueShowTarget(): Promise<void> {
  */
 async function showTarget(): Promise<void> {
   if (!term || !containerEl.value) return;
+  // From here until the far end's first byte, the pane says what it is doing
+  // instead of being a black rectangle. See the join-veil note above.
+  beginJoinPending();
   fitTerminal();
   const cols = term.cols;
   const rows = term.rows;
@@ -849,6 +906,52 @@ function onDocumentMouseUp(): void {
 function onTerminalContextMenu(e: MouseEvent): void {
   e.preventDefault();
   void pasteFromClipboard();
+}
+
+// ---------------------------------------------------------------------------
+// Drop a file on the pane -> the prompt composer, the same routing the paste
+// chords take. TerminalView cancels the gesture and announces it; everything
+// from there is the composer's.
+//
+// Unlike `paste-into-composer` this event CARRIES the payload, and the
+// asymmetry is forced: a DataTransfer's `files` exist only inside the event
+// that delivered them, so the composer cannot re-read them the way it re-reads
+// a clipboard. What crosses is the bare `File` objects — nothing is opened,
+// decoded or staged here. All of that stays in PromptComposer's `stageFiles`,
+// the one path the card's own drop, the draft paste and the clipboard paste
+// already share.
+//
+// Only a drag advertising `Files` is claimed. A tab drag carries the strip's
+// own mime type (FolderWorkspaceView's TAB_DRAG_TYPE) and must keep falling
+// through — the composer learned the same lesson in its `onDragOver`.
+// ---------------------------------------------------------------------------
+
+/** True while a file-carrying drag hovers the pane; drives the dashed outline. */
+const dropActive = ref(false);
+
+function onTerminalDragOver(e: DragEvent): void {
+  if (!e.dataTransfer) return;
+  if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  dropActive.value = true;
+}
+
+function onTerminalDragLeave(e: DragEvent): void {
+  // dragleave fires for every xterm child the drag crosses; only leaving the
+  // container itself — or the window — ends the affordance. Same latch the
+  // composer's onDragLeave uses.
+  if (containerEl.value?.contains(e.relatedTarget as Node | null)) return;
+  dropActive.value = false;
+}
+
+function onTerminalDrop(e: DragEvent): void {
+  dropActive.value = false;
+  if (!e.dataTransfer) return;
+  const files = Array.from(e.dataTransfer.files);
+  if (files.length === 0) return;
+  e.preventDefault();
+  emit('drop-into-composer', files);
 }
 
 /**
@@ -1558,7 +1661,25 @@ defineExpose({ focus: (): void => term?.focus(), resyncDisplay });
 </script>
 
 <template>
-  <div ref="containerEl" class="terminal" />
+  <div
+    ref="containerEl"
+    class="terminal"
+    :class="{ 'drop-target': dropActive }"
+    @dragover="onTerminalDragOver"
+    @dragleave="onTerminalDragLeave"
+    @drop="onTerminalDrop"
+  >
+    <!-- The join veil. A child of the container rather than a sibling under a
+         new wrapper so FitAddon's measurement of this box is untouched (its
+         arithmetic reads the box the xterm element lands in). Absolutely
+         positioned and pointer-transparent: it overlays the pane, passes
+         clicks and keystrokes through to xterm, and disappears on the first
+         remote byte. -->
+    <div v-if="joinPending" class="join-veil" aria-live="polite">
+      <AppIcon name="refresh" :size="16" class="spin" />
+      <span>{{ targetSession ? `Joining ${targetSession}…` : 'Connecting…' }}</span>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -1598,8 +1719,40 @@ defineExpose({ focus: (): void => term?.focus(), resyncDisplay });
   height: 100%;
   background: var(--term-bg);
   overflow: hidden;
+  /* The veil's positioning context. Layout-inert — no size, padding or border
+     changes — so the FitAddon arithmetic documented above still holds. */
+  position: relative;
   /* Windows Terminal defaults.json: antialiasingMode "grayscale" */
   -webkit-font-smoothing: antialiased;
+}
+/* Says what the pane is doing while it waits for the far end's first byte:
+   the join is a channel, a PTY and an attach, subjectively seconds on a real
+   link, and a black rectangle reads as broken rather than as busy. One row,
+   centred, muted — state, not an alarm. Pointer-transparent, so keystrokes
+   aimed at the pane during the join are queued, not eaten. */
+.join-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  color: var(--fg-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-300);
+  pointer-events: none;
+  background: var(--term-bg);
+}
+.join-veil .app-icon {
+  color: var(--fg-secondary);
+}
+/* The file-drop affordance. An outline paints OUTSIDE layout, which matters
+   here more than usual: FitAddon measures this box with getComputedStyle on
+   every refit, and any border/padding borrowed to draw a frame would cost the
+   pane a row. Same dashed treatment the composer's card lights up with. */
+.terminal.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 .terminal :deep(.xterm) {
   height: 100%;

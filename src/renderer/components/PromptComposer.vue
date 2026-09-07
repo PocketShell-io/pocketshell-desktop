@@ -539,6 +539,21 @@ async function onDrop(e: DragEvent): Promise<void> {
   await stageFiles(files);
 }
 
+/**
+ * Files dropped on the TERMINAL pane, routed here by `drop-into-composer`.
+ *
+ * A drop at the terminal is a summons, like the paste chords are: the panel
+ * may be hidden, so it opens first — before the await, so the card is up with
+ * its "Uploading…" row while the transfer runs (the ordering rule documented
+ * on `pasteFromSystemClipboard`). Dropping ON the card never came through
+ * here; that drag already found an open panel, and `onDrop` above owns it.
+ */
+async function acceptDroppedFiles(files: File[]): Promise<void> {
+  if (files.length === 0) return;
+  openComposer();
+  await stageFiles(files);
+}
+
 // ---------------------------------------------------------------------------
 // Doodle / annotate
 //
@@ -1417,7 +1432,13 @@ onBeforeUnmount(() => {
   onDragEnd();
 });
 
-defineExpose({ focusDraft, openComposer, typeInto, pasteFromSystemClipboard });
+defineExpose({
+  focusDraft,
+  openComposer,
+  typeInto,
+  pasteFromSystemClipboard,
+  acceptDroppedFiles,
+});
 </script>
 
 <template>

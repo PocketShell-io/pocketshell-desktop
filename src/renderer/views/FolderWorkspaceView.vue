@@ -1835,6 +1835,18 @@ function onPasteIntoComposer(): void {
   void composerRef.value?.pasteFromSystemClipboard();
 }
 
+/**
+ * A file dropped on the terminal pane routes to the composer for staging, the
+ * same join the paste chords use. The File objects must ride the event — a
+ * DataTransfer is dead once the drop event returns, so the composer cannot
+ * re-read them the way it re-reads a clipboard — but nothing else crosses:
+ * opening, naming, mime fallback and the single-flight upload are all the
+ * composer's, through the one `stageFiles` path every other entry point uses.
+ */
+function onDropIntoComposer(dropped: File[]): void {
+  void composerRef.value?.acceptDroppedFiles(dropped);
+}
+
 /** Put the keyboard back in the pane after a key or button closed the composer. */
 function onFocusTerminal(): void {
   if (activeTab.value?.kind !== 'session') return;
@@ -2101,6 +2113,7 @@ function onFocusTerminal(): void {
               :intercept-typing="interceptTyping && tab.session === terminalSession"
               @typed="onTyped"
               @paste-into-composer="onPasteIntoComposer"
+              @drop-into-composer="onDropIntoComposer"
             />
           </div>
         </div>

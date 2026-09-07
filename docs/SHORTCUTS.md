@@ -24,6 +24,7 @@ everywhere: every call site in the app spells the test
 | mouse-up after a drag | Copy the selection | Ditto. |
 | drag, release — mouse reporting ON | Select in the pane; copy on release | The same local selection as with reporting off (terminalMouseSelection.ts). The highlight persists. |
 | Shift+drag — mouse reporting ON | Select in TMUX instead | tmux paints its copy-mode highlight, and releasing yanks it; the yank reaches the pane as OSC 52 and lands in the clipboard, while tmux dismisses the highlight. |
+| drop a file on the pane | Attach it to the composer | Not a chord either. Emits the File objects to PromptComposer, which opens and stages them (COMPOSER.md §23.5). A tab drag carries a different mime type and is not claimed. |
 
 **A drag has two owners, decided by mouse reporting AND by Shift.** Plain
 drag always takes the LOCAL path — xterm's own selection, copied on mouse-up —

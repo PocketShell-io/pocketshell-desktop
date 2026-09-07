@@ -1123,8 +1123,16 @@ to close, not a replacement. The coordinate invariance is asserted end-to-end in
    plain text pastes normally. The phone can only attach through the SAF picker
    (`PromptComposerSheet.kt:279-292`). Screenshot → paste → attached tile is the
    single biggest desktop ergonomics win here, and the IPC already supports it.
-5. **Drag-and-drop onto the composer** — same staging path with
-   `{ kind: 'file', path }`.
+5. **Drag-and-drop.** The card accepts a file drop directly (`onDragOver`/
+   `onDrop`, staging via `stageFiles`). The terminal pane is a target too:
+   TerminalView cancels the drop and emits the File objects to
+   `PromptComposer.acceptDroppedFiles` — the routing the paste chords use, so
+   there is still one staging path and it lives here. The files must ride the
+   event (a DataTransfer is dead once the drop returns; the composer cannot
+   re-read them the way it re-reads a clipboard), and the panel opens before
+   the upload runs — a drop is a summons, like Ctrl+V. Only drags advertising
+   `Files` are claimed on either surface, so the tab strip's drags fall
+   through.
 6. **Draft persistence across app restarts** — Android persists only the draft
    text and only until the process is recreated; desktop should persist draft +
    attachments + mode per session to `electron-store`.
