@@ -1453,7 +1453,16 @@ async function createSession(choice: LaunchChoice | null): Promise<void> {
       (choice ? ` and ${KIND_LABELS[choice.kind]} was not launched.` : '.');
     return;
   }
-  await sessions.refresh(connectionId);
+  // The row is filed as a pending session (`sessions.addPending`) rather than
+  // confirmed by a listing first: the refresh used to be awaited right here,
+  // and it is the slowest call in the app — a full `pocketshell sessions
+  // list` under a login shell — sitting between the click and the terminal
+  // the launch is waiting for. The result carries the row's backend, workspace
+  // and aplexer id, so the tab bar and the join have everything they need
+  // without a snapshot; the panel's poll reconciles the optimistic row with
+  // the authoritative one a few seconds later.
+  const summary = sessions.summaryFromStartResult(result, path);
+  if (summary) sessions.addPending(summary);
   if (!tabs.value.some((tab) => tab.kind === 'session' && tab.session === created)) {
     // The session exists on the host — main confirmed the create — but it is not
     // filed under this folder, so there is no tab to select and no pane for a
