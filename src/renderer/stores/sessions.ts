@@ -29,6 +29,21 @@ import type { StartSessionResult } from '../../main/projects/ProjectsService';
  * five-second poll, most likely). A pending row that no refresh confirms is
  * dropped after {@link PENDING_TTL_MS}: the create is over by then, and a row
  * only the optimist believes in must not sit on the bar forever.
+ *
+ * ## Killed rows: a stop takes the row down the moment it lands
+ *
+ * The mirror image of a pending create is a confirmed kill. The host has
+ * dropped the session, but its LISTING can lag: `a kill` answers ok once the
+ * worker accepts the stop, and the worker then spends seconds terminating the
+ * workload and its process tree before the record leaves the snapshot — the
+ * CLI's own wait for that removal is bounded well under a finalization that
+ * can outrun it. A stop that trusted the follow-up listing kept a dead
+ * session on the bar, its "[process exited]" pane mounted under a row that
+ * still looked live. So a kill files the identity here through
+ * {@link removeLocal}, and every refresh drops fetched rows carrying it until
+ * {@link KILLED_TTL_MS} passes. Past the TTL a row the host genuinely still
+ * lists comes back — a worker wedged in finalization is a fact to show, not
+ * to keep claiming otherwise.
  */
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<SessionSummary[]>([]);
@@ -45,12 +60,25 @@ export const useSessionsStore = defineStore('sessions', () => {
    */
   const PENDING_TTL_MS = 30_000;
 
+  /**
+   * How long a kill keeps overriding the host's listing.
+   *
+   * Same arithmetic as {@link PENDING_TTL_MS}, pointed the other way: several
+   * poll ticks of cover against a finalization that outran `a kill`'s own
+   * wait, far past any point at which a still-listed row is likelier to be a
+   * slow corpse than a live session the host really has.
+   */
+  const KILLED_TTL_MS = 30_000;
+
   /** A pending row: the optimistic summary and when it was filed. */
   interface PendingRow {
     summary: SessionSummary;
     at: number;
   }
   const pendingRows = ref<PendingRow[]>([]);
+
+  /** A killed identity and when the kill landed — the ledger refreshes filter against. */
+  const killedRows = ref<{ key: string; at: number }[]>([]);
 
   /**
    * The identity two rows must agree on to be the same session.
@@ -73,9 +101,16 @@ export const useSessionsStore = defineStore('sessions', () => {
    * "confirmed" from "never came true". Replaces any pending row with the
    * same identity first: a second create under the same name is the
    * replace-the-slot case, not a duplicate.
+   *
+   * A create also LIFTS any kill still remembered against the same identity.
+   * The folder-derived names make reuse likely rather than hypothetical, and
+   * a new session must not inherit the old one's grave — without this, a
+   * stop-then-create in the same folder would sit the fresh session under a
+   * tombstone for the rest of its TTL.
    */
   function addPending(summary: SessionSummary, now: number = Date.now()): void {
     const id = identity(summary);
+    killedRows.value = killedRows.value.filter((row) => row.key !== id);
     pendingRows.value = [
       ...pendingRows.value.filter((row) => identity(row.summary) !== id),
       { summary, at: now },
@@ -107,6 +142,87 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   /**
+   * Drop a killed session's pending row, and hold its identity against the
+   * host's listing for {@link KILLED_TTL_MS}.
+   *
+   * The kill and the refresh that would confirm it are two separate round
+   * trips, and the listing is the slower one by design: `a kill` answers ok
+   * once the worker ACCEPTS the stop, while the record leaves the snapshot
+   * only when the worker finishes terminating the workload — a process tree,
+   * a cgroup, an agent that may take its grace period to die. A listing read
+   * inside that window reports the session as ordinary and alive, so a stop
+   * that trusted it kept a dead session on the bar with its "[process
+   * exited]" pane mounted underneath — the state a confirmed Stop is the
+   * answer to. So the kill records the identity HERE, immediately: the row
+   * comes off {@link sessions} this tick (the tree, the tab bar and
+   * `sessionMeta` all re-derive from it), any pending create row for the
+   * identity is withdrawn, and every refresh drops fetched rows carrying the
+   * identity until the TTL lapses.
+   *
+   * The ledger expires rather than lasting forever. A row the host still
+   * lists past the TTL — a worker wedged in finalization — comes back, which
+   * is the honest rendering of "the host says this exists": the same rule
+   * that prunes an unconfirmed pending row prunes the belief that a session
+   * is dead.
+   *
+   * Matching is by the identity {@link identity} spells — name plus
+   * workspace — exactly as {@link renameLocal} matches, with the same
+   * property and the same trade: a same-named tag in another workspace is
+   * never hidden, and a NEW session reusing the name within the TTL is
+   * hidden until its own create's {@link addPending} lifts the grave.
+   */
+  function removeLocal(name: string, workspace?: string, now: number = Date.now()): void {
+    const key = identity({ name, workspace: workspace ?? null });
+    killedRows.value = [...killedRows.value.filter((row) => row.key !== key), { key, at: now }];
+    pendingRows.value = pendingRows.value.filter((row) => identity(row.summary) !== key);
+    sessions.value = sessions.value.filter((s) => identity(s) !== key);
+  }
+
+  /**
+   * Fold the kill ledger into a freshly fetched list.
+   *
+   * Rows the host still carries for an identity killed inside the TTL window
+   * are the slow corpse `a kill` warned about — dropped. Expired entries are
+   * pruned from the ledger itself on the same pass, so a one-time stop does
+   * not tax every refresh after it forever.
+   */
+  function mergeKilled(fetched: SessionSummary[], now: number = Date.now()): SessionSummary[] {
+    if (killedRows.value.length === 0) return fetched;
+    const alive = killedRows.value.filter((row) => now - row.at <= KILLED_TTL_MS);
+    if (alive.length !== killedRows.value.length) killedRows.value = alive;
+    if (alive.length === 0) return fetched;
+    const dead = new Set(alive.map((row) => row.key));
+    return fetched.filter((s) => !dead.has(identity(s)));
+  }
+
+  /**
+   * Apply a rename the host has ALREADY committed to the local rows.
+   *
+   * The listing is the slowest call in the app (see the pending-row note
+   * above), and a rename that waited for it kept its old name on the bar for
+   * that whole round trip. This rewrites the row the moment the rename IPC
+   * resolves — same row otherwise, so created, path, backend, workspace,
+   * aplexerId and agentKind all ride along — and everything derived from the
+   * store (the panel tree, the workspace tab bar, `sessionMeta`) re-derives on
+   * this tick, not on the refresh's. The next refresh replaces the list
+   * wholesale, exactly as it does for a pending create row, and the optimistic
+   * answer and the fetched one now agree.
+   *
+   * Matching is by the same identity {@link identity} spells — name plus
+   * workspace — so a same-named aplexer tag in another workspace is never
+   * renamed by accident; the tmux spelling (no workspace) matches only rows
+   * that have none. No row named [from] is a quiet no-op: the panel's poll may
+   * have landed the authoritative row while the rename IPC was in flight, and
+   * then there is nothing left to move.
+   */
+  function renameLocal(from: string, to: string, workspace?: string): void {
+    const key = identity({ name: from, workspace: workspace ?? null });
+    sessions.value = sessions.value.map((s) =>
+      identity(s) !== key ? s : { ...s, name: to, ...(s.tag != null ? { tag: to } : {}) },
+    );
+  }
+
+  /**
    * Re-read the host's live session list.
    *
    * `quiet` exists for the session panel's background poll and it toggles ONE
@@ -128,7 +244,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (!options?.quiet) loading.value = true;
     error.value = null;
     try {
-      sessions.value = mergePending(await api.helper.sessionsList(connectionId, 'activity'));
+      sessions.value = mergeKilled(mergePending(await api.helper.sessionsList(connectionId, 'activity')));
     } catch (e) {
       error.value = errorMessage(e);
     } finally {
@@ -187,6 +303,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   function clear(): void {
     sessions.value = [];
     pendingRows.value = [];
+    killedRows.value = [];
     error.value = null;
   }
 
@@ -196,6 +313,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     error,
     refresh,
     addPending,
+    removeLocal,
+    renameLocal,
     summaryFromStartResult,
     clear,
   };

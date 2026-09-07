@@ -62,6 +62,7 @@ import PopupMenu from '../components/PopupMenu.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import LaunchSessionDialog from '../components/LaunchSessionDialog.vue';
 import { pointAnchor, type Box } from '../../shared/popupPlacement';
+import type { ConnectionId } from '../../shared/types';
 import { composerAgentKind } from '../../shared/composerSend';
 import { agentMark } from '../../shared/agentBadge';
 import { isShortcut } from '../../shared/shortcuts';
@@ -365,43 +366,67 @@ function tabMark(session: string): ReturnType<typeof agentMark> {
 /** The session tab that is (or was last) showing — which pane is visible. */
 const terminalSession = ref<string | null>(null);
 /**
- * Every session tab that has been visited, in visit order — one mounted
- * TerminalView each, for as long as this workspace is open.
+ * Every session tab that has been visited, one mounted TerminalView each, for
+ * as long as this workspace is open.
  *
- * Append-only on purpose. A tab is added the first time it is selected and is
- * never removed while the workspace lives, because removing it is precisely the
- * cost this design exists to avoid: unmounting closes the SSH shell, and coming
- * back would pay a full `tmuxctl` join (1.5-2 s on the user's host). The list is
- * bounded by the session tabs of ONE folder, and main bounds the channels
- * underneath it independently — the pool evicts its least recently used client
- * when a connection runs out of SSH channels, and a pane whose shell was
- * evicted re-joins itself when it is next looked at.
+ * A record rather than a bare name, and the reason is the RENAME. A pane's Vue
+ * key has to survive its session getting a new name: a tab's id IS the session
+ * name, so a name-keyed v-for reads a committed rename as "one pane gone,
+ * another appeared" — unmounting the old TerminalView (closing its SSH shell)
+ * and mounting a fresh one that pays a full re-join, which is the reconnect a
+ * rename used to cost. The record's `id` is minted when the pane is opened and
+ * never changes; `session` is the name the pane is pointed at RIGHT NOW, and a
+ * rename rewrites it in place, so the diff keeps the instance and only the
+ * props move — and the pool, which the rename re-keyed on the host side,
+ * answers the re-point with the SAME PTY and no host work at all.
  *
- * A session that disappears from the tab bar keeps its entry here and simply
- * renders nothing, since the `v-for` is over tabs that still exist.
+ * Append-only on purpose. A pane is added the first time its session is
+ * selected and is never removed while the workspace lives, because removing it
+ * is precisely the cost this design exists to avoid: unmounting closes the SSH
+ * shell, and coming back would pay a full `tmuxctl` join (1.5-2 s on the
+ * user's host). The list is bounded by the session tabs of ONE folder, and
+ * main bounds the channels underneath it independently — the pool evicts its
+ * least recently used client when a connection runs out of SSH channels, and a
+ * pane whose shell was evicted re-joins itself when it is next looked at.
+ *
+ * A session that disappears from the tab bar keeps its record here and simply
+ * renders nothing, since `sessionPanes` filters against the live tabs — the
+ * one removal that DOES happen is the kill, which drops the record by hand so
+ * a new session reusing the name cannot inherit a pane that was never torn
+ * down.
  */
-const openedSessions = ref<string[]>([]);
+interface SessionPane {
+  /** Stable for the pane's life; the v-for key. Never the session name. */
+  id: string;
+  /** The session this pane is currently pointed at. A rename rewrites this. */
+  session: string;
+}
+const openPanes = ref<SessionPane[]>([]);
+let nextPaneId = 1;
 watch(
   activeSession,
   (name) => {
     if (!name) return;
     terminalSession.value = name;
-    if (!openedSessions.value.includes(name)) openedSessions.value.push(name);
+    if (!openPanes.value.some((pane) => pane.session === name)) {
+      openPanes.value.push({ id: `pane-${nextPaneId++}`, session: name });
+    }
   },
   { immediate: true },
 );
 
 /**
- * The session tabs that currently have a mounted pane, in tab-bar order.
+ * The session tabs that currently have a mounted pane, in visit order.
  *
- * Filtered from `tabs` rather than iterated from `openedSessions` so a session
- * that was killed on the host stops rendering the moment it leaves the bar,
- * and so the panes sit in the same order as the tabs they belong to.
+ * The panes are filtered against the live tabs rather than trusted, so a
+ * session that was killed on the host stops rendering the moment it leaves the
+ * bar, while a RENAME keeps the pane rendering straight through: the row and
+ * the pane record are rewritten in the same tick, so from the filter's point of
+ * view the pane's session never stopped being on the bar.
  */
 const sessionPanes = computed(() =>
-  tabs.value.filter(
-    (tab): tab is Extract<WorkspaceTab, { kind: 'session' }> =>
-      tab.kind === 'session' && openedSessions.value.includes(tab.session),
+  openPanes.value.filter((pane) =>
+    tabs.value.some((tab) => tab.kind === 'session' && tab.session === pane.session),
   ),
 );
 
@@ -1077,24 +1102,78 @@ async function commitRename(): Promise<void> {
   }
   if (next === target.session) return cancelRename();
 
-  const result = await projects.renameSession(connectionId, target.session, next, aplexerRefFor(target.session));
+  const aplexerRef = aplexerRefFor(target.session);
+  const result = await projects.renameSession(connectionId, target.session, next, aplexerRef);
   if (!result.ok || !result.sessionName) {
     renameError.value = result.error ?? 'rename failed';
     return;
   }
+  adoptRenamedSession(connectionId, target.session, result.sessionName, aplexerRef?.workspace);
+  cancelRename();
+  // Confirmation, not revelation: the row is already renamed locally (that is
+  // what made the bar move on the tick above), so this runs fire-and-forget
+  // purely to pull the authoritative row — activity, agentKind — and to fold
+  // the rename into the list wholesale. Nothing waits on it.
+  void sessions.refresh(connectionId);
+}
+
+/**
+ * Move everything the desktop keeps under the session's old name to the new
+ * one, in ONE synchronous tick.
+ *
+ * The pieces are moved together rather than left to the next `sessions.refresh`
+ * because the pieces that make a rename feel like a relabel — the tab bar, the
+ * mounted pane, the composer draft — are all keyed on the name, and a refresh
+ * is seconds of the old name on screen followed by a pane the v-for no longer
+ * recognises, which it tears down and re-joins. Done in one tick instead, the
+ * flush after this function returns sees a fully consistent world: the pane
+ * record and the row agree on the new name, the v-for key never changed, and
+ * the TerminalView's own `sessionKey` watcher does the only thing left —
+ * re-point at the new name, which the pool answers with the PTY it already
+ * holds. That is the whole "a rename is just a label" trick.
+ *
+ * Selection follows only when it pointed HERE. The double-click gesture has
+ * already selected the tab before the field opens, so the common rename keeps
+ * its selection; a right-click rename of a background tab keeps it background —
+ * committing a label is not a request to be moved.
+ */
+function adoptRenamedSession(
+  connectionId: ConnectionId,
+  from: string,
+  to: string,
+  workspace?: string,
+): void {
   // The composer's per-session record is keyed on the session identity, so it
   // has to move or the draft is orphaned under a key nothing will ever ask
-  // for again. Both ends resolve through the same row: `next` is not on the
-  // bar yet, so it borrows the renamed row's workspace.
+  // for again. Both ends resolve through the SAME row: this runs before the
+  // local rename below, so the new key borrows the old row's workspace.
   composer.rekey(
-    composer.targetKey(connectionId, target.session, identityFor(target.session)),
-    composer.targetKey(connectionId, result.sessionName, identityFor(result.sessionName, target.session)),
+    composer.targetKey(connectionId, from, identityFor(from)),
+    composer.targetKey(connectionId, to, identityFor(to, from)),
   );
-  selected.value = result.sessionName;
-  terminalSession.value = result.sessionName;
+  // The row, so the tab bar, the panel tree and `sessionMeta` re-derive now.
+  sessions.renameLocal(from, to, workspace);
+  // The mounted pane keeps its instance — its v-for key is the record id, not
+  // the name — and its TerminalView re-points itself off the prop change.
+  const pane = openPanes.value.find((p) => p.session === from);
+  if (pane) pane.session = to;
+  // The pane refs are keyed by name for the same historical reason; move the
+  // entry so focus and Redraw do not have to know a rename happened.
+  const paneRef = terminalRefs.get(from);
+  if (paneRef) {
+    terminalRefs.delete(from);
+    terminalRefs.set(to, paneRef);
+  }
+  if (selected.value === from) selected.value = to;
+  if (terminalSession.value === from) terminalSession.value = to;
+  // The persisted layout is a ranking of tab IDS, and a tab id is a session
+  // name: remap rather than let the prune watcher read the old id as a death,
+  // or the rename would silently drop the tab's manual position and MRU entry.
+  if (mru.value.includes(from)) mru.value = mru.value.map((id) => (id === from ? to : id));
+  if (tabOrder.value.includes(from)) {
+    writeTabOrder(tabOrder.value.map((id) => (id === from ? to : id)));
+  }
   persist();
-  cancelRename();
-  await sessions.refresh(connectionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -1462,8 +1541,8 @@ async function createSession(choice: LaunchChoice | null): Promise<void> {
   // and aplexer id, so the tab bar and the join have everything they need
   // without a snapshot; the panel's poll reconciles the optimistic row with
   // the authoritative one a few seconds later.
-  const summary = sessions.summaryFromStartResult(result, path);
-  if (summary) sessions.addPending(summary);
+  const pendingRow = sessions.summaryFromStartResult(result, path);
+  if (pendingRow) sessions.addPending(pendingRow);
   if (!tabs.value.some((tab) => tab.kind === 'session' && tab.session === created)) {
     // The session exists on the host — main confirmed the create — but it is not
     // filed under this folder, so there is no tab to select and no pane for a
@@ -1697,20 +1776,33 @@ function askStopTab(tab: Extract<WorkspaceTab, { kind: 'session' }>): void {
  *  1. **the pool's live tmux client and its PTY** — released main-side by the
  *     ipc handler through `TmuxClientPool.killed`, because that is where the
  *     pool is in scope;
- *  2. **the mounted terminal pane** — dropped from `openedSessions` here.
+ *  2. **the mounted terminal pane** — dropped from `openPanes` here.
  *     `sessionPanes` already filters against the live tabs, so the pane stops
- *     rendering the moment the refresh lands; removing the entry as well is
- *     what stops a NEW session that reuses the name inheriting a pane that was
- *     never torn down (the folder-derived names make that reuse likely, not
- *     hypothetical);
+ *     rendering the moment the row leaves the store; removing the entry as
+ *     well is what stops a NEW session that reuses the name inheriting a pane
+ *     that was never torn down (the folder-derived names make that reuse
+ *     likely, not hypothetical);
  *  3. **the composer's per-session record** — `composer.forget`, the kill's
  *     counterpart to the rename's `composer.rekey`. A draft under a key nothing
  *     will ever ask for again would persist to `localStorage` forever and would
  *     be handed to the next session of that name.
  *
- * The selection moves through the SAME `selectAfterClose` a Files tab uses, so
- * the MRU rule holds for a killed session tab exactly as it does for a closed
- * Files tab, and the focus lands in the newly selected tab's surface.
+ * The store's row is the fourth piece and the one the others hang from: the
+ * tab bar, the panel tree and `sessionMeta` all derive from it. It comes off
+ * through `sessions.removeLocal` the moment the kill resolves rather than on
+ * the refresh the call ends with, because the host's listing can lag the kill
+ * by seconds — `a kill` answers ok when the worker ACCEPTS the stop, and the
+ * record leaves the snapshot only when the worker has finished terminating
+ * the workload — and inside that window a dead session that still looks live
+ * keeps its tab on the bar above a pane that already says "[process exited]".
+ * The ledger `removeLocal` files the identity into is what keeps the
+ * follow-up refresh (and the panel's poll) from putting the corpse back.
+ *
+ * The selection moves through the SAME `selectAfterClose` a Files tab uses —
+ * called while the bar still holds the closing tab, so its adjacency fallback
+ * can see where the tab sat — so the MRU rule holds for a killed session tab
+ * exactly as it does for a closed Files tab, and the focus lands in the newly
+ * selected tab's surface.
  *
  * A session the host says is already gone (`not-found`) is treated as a
  * SUCCESS here, because the user's intent is satisfied and the state they asked
@@ -1740,7 +1832,11 @@ async function confirmStop(): Promise<void> {
       return;
     }
     selectAfterClose(session);
-    openedSessions.value = openedSessions.value.filter((name) => name !== session);
+    // The row comes off the bar NOW, not when the refresh lands — the host's
+    // listing can still carry the session it is tearing down (doc comment
+    // above).
+    sessions.removeLocal(session, sessionMeta.value.get(session)?.workspace ?? undefined);
+    openPanes.value = openPanes.value.filter((pane) => pane.session !== session);
     composer.forget(composer.targetKey(connectionId, session, identityFor(session)));
   } finally {
     stopBusy.value = false;
@@ -2093,25 +2189,28 @@ function onFocusTerminal(): void {
         <!-- One terminal per visited session tab, all kept mounted. Hiding
              rather than re-pointing is what makes a tab switch instant, and
              keeping them mounted while a Files tab shows is what stops a tab
-             switch dropping an attach. `v-for` over the TABS, so a session that
-             was killed on the host stops rendering; `openedSessions` is what
-             makes it lazy, so no pane is ever mounted while hidden. -->
-        <div v-show="activeTab?.kind === 'session'" class="terminal-area">
+             switch dropping an attach. The v-for is over the PANE RECORDS, not
+             the tabs, and the key is the record's stable id: a tab's own id is
+             the session name, so keying on it would read a rename as "one pane
+             gone, another appeared" and pay a full re-join for a relabel.
+             `sessionPanes` filters the records against the live tabs, so a
+             session killed on the host stops rendering. -->
+        <div class="terminal-area" v-show="activeTab?.kind === 'session'">
           <div
-            v-for="tab in sessionPanes"
-            :key="tab.id"
-            v-show="tab.session === terminalSession"
+            v-for="pane in sessionPanes"
+            :key="pane.id"
+            v-show="pane.session === terminalSession"
             class="terminal-slot"
           >
             <TerminalView
               v-if="connection.connectionId"
-              :ref="(el) => setTerminalRef(tab.session, el)"
+              :ref="(el) => setTerminalRef(pane.session, el)"
               :connection-id="connection.connectionId"
-              :session-key="tab.session"
-              :backend="sessionMeta.get(tab.session)?.backend"
-              :workspace="sessionMeta.get(tab.session)?.workspace"
-              :aplexer-id="sessionMeta.get(tab.session)?.aplexerId"
-              :intercept-typing="interceptTyping && tab.session === terminalSession"
+              :session-key="pane.session"
+              :backend="sessionMeta.get(pane.session)?.backend"
+              :workspace="sessionMeta.get(pane.session)?.workspace"
+              :aplexer-id="sessionMeta.get(pane.session)?.aplexerId"
+              :intercept-typing="interceptTyping && pane.session === terminalSession"
               @typed="onTyped"
               @paste-into-composer="onPasteIntoComposer"
               @drop-into-composer="onDropIntoComposer"

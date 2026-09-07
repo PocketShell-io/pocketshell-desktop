@@ -793,10 +793,17 @@ async function showTarget(): Promise<void> {
     // one is what makes the unconditional push below actually send.
     sent = null;
     bindShellStream();
+  } else {
+    // The same PTY came back — a re-point over a client the pool still holds,
+    // a rename's re-key being the case that matters. Nothing was torn down and
+    // nothing is being waited for, so the veil's claim ("a join is under way")
+    // is already false; leaving it armed would hang the shroud over a live
+    // pane until the next byte, which on an idle session is never.
+    endJoinPending();
+    // Deliberately NO reset here: the tmux client never detached, so it still
+    // owns the modes it set and will not be told to set them again — tmux
+    // redrew every row of the PTY itself.
   }
-  // Otherwise the same PTY came back and tmux redrew every row of it itself.
-  // Deliberately NO reset here: the tmux client never detached, so it still
-  // owns the modes it set and will not be told to set them again.
 
   // Publish it before the first byte can be typed at it. Under the
   // workspace-qualified registry key, so same-named aplexer tags in different

@@ -706,12 +706,19 @@ function askStopFolder(): void {
  * much of the folder is still up, but not WHICH, and the name is the only half
  * of that the user can act on.
  *
- * The composer record is dropped per session, and only for the ones that
- * actually died — it is the third row of §14.3's table, and the only one of the
- * three this component can reach. The pool's client goes main-side from the ipc
- * handler whatever the caller is, and the workspace's mounted pane unmounts on
- * its own: `sessionPanes` is filtered against the live tabs, so a session that
- * leaves the listing takes its terminal with it.
+ * The local teardown is per session too, and only for the ones that actually
+ * died. The row leaves the store through `sessions.removeLocal` the moment
+ * its kill resolves: the host's listing can lag the kill by seconds (`a kill`
+ * answers ok once the worker accepts the stop, and the record leaves the
+ * snapshot only when the worker has finished terminating the workload), and
+ * until it catches up, a dead session that still looks live keeps its tab on
+ * the bar and its "[process exited]" pane mounted underneath — precisely the
+ * state a confirmed Stop exists to end. The composer record is dropped with
+ * it, the third row of §14.3's table. The pool's client goes main-side from
+ * the ipc handler whatever the caller is, and the workspace's mounted pane
+ * unmounts as a consequence of the row: `sessionPanes` is filtered against
+ * the live tabs, so a session that leaves the store takes its terminal with
+ * it this tick, not on the listing's.
  *
  * The refresh runs even when everything failed. The list is what the user is
  * looking at, and it has to agree with the host whichever way the batch went.
@@ -753,6 +760,10 @@ async function confirmStopFolder(): Promise<void> {
         if (reason === null) reason = result.error ?? null;
         continue;
       }
+      // The row goes now, not when the refresh lands — the listing the
+      // refresh asks for can still carry the session for a while after the
+      // kill (see this function's doc comment).
+      sessions.removeLocal(name, entry.workspace ?? undefined);
       composer.forget(
         composer.targetKey(
           connectionId,
