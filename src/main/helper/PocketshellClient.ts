@@ -10,7 +10,6 @@
 import type { SshService } from '../ssh/SshService.js';
 import type { EnvVarRow, ExecResult, SessionSummary } from '../../shared/types.js';
 import type { AplexerClient } from './AplexerClient.js';
-import { mergeSessionSummaries } from './aplexerParsers.js';
 import {
   firstNonEmptyLine,
   parseSessionsList,
@@ -130,11 +129,11 @@ export class PocketshellClient {
   constructor(
     private readonly ssh: SshService,
     /**
-     * The aplexer client, when the app was wired with one. Sessions listed
-     * from `a snapshot --json` lead the merged list; the tmux rows below
-     * stay as the fallback for hosts (and sessions) aplexer does not cover.
-     * Optional so existing constructions keep compiling; without it the list
-     * is exactly what it was before aplexer existed.
+     * The aplexer client, when the app was wired with one. On a host where
+     * `a` answers, the snapshot IS the session list — no tmux rows are
+     * merged in beside it. The tmux path below then only runs on hosts
+     * without aplexer. Optional so existing constructions keep compiling;
+     * without it the list is exactly what it was before aplexer existed.
      */
     private readonly aplexer?: AplexerClient,
   ) {}
@@ -318,25 +317,38 @@ export class PocketshellClient {
 
 
   /**
-   * List live sessions, aplexer-first with a tmux fallback.
+   * List live sessions — aplexer alone wherever the host has `a`.
    *
-   * Prefers `pocketshell sessions list`, falls back to `tmux list-sessions`
-   * when the helper is absent — and leads BOTH with `a snapshot --json` when
-   * the host has aplexer, which is the main session manager there. Returns []
-   * when no server of either kind is running (the canonical "empty" state,
-   * not an error).
+   * When the aplexer snapshot answers, it is the WHOLE list: the helper table
+   * and the tmux probe are not consulted and the raw `tmux list-sessions`
+   * fallback never runs. Merging the two sources used to put every aplexer
+   * session in the tree twice — once under its workspace, and once as a
+   * name-only row from the tmux side that could not be proven a duplicate and
+   * could not be placed, which is where the tree's `other` bucket came from.
+   * An aplexer row carries its workspace as its path, so it maps into the
+   * folder tree with no inference and there is nothing left to merge.
+   *
+   * Only when `a` is absent (or the app was wired without an aplexer client)
+   * does the legacy path run: `pocketshell sessions list` preferred, the
+   * raw `tmux list-sessions` fallback beneath it. Returns [] when no server
+   * of either kind is running (the canonical "empty" state, not an error).
    */
   async listSessions(connectionId: string, sortBy: 'activity' | 'created' = 'activity'): Promise<SessionSummary[]> {
+    if (this.aplexer) {
+      const aplexerRows = await this.aplexer.listSessions(connectionId);
+      if (aplexerRows !== null) {
+        log('sessions', `listed: [${aplexerRows.map((session) => session.name).join(", ")}]`);
+        return this.withRepoRoots(connectionId, aplexerRows);
+      }
+    }
     // Primary + companion in ONE round-trip. `pocketshell sessions list` gives
     // names and creation times; the tmux probe gives the cwd, attached flag,
     // and recorded agent kind that the three-column table simply does not
     // carry. They are independent execs on the same connection, so issuing
-    // them together costs one RTT rather than two. The aplexer snapshot is
-    // the third independent exec and rides along for free.
-    const [helper, probe, aplexerRows] = await Promise.all([
+    // them together costs one RTT rather than two.
+    const [helper, probe] = await Promise.all([
       this.ssh.exec(connectionId, pathAwareCommand(`pocketshell sessions list --by ${sortBy}`)),
       this.sessionEnrichment(connectionId),
-      this.aplexer ? this.aplexer.listSessions(connectionId) : Promise.resolve(null),
     ]);
     const { enrichment } = probe;
     if (helper.exitCode === 0) {
@@ -351,7 +363,7 @@ export class PocketshellClient {
           { enrichment, probe, helper },
         );
         log('sessions', `listed: [${merged.map((session) => session.name).join(", ")}]`);
-        return this.withRepoRoots(connectionId, this.withAplexer(aplexerRows, merged));
+        return this.withRepoRoots(connectionId, merged);
       }
     }
     // Fallback: raw tmux with the same `::` shape the Android gateway uses.
@@ -372,26 +384,10 @@ export class PocketshellClient {
         ),
         { enrichment, probe, helper: tmux },
       );
-      return this.withRepoRoots(connectionId, this.withAplexer(aplexerRows, merged));
+      return this.withRepoRoots(connectionId, merged);
     }
-    // "no server running" / "not found" -> empty (not an error). An aplexer
-    // host with no tmux at all still lists what the snapshot found.
-    return this.withRepoRoots(connectionId, aplexerRows ?? []);
-  }
-
-  /**
-   * Lead [tmux] rows with the aplexer snapshot rows.
-   *
-   * Null (no `a` on the host) leaves the tmux list untouched — the whole of
-   * the fallback contract. A present-but-empty snapshot still wins the
-   * dedupe: a session in both listings is one session, read authoritatively.
-   */
-  private withAplexer(
-    aplexerRows: SessionSummary[] | null,
-    tmux: SessionSummary[],
-  ): SessionSummary[] {
-    if (aplexerRows === null) return tmux;
-    return mergeSessionSummaries(aplexerRows, tmux);
+    // "no server running" / "not found" -> empty (not an error).
+    return [];
   }
 
   /**

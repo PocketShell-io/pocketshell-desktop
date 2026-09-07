@@ -138,8 +138,9 @@ export class AplexerClient {
    *
    * Null vs [] is the whole contract: null means "no aplexer here, run the
    * tmux path", [] means "aplexer answered and nothing is running". A failed
-   * exec on a host that HAS `a` also answers [] — a listing that errors must
-   * not hide the tmux sessions the fallback still finds.
+   * exec on a host that HAS `a` also answers [] — the snapshot is the whole
+   * list on such a host, so the tree shows empty for that poll tick and
+   * recovers on the next; the legacy tmux path is only for hosts without `a`.
    */
   async listSessions(connectionId: string): Promise<SessionSummary[] | null> {
     if (!(await this.isAvailable(connectionId))) return null;

@@ -110,12 +110,16 @@ that. Instead it attaches to persistent sessions over a tracked SSH shell
 channel, and the sessions themselves come from **aplexer** wherever the host
 has it (`a`), with the tmux helper path as the fallback:
 
-1. The session tree is fetched from `a snapshot --json` merged over
-   `pocketshell sessions list --by activity`, over normal SSH exec channels
-   (fast, cheap, pollable). A session listed by both is one session, read
-   authoritatively: aplexer addresses `workspace + tag` under an immutable
-   UUID, so its workspace is the folder-grouping key with no inference, and
-   its declared engine/profile replaces the `@ps_agent_kind` probe.
+1. The session tree is fetched from `a snapshot --json` over normal SSH exec
+   channels (fast, cheap, pollable). On a host with aplexer the snapshot is
+   the WHOLE list — no tmux rows are merged beside it (merging used to list
+   every session twice: once under its workspace, once as a name-only row
+   from the tmux side that could not be placed, which is where the tree's
+   `other` bucket came from). aplexer addresses `workspace + tag` under an
+   immutable UUID, so its workspace is the folder-grouping key with no
+   inference, and its declared engine/profile replaces the `@ps_agent_kind`
+   probe. On a host without `a`, the legacy path runs instead:
+   `pocketshell sessions list` preferred, `tmux list-sessions` beneath it.
 2. The first visit to a session mounts an `xterm.js` and opens a tracked SSH
     **shell** channel. The channel runs the session join — `a attach <id>`
    for an aplexer session, the helper-driven tmux join otherwise;

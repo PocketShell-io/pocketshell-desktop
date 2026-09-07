@@ -126,28 +126,3 @@ export function aplexerRecordToSummary(record: AplexerSessionRecord): SessionSum
   };
 }
 
-/**
- * Merge the aplexer rows (primary) with the tmux rows (fallback).
- *
- * A session created during the migration can appear in BOTH listings — same
- * folder, same derived name — so a tmux row whose name AND working directory
- * match an aplexer row's tag AND workspace is the same session twice, and the
- * aplexer reading wins. The match requires BOTH halves: a tag alone is unique
- * only within its workspace, and two folders can honestly hold same-named
- * sessions. A tmux row with no reported directory cannot be proven a double
- * and is kept — hiding a session is worse than showing it twice.
- */
-export function mergeSessionSummaries(
-  aplexer: readonly SessionSummary[],
-  tmux: readonly SessionSummary[],
-): SessionSummary[] {
-  const claimed = new Set(
-    aplexer
-      .filter((s) => s.workspace != null && s.tag != null)
-      .map((s) => `${s.workspace}\0${s.tag}`),
-  );
-  const rest = tmux.filter(
-    (s) => s.path == null || !claimed.has(`${s.path}\0${s.name}`),
-  );
-  return [...aplexer, ...rest];
-}

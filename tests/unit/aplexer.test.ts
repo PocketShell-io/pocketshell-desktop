@@ -7,11 +7,11 @@ import {
 import {
   agentKindFromEngine,
   aplexerRecordToSummary,
-  mergeSessionSummaries,
   parseAplexerSnapshot,
 } from '../../src/main/helper/aplexerParsers';
+import { AplexerClient } from '../../src/main/helper/AplexerClient';
+import { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import {
-  AplexerClient,
   aplexerKillCommand,
   aplexerRenameCommand,
   aplexerSnapshotCommand,
@@ -21,7 +21,7 @@ import {
 } from '../../src/main/helper/AplexerClient';
 import { TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import type { SshService } from '../../src/main/ssh/SshService';
-import type { ExecResult, SessionSummary, ShellId } from '../../src/shared/types';
+import type { ExecResult, ShellId } from '../../src/shared/types';
 import type { AplexerSessionRecord } from '../../src/shared/aplexer';
 
 /**
@@ -120,55 +120,6 @@ describe('isAplexerSessionLive', () => {
     expect(isAplexerSessionLive({ phase: 'running', worker_alive: true })).toBe(true);
     expect(isAplexerSessionLive({ phase: 'running', worker_alive: false })).toBe(false);
     expect(isAplexerSessionLive({ phase: 'exited', worker_alive: true })).toBe(false);
-  });
-});
-
-describe('mergeSessionSummaries', () => {
-  const tmux = (name: string, path: string | null): SessionSummary => ({
-    name,
-    created: 1,
-    activity: 1,
-    attached: false,
-    path,
-    agentKind: null,
-  });
-
-  it('leads with aplexer rows and keeps unrelated tmux rows', () => {
-    const merged = mergeSessionSummaries(
-      [aplexerRecordToSummary(record())],
-      [tmux('git-other', '/home/alexey/git/other')],
-    );
-    expect(merged.map((s) => s.name)).toEqual(['review', 'git-other']);
-  });
-
-  it('drops the tmux double of a session both runtimes list', () => {
-    const merged = mergeSessionSummaries(
-      [aplexerRecordToSummary(record({ tag: 'git-pocketshell', workspace: '/home/alexey/git/pocketshell' }))],
-      [tmux('git-pocketshell', '/home/alexey/git/pocketshell')],
-    );
-    expect(merged).toHaveLength(1);
-    expect(merged[0]!.backend).toBe('aplexer');
-  });
-
-  it('keeps same-named sessions in different folders — a tag is workspace-scoped', () => {
-    const merged = mergeSessionSummaries(
-      [aplexerRecordToSummary(record({ tag: 'review', workspace: '/home/alexey/git/a' }))],
-      [tmux('review', '/home/alexey/git/b')],
-    );
-    expect(merged).toHaveLength(2);
-  });
-
-  it('keeps a tmux row with no directory — hiding beats doubling', () => {
-    const merged = mergeSessionSummaries(
-      [aplexerRecordToSummary(record({ tag: 'review', workspace: '/home/alexey/git/a' }))],
-      [tmux('review', null)],
-    );
-    expect(merged).toHaveLength(2);
-  });
-
-  it('leaves the tmux list untouched when aplexer is absent', () => {
-    const rows = [tmux('a', '/x')];
-    expect(mergeSessionSummaries([], rows).map((s) => s.name)).toEqual(['a']);
   });
 });
 
@@ -322,7 +273,8 @@ describe('AplexerClient', () => {
     // No `a`: null, so the caller runs the tmux path.
     answerExec('', 1);
     await expect(client.listSessions('c1')).resolves.toBeNull();
-    // `a` present but the snapshot fails: [] — the tmux rows still show.
+    // `a` present but the snapshot fails: [] — the snapshot is the whole list
+    // on an aplexer host, so the tree is empty for that poll tick.
     // A fresh connection (the availability cache is per connection).
     answerExecSequence([
       { stdout: '/home/u/.local/bin/a\n', exitCode: 0 },
@@ -362,6 +314,47 @@ describe('AplexerClient', () => {
     const failed = await client.killSession('c1', 'id-1');
     expect(failed).toMatchObject({ ok: false, notFound: false });
     expect(failed.error).toContain('permission denied');
+  });
+});
+
+describe('PocketshellClient.listSessions', () => {
+  it('lists the snapshot alone on an aplexer host — no helper exec, no tmux probe', async () => {
+    const { ssh, execCalls, answerExecSequence } = makeSsh();
+    answerExecSequence([
+      { stdout: '/home/u/.local/bin/a\n', exitCode: 0 }, // command -v a
+      {
+        stdout: JSON.stringify([
+          record(),
+          record({ id: 'r2', tag: 'main', workspace: '/home/alexey/git/aplexer' }),
+        ]),
+        exitCode: 0,
+      },
+      { stdout: '', exitCode: 0 }, // the worktree probe: nothing is a worktree
+    ]);
+    const client = new PocketshellClient(ssh, new AplexerClient(ssh));
+    const rows = await client.listSessions('c1');
+    expect(rows.map((s) => s.name)).toEqual(['review', 'main']);
+    expect(rows.every((s) => s.backend === 'aplexer')).toBe(true);
+    expect(execCalls.some((c) => c.includes('pocketshell sessions list'))).toBe(false);
+    expect(execCalls.some((c) => c.includes('tmux list-sessions'))).toBe(false);
+  });
+
+  it('falls back to the tmux path on a host without aplexer', async () => {
+    const { ssh, execCalls, answerExecSequence } = makeSsh();
+    answerExecSequence([
+      { stdout: '', exitCode: 1 }, // command -v a: absent
+      { stdout: '', exitCode: 1 }, // pocketshell sessions list: absent
+      {
+        // tmux list-sessions fallback
+        stdout: 'main::1700000000::1700000100::1::/home/u/git/x\n',
+        exitCode: 0,
+      },
+      { stdout: '', exitCode: 0 }, // the enrichment probe and worktree probe
+    ]);
+    const client = new PocketshellClient(ssh, new AplexerClient(ssh));
+    const rows = await client.listSessions('c1');
+    expect(rows.map((s) => s.name)).toEqual(['main']);
+    expect(execCalls.some((c) => c.includes('a snapshot'))).toBe(false);
   });
 });
 
