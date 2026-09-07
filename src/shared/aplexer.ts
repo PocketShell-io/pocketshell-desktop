@@ -78,9 +78,10 @@ export function aplexerSelector(workspace: string, tag: string): string {
  *
  * The shape mirrors {@link sessionAttachCommand} on purpose: the same
  * subshell-scoped PATH widening (the `a` binary lives in `~/.local/bin`, which
- * a PTY login shell does not always have), a labelled `||` diagnostic so a
- * failed join never reads as a no-op click, and a trailing `exit` so the tab's
- * shell dies with the join (see the "why the join ends with exit" note on
+ * neither sshd's exec environment nor a login shell's default PATH always
+ * has), a labelled `||` diagnostic so a failed join never reads as a no-op
+ * click, and a trailing `exit` so the command is self-terminating whatever
+ * mode runs it (see the "why the join ends with `exit`" note on
  * {@link sessionAttachCommand}).
  *
  * The join is by UUID when [id] is known — renames change the tag, never the

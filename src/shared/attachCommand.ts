@@ -78,35 +78,39 @@
  * `tmux_api._run_tmux` makes when the helper itself shells out to `tmux`.
  *
  * The assignment sits inside a subshell so it lasts exactly as long as the
- * join. Nothing of it outlives the join — nor does the login shell itself: the
- * trailing `exit` (see "why the join ends with `exit`" above) closes the tab's
- * shell once the join is over, so the PATH the app widened is gone with it.
+ * join. Nothing of it outlives the join — nor, in `exec` mode, is there a
+ * login shell behind it at all; the trailing `exit` closes what a typed-mode
+ * runner would have opened (see "why the join ends with `exit`" above).
  *
  * ## Why a failed join shouts
  *
- * The PTY runs an interactive login shell and this command is written to its
- * stdin, so a failure leaves the user looking at a prompt — which is
- * indistinguishable from the app having done nothing at all. That ambiguity is
- * how the original bug survived: clicking a session looked like a no-op. The
- * `||` arm turns any non-zero exit — helper missing, session genuinely gone,
- * helper erroring — into a labelled line naming the session that failed. The
- * line is printed BEFORE the shell exits (the `exit` below runs after the
- * whole `||` expression), so the diagnostic is on the pane when the tab dies.
+ * The join runs as the session PTY's own command (the pool asks
+ * `openTrackedShell` for `commandMode: 'exec'` — an `exec` request carrying a
+ * pty, no login shell), so a failed join closes the channel and the pane is
+ * torn down with it. Without the `||` arm that teardown is all the user sees:
+ * a pane that flashes and dies is indistinguishable from a crash. The `||`
+ * arm turns any non-zero exit — helper missing, session genuinely gone,
+ * helper erroring — into a labelled line naming the session that failed,
+ * printed BEFORE the shell exits (the `exit` below runs after the whole `||`
+ * expression), so the line is on the pane when the channel closes.
  *
  * ## Why the join ends with `exit`
  *
- * This PTY belongs to one session tab and nothing else — nobody types at the
- * login shell behind it. What the tab shows must therefore be true for as
- * long as the tab's channel lives, and a leftover prompt is the one state
- * that breaks that: when the attach ends under it (a user detach, a
- * worker-side disconnect, a dead session), the login shell kept the channel
- * open, the pool kept handing back the dead client, and clicking the tab
- * showed the corpse forever — the "switching between sessions doesn't work"
- * report. The trailing `exit` closes the shell when the join ends for ANY
- * reason, so the channel closes with it: the pool drops its record through
- * the ordinary `onExit`, the renderer marks the pane gone through the
- * ordinary `shell:exited`, and the next visit to the tab re-joins fresh.
- * Deliberately still no `exec`: the diagnostic above must survive to print.
+ * What the tab shows must be true for as long as the tab's channel lives, and
+ * a leftover prompt is the one state that breaks that: when the attach ends
+ * under it (a user detach, a worker-side disconnect, a dead session), a shell
+ * that stayed alive kept the channel open, the pool kept handing back the
+ * dead client, and clicking the tab showed the corpse forever — the
+ * "switching between sessions doesn't work" report. In `exec` mode the join
+ * IS the channel, so the channel closes when the join ends on its own; the
+ * trailing `exit` makes the command self-terminating in its own right, so the
+ * property does not depend on the caller remembering `commandMode: 'exec'` —
+ * a runner using `openTrackedShell`'s default typed mode (an interactive
+ * login shell that the command is written to) gets the same closure. Either
+ * way the pool drops its client through the ordinary `onExit`, the renderer
+ * marks the pane gone through the ordinary `shell:exited`, and the next
+ * visit to the tab re-joins fresh. Deliberately still no `exec` builtin: the
+ * diagnostic above must survive to print.
  */
 
 import { USER_BIN_PATH } from './userBinPath';
@@ -132,7 +136,7 @@ import { shellQuote } from './shellQuote';
  * socket sweep if the session moved after listing.
  *
  * The sweep variables are `__ps_*` and live inside the subshell, so nothing
- * leaks into the login shell the user lands in afterwards.
+ * leaks past the join into whatever shell (if any) runs it.
  */
 export function sessionAttachCommand(
   sessionName: string,
@@ -178,8 +182,8 @@ export function sessionAttachCommand(
  * under a name only this app knows.
  *
  * That rendezvous also proves the two halves of a join reached the SAME tmux
- * server. The write happens in the session PTY's login shell; anything reading
- * it back does so from a separate, non-login exec channel, so a host where
+ * server. The write happens inside the join command itself; anything reading
+ * it back does so from a separate exec channel, so a host where
  * those resolve `tmux` differently simply finds nothing rather than acting on
  * the wrong server.
  *
