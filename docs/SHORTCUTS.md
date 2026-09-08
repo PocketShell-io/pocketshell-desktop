@@ -19,6 +19,7 @@ everywhere: every call site in the app spells the test
 | `Ctrl+V` | Put the clipboard in the composer | Costs readline's `quoted-insert`. `Ctrl+Alt+V` is left alone — that is AltGr. |
 | `Ctrl+Shift+V` | Put the clipboard in the composer | The same command. It used to paste into the shell; see below. |
 | `Ctrl+Shift+C` | Copy the selection | Only when there is a selection; falls through otherwise. |
+| `Ctrl+C` | Copy the selection | The Windows-console contract: with a selection it copies, without one it falls through and is SIGINT. Fixed — see §3.1. |
 | *any printable key* | Opens the composer with the keystroke | Not a chord. Gated on the `typingOpensComposer` setting and on the composer being closed — and stood down after a short-draft hand-off (COMPOSER.md §12.2) until the panel is summoned again. |
 | right-click | Paste into the shell | Not a chord, and now the ONLY route to the shell's own paste. |
 | mouse-up after a drag | Copy the selection | Ditto. |
@@ -274,11 +275,13 @@ Refused on every surface that collides with `terminal`. All of them are **bare
 Ctrl** chords, which is not an oversight: a terminal encodes `Ctrl+letter` as a
 single control byte and has no way to express `Ctrl+Shift+letter` at all. That
 is why every app chord in this repo that sits next to a terminal wears Shift,
-and why `Ctrl+Shift+C` is fine while `Ctrl+C` is not.
+and why `Ctrl+Shift+C` is fine while `Ctrl+C` is not — the one bare-Ctrl
+exception being `Ctrl+C`'s copy-when-selected, which is fixed and conditional
+(§1.1) and so can never be moved onto another command.
 
 | Chord | Why |
 |---|---|
-| `Ctrl+C` | SIGINT — the only way to stop a running program. |
+| `Ctrl+C` | SIGINT when nothing is selected — the only way to stop a running program. With a selection the pane copies instead (§1.1), which is fixed; no rebindable command may take the chord either way. |
 | `Ctrl+D` | End of input — the only way to exit a shell or a REPL. |
 | `Ctrl+Z` | SIGTSTP — suspends the foreground job. |
 | `Ctrl+B` | tmux's default prefix. Without it there is no tmux. |

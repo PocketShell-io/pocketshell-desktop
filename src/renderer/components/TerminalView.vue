@@ -42,6 +42,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { applyUnicode11Widths } from '../terminalUnicode';
 import { api } from '../ipc';
 import AppIcon from './AppIcon.vue';
 import { useShellsStore } from '../stores/shells';
@@ -1123,15 +1124,28 @@ function onCustomKey(e: KeyboardEvent): boolean {
     emit('paste-into-composer');
     return false;
   }
-  if (isShortcut(settings.shortcutBindings, 'terminal.copySelection', e)) {
-    // Only WITH a selection, deliberately: with nothing selected the chord
-    // falls through and reaches the pane, which is the behaviour that shipped.
-    //
+  // TWO chords answer here, and both mean copy-the-selection:
+  // `terminal.copySelection` (Ctrl+Shift+C, rebindable) and
+  // `terminal.ctrlCCopiesSelection` (bare Ctrl+C, fixed). The second is the
+  // Windows-console contract, on the user's request: the pane is "in copying
+  // mode" exactly while it holds a selection — the highlight xterm keeps after
+  // the drag ends — and while it does, Ctrl+C must copy rather than
+  // interrupt. The guard below is the whole safety of that: with nothing
+  // selected the branch stands down and the key falls through to xterm,
+  // which sends `\x03` — SIGINT, the chord's day job. A fixed binding is
+  // what keeps that arrangement out of the rebinding pool: if Ctrl+C could be
+  // moved onto, some other command could take it and its no-selection case
+  // would stop being an interrupt at all.
+  if (
+    isShortcut(settings.shortcutBindings, 'terminal.copySelection', e) ||
+    isShortcut(settings.shortcutBindings, 'terminal.ctrlCCopiesSelection', e)
+  ) {
     // `preventDefault()` sits here and not only at the return, because
     // returning false stops xterm — `_keyDown` bails at the custom handler and
     // never calls its own `cancel()` — but leaves the DOM event LIVE for
-    // Chromium to act on. Both, always: it is the same defect bc86cf7 and
-    // 3628090 fixed twice before, in the very function that documents it.
+    // Chromium to act on (Ctrl+C is the menu's `copy` role, Ctrl+Shift+C is
+    // nothing). Both, always: it is the same defect bc86cf7 and 3628090 fixed
+    // twice before, in the very function that documents it.
     if (term?.hasSelection()) {
       e.preventDefault();
       void copyToClipboard(term.getSelection());
@@ -1148,13 +1162,17 @@ onMounted(async () => {
     fontSize: settings.terminalFontSize,
     theme: resolveTheme(settings.theme).terminal,
     // `registerDecoration` — the at-rest path tint, terminalPathHighlights.ts —
-    // is proposed-API and THROWS without this flag. Nothing else in the app
-    // sits behind it: `term.buffer` is public API despite the repair comment
-    // below once claiming otherwise.
+    // is proposed-API and THROWS without this flag. `term.unicode` (the
+    // Unicode 11 width provider, terminalUnicode.ts) sits behind the same
+    // gate; `term.buffer` is public API despite the repair comment below once
+    // claiming otherwise.
     allowProposedApi: true,
   });
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
+  // Emoji measure two columns — in the buffer as well as in the font — before
+  // the first output byte is parsed (terminalUnicode.ts, DESIGN.md §3.5).
+  applyUnicode11Widths(term);
   // An explicit activation handler, not the addon default.
   //
   // WebLinksAddon defaults to `window.open(uri)`, which in Electron reaches

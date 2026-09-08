@@ -414,7 +414,10 @@ import { SHORTCUTS, shortcutById } from './shortcutTable';
  * their command line.
  */
 export const RESERVED_CHORDS: readonly { chord: string; why: string }[] = [
-  { chord: 'Ctrl+C', why: 'SIGINT — the only way to stop a running program.' },
+  {
+    chord: 'Ctrl+C',
+    why: 'SIGINT when nothing is selected — the only way to stop a running program. With a selection the pane copies instead, which is fixed (terminal.ctrlCCopiesSelection), and no rebindable command may take the chord either way.',
+  },
   { chord: 'Ctrl+D', why: 'End of input — the only way to exit a shell or a REPL.' },
   { chord: 'Ctrl+Z', why: 'SIGTSTP — suspends the foreground job.' },
   { chord: 'Ctrl+B', why: 'tmux’s default prefix. Without it there is no tmux.' },

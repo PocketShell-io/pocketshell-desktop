@@ -226,7 +226,16 @@ export const SHORTCUTS: readonly ShortcutSpec[] = [
     defaults: ['Ctrl+Shift+C'],
     owner: 'app',
     rebindable: true,
-    note: 'Bare Ctrl+C is SIGINT and can never be this. Selecting with the mouse already copies on mouse-up, so this chord is the keyboard route to something the mouse does for free.',
+    note: 'Selecting with the mouse already copies on mouse-up, so this chord is the keyboard route to something the mouse does for free. Only fires WITH a selection; bare Ctrl+C is the same command, fixed on its own entry below.',
+  },
+  {
+    id: 'terminal.ctrlCCopiesSelection',
+    surface: 'terminal',
+    label: 'Ctrl+C copies the selection',
+    defaults: ['Ctrl+C'],
+    owner: 'app',
+    rebindable: false,
+    note: 'The Windows-console contract, on the user\'s request: when the pane holds a selection, Ctrl+C copies it instead of interrupting. Without a selection it falls through untouched and stays SIGINT — which is why this entry is fixed and why Ctrl+C stays on the reserved list: a rebindable command holding it would promise the chord while the no-selection case still owes the shell the interrupt.',
   },
   {
     id: 'terminal.pasteIntoComposer',

@@ -234,6 +234,13 @@ describe('the registry', () => {
       'Ctrl+Shift+V',
     ]);
     expect(shortcutById('terminal.copySelection')!.defaults).toEqual(['Ctrl+Shift+C']);
+    // Bare Ctrl+C copies the selection too — the Windows-console contract, on
+    // the user's request — but it can never be a REBINDABLE chord: without a
+    // selection it is SIGINT, and a movable Ctrl+C would let another command
+    // take the interrupt away. Fixed, with the guard living in the handler.
+    const ctrlC = shortcutById('terminal.ctrlCCopiesSelection')!;
+    expect(ctrlC.defaults).toEqual(['Ctrl+C']);
+    expect(ctrlC.rebindable).toBe(false);
     // The shell's paste survives with NO chord: it is the right-click, and it
     // stays in the table because the action still exists and a reader needs to
     // find out how to reach it.
@@ -548,7 +555,6 @@ describe('isShortcut — the shape every call site becomes', () => {
 
   it('leaves everything else alone, which is the terminal’s whole contract', () => {
     for (const e of [
-      { key: 'c', ctrlKey: true },
       { key: 'd', ctrlKey: true },
       { key: 'b', ctrlKey: true },
       { key: 'a' },
@@ -559,5 +565,24 @@ describe('isShortcut — the shape every call site becomes', () => {
       );
       expect(claimed.map((s) => s.id), JSON.stringify(e)).toEqual([]);
     }
+  });
+
+  it('answers Ctrl+C only by the fixed copy-when-selected binding', () => {
+    // The one deliberate exception to the contract above: with a selection the
+    // pane copies, without one the chord falls through and is SIGINT. That
+    // guard lives in TerminalView's handler — the registry can only pin that
+    // the claim is FIXED and sits on exactly one entry, so no other terminal
+    // command can ever be the thing Ctrl+C reaches.
+    const claimed = SHORTCUTS.filter(
+      (spec) => spec.surface === 'terminal' && isShortcut(bindings, spec.id, { key: 'c', ctrlKey: true }),
+    );
+    expect(claimed.map((s) => s.id)).toEqual(['terminal.ctrlCCopiesSelection']);
+    // And rebinding the rebindable copy chord away does not move this one:
+    expect(
+      isShortcut(resolveBindings({ 'terminal.copySelection': 'Ctrl+Shift+Y' }), 'terminal.ctrlCCopiesSelection', {
+        key: 'c',
+        ctrlKey: true,
+      }),
+    ).toBe(true);
   });
 });
