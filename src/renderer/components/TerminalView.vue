@@ -1167,6 +1167,25 @@ onMounted(async () => {
     // gate; `term.buffer` is public API despite the repair comment below once
     // claiming otherwise.
     allowProposedApi: true,
+    // OSC 8 hyperlinks — links a remote program embeds with escape sequences,
+    // rather than text the linkifier guessed at — are NOT handled by
+    // WebLinksAddon below; xterm core activates them itself, and its default
+    // is unusable in Electron twice over: it asks `confirm()` first (the
+    // "This link could potentially be dangerous" dialog), then `window.open()`
+    // with NO url — which main's window-open handler refuses as `about:blank`,
+    // so confirming the dialog still opened nothing. The handler replaces that
+    // default with what the addon's callback below does: `window.open` the URI
+    // and let main allow-list http(s) into the system browser. The scheme test
+    // here mirrors both the addon's and main's; xterm independently drops
+    // non-http(s) OSC 8 URIs before a link is even offered, unless
+    // `allowNonHttpProtocols` is set (it is not).
+    linkHandler: {
+      activate: (_event, uri) => {
+        if (/^https?:\/\//i.test(uri)) {
+          window.open(uri, '_blank', 'noopener,noreferrer');
+        }
+      },
+    },
   });
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
