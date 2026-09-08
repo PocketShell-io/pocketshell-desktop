@@ -1063,6 +1063,23 @@ const renaming = ref<{ id: string; session: string; remainder: string | null } |
 const renameText = ref('');
 const renameError = ref<string | null>(null);
 
+/**
+ * Focus the rename field the moment it exists.
+ *
+ * A function ref rather than the `autofocus` attribute, which the browser only
+ * honours for an element present at page load and silently ignores for one a
+ * framework inserts later — SettingsView's capture field made the same switch
+ * for the same reason. Select, not just focus: the field opens holding the
+ * name it is renaming, and the common gesture is "type the replacement", which
+ * wants the old name pre-picked.
+ */
+function bindRenameInput(el: unknown): void {
+  if (el instanceof HTMLInputElement) {
+    el.focus();
+    el.select();
+  }
+}
+
 function beginRename(tab: WorkspaceTab): void {
   if (tab.kind !== 'session') return;
   renaming.value = { id: tab.id, session: tab.session, remainder: tab.remainder };
@@ -1997,7 +2014,7 @@ function onFocusTerminal(): void {
               :value="renameText"
               :title="renameError ?? 'Enter to rename, Escape to cancel'"
               :class="{ invalid: renameError }"
-              autofocus
+              :ref="bindRenameInput"
               @input="onRenameInput"
               @keydown.enter.prevent="commitRename"
               @keydown.esc.prevent="cancelRename"
