@@ -177,6 +177,31 @@ export class SftpService {
     });
   }
 
+  /**
+   * Create a file that must not already exist, optionally with content.
+   *
+   * The `wx` flag is the point. This service's other write verb,
+   * {@link writeFile}, overwrites by contract because its caller is saving a
+   * buffer the user opened on purpose; creation has no such prior read, and a
+   * create that silently truncated an existing name would be a data-loss
+   * button wearing a harmless one. The stat in front is only for the MESSAGE:
+   * `wx` alone rejects an existing file with the server's terse "Failure",
+   * while this names the file — and the flag still guards the gap between the
+   * stat and the open.
+   */
+  async createFile(connectionId: string, path: string, content = ''): Promise<void> {
+    const sftp = await this.sftp(connectionId);
+    if (await this.exists(connectionId, path)) {
+      throw new Error(`Already exists: ${path}`);
+    }
+    await new Promise<void>((resolve, reject) => {
+      const stream = sftp.createWriteStream(path, { flags: 'wx' });
+      stream.on('error', reject);
+      stream.on('close', () => resolve());
+      stream.end(Buffer.from(content, 'utf8'));
+    });
+  }
+
   /** Create a directory. Rejects if it already exists. */
   async mkdir(connectionId: string, path: string): Promise<void> {
     const sftp = await this.sftp(connectionId);

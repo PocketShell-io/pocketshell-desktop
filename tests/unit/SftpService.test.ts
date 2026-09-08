@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
 import type { Client } from 'ssh2';
 import { describe, expect, it } from 'vitest';
 import { SftpService } from '@main/sftp/SftpService';
@@ -31,10 +31,19 @@ interface Harness {
   connectionId: string;
   /** Paths whose read stream was actually opened. */
   streamed: string[];
+  /** Create-stream opens: path + the flags the service asked for. */
+  opened: { path: string; flags: string }[];
+  /** Bytes handed to each create stream, keyed by path. */
+  written: Record<string, string>;
 }
 
-function harnessFor(files: Record<string, FakeFile>): Harness {
+function harnessFor(
+  files: Record<string, FakeFile>,
+  failOpen: Record<string, string> = {},
+): Harness {
   const streamed: string[] = [];
+  const opened: { path: string; flags: string }[] = [];
+  const written: Record<string, string> = {};
 
   const wrapper = {
     stat(path: string, cb: (err: Error | null, stats?: unknown) => void): void {
@@ -63,6 +72,24 @@ function harnessFor(files: Record<string, FakeFile>): Harness {
       // is all the running-total guard cares about.
       return Readable.from(files[path]?.chunks ?? []);
     },
+    createWriteStream(path: string, opts?: { flags?: string }): Writable {
+      opened.push({ path, flags: opts?.flags ?? 'w' });
+      const stream = new Writable({
+        write(chunk: Buffer, _enc: string, done: (error?: Error | null) => void): void {
+          written[path] = (written[path] ?? '') + chunk.toString('utf8');
+          done();
+        },
+      });
+      // A server refusal of the OPEN arrives asynchronously on the real
+      // wrapper (the reply comes over the wire); a nextTick destroy reproduces
+      // that ordering — the service's error listener is attached before it
+      // fires.
+      const failure = failOpen[path];
+      if (failure) {
+        process.nextTick(() => stream.destroy(new Error(failure)));
+      }
+      return stream;
+    },
     end(): void {
       // no-op
     },
@@ -85,7 +112,7 @@ function harnessFor(files: Record<string, FakeFile>): Harness {
     connectedAt: 0,
   });
 
-  return { sftp: new SftpService(registry), connectionId, streamed };
+  return { sftp: new SftpService(registry), connectionId, streamed, opened, written };
 }
 
 const CAP = 1024;
@@ -182,5 +209,72 @@ describe('SftpService.readBinary', () => {
   it('rejects an unknown connection', async () => {
     const h = harnessFor({ '/f': { type: 'file', chunks: [Buffer.from('x')] } });
     await expect(h.sftp.readBinary('conn-nope', '/f', CAP)).rejects.toThrow();
+  });
+});
+
+/**
+ * `createFile` — the create-only sibling of `writeFile`.
+ *
+ * The contract being pinned: a create can never truncate. `writeFile` may
+ * overwrite because its caller is saving a buffer the user opened on purpose;
+ * creation has no such prior read, so an existing name must be refused —
+ * legibly, before anything is opened — and the exclusivity must hold even
+ * when the stat and the open race, which is what the `wx` flag is for.
+ */
+describe('SftpService.createFile', () => {
+  it('creates a file that is not there, asking for exclusive create', async () => {
+    const h = harnessFor({});
+
+    await h.sftp.createFile(h.connectionId, '/home/me/notes.md');
+
+    // 'wx': create + fail-if-exists. A plain 'w' here would be the silent
+    // truncation the whole method exists to prevent.
+    expect(h.opened).toEqual([{ path: '/home/me/notes.md', flags: 'wx' }]);
+  });
+
+  it('delivers initial content', async () => {
+    const h = harnessFor({});
+
+    await h.sftp.createFile(h.connectionId, '/home/me/notes.md', '# hi\n');
+
+    expect(h.written['/home/me/notes.md']).toBe('# hi\n');
+  });
+
+  it('creates an empty file by default, not "undefined"', async () => {
+    const h = harnessFor({});
+
+    await h.sftp.createFile(h.connectionId, '/home/me/notes.md');
+
+    expect(h.written['/home/me/notes.md']).toBe('');
+  });
+
+  it('refuses an existing file before anything is opened, naming it', async () => {
+    const h = harnessFor({ '/home/me/notes.md': { type: 'file' } });
+
+    await expect(h.sftp.createFile(h.connectionId, '/home/me/notes.md')).rejects.toThrow(
+      'Already exists: /home/me/notes.md',
+    );
+    // The refusal is ours, not a stream error discovered mid-write: nothing
+    // was opened, so nothing was at risk.
+    expect(h.opened).toEqual([]);
+  });
+
+  it('refuses a directory of the same name', async () => {
+    const h = harnessFor({ '/home/me/notes.md': { type: 'dir' } });
+
+    await expect(h.sftp.createFile(h.connectionId, '/home/me/notes.md')).rejects.toThrow(
+      /Already exists/,
+    );
+    expect(h.opened).toEqual([]);
+  });
+
+  it('still refuses when a name appears between the stat and the open', async () => {
+    // The stat-then-open gap: the server's own exclusivity is the backstop,
+    // and the rejection travels rather than being swallowed.
+    const h = harnessFor({}, { '/home/me/notes.md': 'Failure' });
+
+    await expect(h.sftp.createFile(h.connectionId, '/home/me/notes.md')).rejects.toThrow(
+      'Failure',
+    );
   });
 });

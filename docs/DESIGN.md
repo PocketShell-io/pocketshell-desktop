@@ -742,6 +742,33 @@ overflow content); Adobe Spectrum; Fluent 2; WinUI BreadcrumbBar; GitHub
 Primer; Atlassian; USWDS; GitLab Pajamas; Grafana's truncation spec; GNOME
 Nautilus `src/nautilus-pathbar.c`; VS Code `breadcrumbsWidget.ts`.
 
+#### 5.7.2 Creating a file or folder — an inline row, not a dialog
+
+Creation lives in the tree: a `+` on the breadcrumb strip and a right-click on
+the listing's empty ground open one menu (**New file** / **New folder**), and
+choosing either puts an inline naming row at the top of the list — where the
+new name sorts anyway. Enter creates, Escape cancels, Enter on an empty field
+just dismisses (the path bar's ruling: do nothing, not an error). The row
+stays open over the footer's message when the create is refused, because the
+next thing the user wants is to fix the name.
+
+Two rules are load-bearing and both live server-side of the UI:
+
+- **A create can never truncate.** Files are made through `sftp:createFile`,
+  which opens with `wx` and refuses a name that is already there — unlike
+  `sftp:writeFile`, which overwrites by contract because its caller is saving
+  a buffer that was read on purpose. A creation flow able to clobber an
+  existing file would be a data-loss button wearing a harmless one.
+- **A created file opens; a created folder only lists.** Naming a file is the
+  first half of "write something new here" and the editor is the second; a
+  folder's existence in the listing is the whole of what was asked for.
+
+The name typed is ONE segment of the browsed directory: `/` in a name, `.` and
+`..` are refused on the store side, so the field cannot reach past the folder
+on screen. Failed folder clicks stay legible in the same footer: `cd` reports
+"Could not open <path>" there and re-lists, rather than letting the rejection
+reach the global diagnostics toast.
+
 ### 5.7b Document preview — HTML, markdown and SVG, one pipeline
 
 The Files tab shows three kinds as BOTH a render and their source, behind one

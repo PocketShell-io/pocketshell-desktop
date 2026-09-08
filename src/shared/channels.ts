@@ -129,6 +129,7 @@ export const ipc = {
     readFile: 'sftp:readFile', // UTF-8 text; mangles anything binary
     readBinary: 'sftp:readBinary', // raw bytes, size-capped (images, audio, pdf)
     writeFile: 'sftp:writeFile',
+    createFile: 'sftp:createFile', // create-only; refuses a name already there
     mkdir: 'sftp:mkdir',
     rename: 'sftp:rename',
     deleteFile: 'sftp:deleteFile',

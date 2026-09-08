@@ -416,6 +416,13 @@ const api = {
     writeFile: (connectionId: string, path: string, content: string): Promise<boolean> =>
       ipcRenderer.invoke(ipc.sftp.writeFile, connectionId, path, content),
 
+    /**
+     * Create a file, optionally with content. Refuses a name that is already
+     * there — unlike `writeFile`, which overwrites by contract.
+     */
+    createFile: (connectionId: string, path: string, content?: string): Promise<boolean> =>
+      ipcRenderer.invoke(ipc.sftp.createFile, connectionId, path, content ?? ''),
+
     /** Create a directory. */
     mkdir: (connectionId: string, path: string): Promise<boolean> =>
       ipcRenderer.invoke(ipc.sftp.mkdir, connectionId, path),

@@ -988,6 +988,81 @@ export const useFilesStore = defineStore('files', () => {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Creating entries in the browsed directory
+  // -------------------------------------------------------------------------
+
+  /**
+   * The shared body of the two "make something here" actions: validate the
+   * typed name, run the create against its absolute path, re-list. Returns
+   * the absolute path on success, null on any refusal.
+   *
+   * A refusal is reported in the LISTING channel (`error`), not `fileError`:
+   * the naming row these actions serve lives in the tree, and that is where
+   * the tree already renders what went wrong. Returning a verdict (rather
+   * than throwing) is what lets the caller keep the row open on failure —
+   * the next thing the user wants is to fix the name, not to re-open the
+   * field — and close it only on success.
+   *
+   * The name rules are narrower than the host's: the remote would accept a
+   * name containing `/` as a path, but a field that names ONE entry in THIS
+   * directory must not be able to reach past it (or silently create in a
+   * subdirectory that may not exist), and `.` / `..` are navigation, not
+   * names. Whitespace is trimmed — it nearly always arrives by accident —
+   * and an empty result is refused like any other bad name.
+   */
+  async function createEntry(
+    connectionId: ConnectionId,
+    raw: string,
+    create: (abs: string) => Promise<unknown>,
+  ): Promise<string | null> {
+    if (!cwd.value) return null;
+    const name = raw.trim();
+    if (name === '' || name === '.' || name === '..' || name.includes('/')) {
+      error.value = `Not a usable name: ${name === '' ? '(empty)' : name}`;
+      return null;
+    }
+    const abs = joinPosix(cwd.value, name);
+    error.value = null;
+    try {
+      await create(abs);
+    } catch (e) {
+      error.value = errorMessage(e);
+      return null;
+    }
+    await refresh(connectionId);
+    return abs;
+  }
+
+  /**
+   * Create a file in the browsed directory. The main-process verb refuses an
+   * existing name (`SftpService.createFile` — `wx`, never truncate), so the
+   * server is the arbiter of "already there" and this side only has to say
+   * what it answered.
+   *
+   * A created file OPENS: naming it is the first half of "write something new
+   * here", and the editor with a fresh buffer is the second. The open runs
+   * after the re-list so the tree shows the new row at the same moment the
+   * editor takes it.
+   */
+  async function createFile(
+    connectionId: ConnectionId,
+    raw: string,
+    content = '',
+  ): Promise<boolean> {
+    const abs = await createEntry(connectionId, raw, (path) =>
+      api.sftp.createFile(connectionId, path, content),
+    );
+    if (abs != null) await openFile(connectionId, abs);
+    return abs != null;
+  }
+
+  /** Create a directory in the browsed directory. The listing is the result. */
+  async function createFolder(connectionId: ConnectionId, raw: string): Promise<boolean> {
+    return (await createEntry(connectionId, raw, (path) => api.sftp.mkdir(connectionId, path))) !=
+      null;
+  }
+
   /**
    * Download the open file to a location the user picks. This is the binary
    * panel's only action, and the reason refusing to render something is not a
@@ -1205,6 +1280,8 @@ export const useFilesStore = defineStore('files', () => {
     openFile,
     setContent,
     save,
+    createFile,
+    createFolder,
     download,
     closeFile,
     requestReveal,

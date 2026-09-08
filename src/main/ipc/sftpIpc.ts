@@ -80,6 +80,17 @@ export function registerSftpIpc(ctx: IpcContext): void {
       return true;
     },
   );
+  // The create-only sibling of `sftp:writeFile`, which overwrites by
+  // contract. The Files tab's "new file" needs exactly the refusal: a
+  // creation flow that could clobber an existing name would be a data-loss
+  // button. Service-side reasoning in SftpService.createFile.
+  ipcMain.handle(
+    ipc.sftp.createFile,
+    async (_evt, connectionId: string, path: string, content?: string): Promise<boolean> => {
+      await sftp.createFile(connectionId, path, content ?? '');
+      return true;
+    },
+  );
   ipcMain.handle(ipc.sftp.mkdir, async (_evt, connectionId: string, path: string): Promise<boolean> => {
     await sftp.mkdir(connectionId, path);
     return true;

@@ -36,6 +36,8 @@ const readBinary =
 const readFile = vi.fn<(connectionId: string, path: string) => Promise<string>>();
 const writeFile =
   vi.fn<(connectionId: string, path: string, content: string) => Promise<boolean>>();
+const createFile = vi.fn<(connectionId: string, path: string, content?: string) => Promise<boolean>>();
+const mkdir = vi.fn<(connectionId: string, path: string) => Promise<boolean>>();
 const saveAs =
   vi.fn<(opts: { connectionId: string; remotePath: string }) => Promise<string | null>>();
 const openHtml =
@@ -71,6 +73,9 @@ vi.mock('../../src/renderer/ipc', () => ({
       readFile: (connectionId: string, path: string) => readFile(connectionId, path),
       writeFile: (connectionId: string, path: string, content: string) =>
         writeFile(connectionId, path, content),
+      createFile: (connectionId: string, path: string, content?: string) =>
+        createFile(connectionId, path, content),
+      mkdir: (connectionId: string, path: string) => mkdir(connectionId, path),
       saveAs: (opts: { connectionId: string; remotePath: string }) => saveAs(opts),
     },
     preview: {
@@ -118,6 +123,8 @@ beforeEach(() => {
   readBinary.mockReset();
   readFile.mockReset();
   writeFile.mockReset();
+  createFile.mockReset();
+  mkdir.mockReset();
   saveAs.mockReset();
   openHtml.mockReset();
   openMarkdown.mockReset();
@@ -125,6 +132,8 @@ beforeEach(() => {
   releasePreview.mockReset();
   list.mockResolvedValue([]);
   writeFile.mockResolvedValue(true);
+  createFile.mockResolvedValue(true);
+  mkdir.mockResolvedValue(true);
   // A fresh token per call: main mints one per preview, and a test that could
   // not tell two apart could not tell whether a save re-minted at all. All
   // three verbs share the counter so a test can assert which one was reached.
@@ -281,6 +290,101 @@ describe('files store cd() failures', () => {
 
     expect(files.cwd).toBe('/home/u/git/other');
     expect(files.error).toBeNull();
+  });
+});
+
+/**
+ * Creating a file or folder in the browsed directory.
+ *
+ * The store's side of the contract: the name is one segment of the browsed
+ * directory (never a path that reaches past it), the create verb that refuses
+ * to overwrite is the one used for files, a failure lands in the tree's
+ * footer channel and returns false — so the naming row stays open over its
+ * reason — and a created FILE opens in the editor, ready to be written,
+ * while a created FOLDER is just listed.
+ */
+describe('files store createFile() / createFolder()', () => {
+  const openIn = async (cwd: string) => {
+    realPath.mockImplementation((_c, p) => Promise.resolve(p));
+    // A created file opens, so the read the open performs is stubbed to an
+    // empty text buffer for every test in this suite.
+    stat.mockResolvedValue({ size: 0 });
+    readBinary.mockResolvedValue(new Uint8Array());
+    const files = useFilesStore();
+    await files.open(CONN, cwd);
+    list.mockClear();
+    return files;
+  };
+
+  it('creates a file at the browsed directory and opens it', async () => {
+    const files = await openIn('/home/u/git');
+
+    expect(await files.createFile(CONN, 'notes.md')).toBe(true);
+
+    expect(createFile).toHaveBeenCalledWith(CONN, '/home/u/git/notes.md', '');
+    // Re-listed so the tree shows the new row, and opened ready to type into.
+    expect(list).toHaveBeenCalledWith(CONN, '/home/u/git');
+    expect(files.openPath).toBe('/home/u/git/notes.md');
+    expect(files.openMode).toBe('markdown');
+    expect(files.dirty).toBe(false);
+  });
+
+  it('keeps the naming row open over a refusal, with the reason in the footer', async () => {
+    const files = await openIn('/home/u/git');
+    createFile.mockRejectedValue(new Error('Already exists: /home/u/git/notes.md'));
+
+    expect(await files.createFile(CONN, 'notes.md')).toBe(false);
+
+    expect(files.error).toContain('Already exists');
+    // Nothing opened — the buffer is not the failed file's.
+    expect(files.openPath).toBeNull();
+  });
+
+  it('refuses a name that would reach past this directory', async () => {
+    const files = await openIn('/home/u/git');
+
+    expect(await files.createFile(CONN, '../escape.txt')).toBe(false);
+    expect(await files.createFile(CONN, 'a/b.txt')).toBe(false);
+
+    expect(createFile).not.toHaveBeenCalled();
+    expect(files.error).toContain('Not a usable name');
+  });
+
+  it('refuses the navigation-only names, which are not names', async () => {
+    const files = await openIn('/home/u/git');
+
+    expect(await files.createFile(CONN, '.')).toBe(false);
+    expect(await files.createFile(CONN, '..')).toBe(false);
+    expect(createFile).not.toHaveBeenCalled();
+  });
+
+  it('trims an accidental surrounding whitespace but refuses what is left empty', async () => {
+    const files = await openIn('/home/u/git');
+
+    expect(await files.createFile(CONN, '   ')).toBe(false);
+    expect(createFile).not.toHaveBeenCalled();
+
+    expect(await files.createFile(CONN, ' notes.md ')).toBe(true);
+    expect(createFile).toHaveBeenCalledWith(CONN, '/home/u/git/notes.md', '');
+  });
+
+  it('creates a folder, which lists it but does not open anything', async () => {
+    const files = await openIn('/home/u/git');
+
+    expect(await files.createFolder(CONN, 'experiments')).toBe(true);
+
+    expect(mkdir).toHaveBeenCalledWith(CONN, '/home/u/git/experiments');
+    expect(list).toHaveBeenCalledWith(CONN, '/home/u/git');
+    expect(files.openPath).toBeNull();
+  });
+
+  it('reports a failed mkdir in the tree footer', async () => {
+    const files = await openIn('/home/u/git');
+    mkdir.mockRejectedValue(new Error('Failure'));
+
+    expect(await files.createFolder(CONN, 'experiments')).toBe(false);
+
+    expect(files.error).toBe('Failure');
   });
 });
 

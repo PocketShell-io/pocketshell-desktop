@@ -180,6 +180,87 @@ function closeMenu(): void {
   menu.value = null;
 }
 
+// ---------------------------------------------------------------------------
+// New file / new folder
+// ---------------------------------------------------------------------------
+//
+// Creation was the one thing this tab could not DO: it browsed, opened,
+// served and downloaded, but making a file meant going to a terminal. The
+// shape is the editors' (VS Code's explorer, Nautilus): an inline naming row
+// at the top of the list, not a dialog — creating is a small edit of the
+// listing, and a modal would stop the user checking the names already on
+// screen while they type.
+//
+// Two doors into the same menu, because neither is always reachable: a `+` on
+// the breadcrumb strip (discoverable, and there even when the listing is
+// full), and a right-click on the listing's empty ground (where a Files-app
+// user looks for it first). One menu, one action set.
+//
+// The store does the work — `createFile` refuses-to-overwrite is the
+// main-process verb, a created FILE opens ready to type into, a created
+// FOLDER just appears in the listing — and a refusal keeps the naming row
+// open over the footer's message, the same ruling as the path bar.
+
+const creating = ref<'file' | 'folder' | null>(null);
+const createName = ref('');
+const createEl = ref<HTMLInputElement | null>(null);
+
+function startCreate(kind: 'file' | 'folder'): void {
+  createMenu.value = null;
+  creating.value = kind;
+  createName.value = '';
+  void nextTick(() => createEl.value?.focus());
+}
+
+function cancelCreate(): void {
+  creating.value = null;
+}
+
+async function commitCreate(): Promise<void> {
+  const kind = creating.value;
+  if (!connId.value || kind == null) return;
+  // Enter on an empty field dismisses — do nothing, not an error, the same
+  // ruling the path bar makes for an empty submit.
+  const name = createName.value.trim();
+  if (name === '') {
+    creating.value = null;
+    return;
+  }
+  const ok =
+    kind === 'folder'
+      ? await files.createFolder(connId.value, name)
+      : await files.createFile(connId.value, name);
+  // A cancel during the create (Esc, a blur) is not re-opened by the answer.
+  if (ok && creating.value === kind) creating.value = null;
+}
+
+/** The menu's anchor: null when closed. Both doors write the same state. */
+const createMenu = ref<{ anchor: Box } | null>(null);
+const plusBtn = ref<HTMLButtonElement | null>(null);
+
+function toggleCreateMenu(): void {
+  if (createMenu.value || plusBtn.value == null) {
+    createMenu.value = null;
+    return;
+  }
+  const box = plusBtn.value.getBoundingClientRect();
+  createMenu.value = {
+    anchor: { left: box.left, top: box.bottom, width: box.width, height: box.height },
+  };
+}
+
+/**
+ * Right-click on the listing itself, as opposed to a row: the row's own
+ * handler has already claimed anything with an `.entry` under the pointer,
+ * and this bubbling second pass must not overwrite that menu with the
+ * creation one. Everything else — the ground below a short listing, the
+ * Load-more row — is the empty folder's "make something here".
+ */
+function onListContextMenu(e: MouseEvent): void {
+  if ((e.target as HTMLElement | null)?.closest?.('.entry')) return;
+  createMenu.value = { anchor: pointAnchor(e.clientX, e.clientY) };
+}
+
 /**
  * "Open in a new tab" — the user's "open in new panel".
  *
@@ -627,6 +708,9 @@ defineExpose({ editPath: startEditing, focusSearch });
           >
             <AppIcon name="search" :size="14" />
           </button>
+          <button ref="plusBtn" class="icon-btn sm" title="New file or folder" @click="toggleCreateMenu">
+            <AppIcon name="plus" :size="14" />
+          </button>
           <button class="icon-btn sm" title="Go to path (Ctrl+L)" @click="startEditing">
             <AppIcon name="edit-2" :size="14" />
           </button>
@@ -668,7 +752,31 @@ defineExpose({ editPath: startEditing, focusSearch });
       role="listbox"
       aria-label="Files in this folder"
       @keydown="onListKeydown"
+      @contextmenu.prevent="onListContextMenu"
     >
+      <!-- The naming row for a pending create. First, where a new name sorts
+           anyway, and a row rather than a dialog so the listing stays
+           readable while typing. Outside the roving-tabindex walk on purpose:
+           while it exists it holds real focus, and arrows belong to the
+           field's own caret until Enter or Escape settles it. -->
+      <li v-if="creating" class="entry creating">
+        <AppIcon
+          :name="creating === 'folder' ? 'folder' : 'file'"
+          :class="creating === 'folder' ? 'folder' : 'file'"
+        />
+        <input
+          ref="createEl"
+          v-model="createName"
+          class="create-input"
+          spellcheck="false"
+          autocomplete="off"
+          :placeholder="creating === 'folder' ? 'folder name' : 'file name'"
+          :aria-label="creating === 'folder' ? 'Name of the new folder' : 'Name of the new file'"
+          @keydown.enter.prevent="commitCreate"
+          @keydown.esc.stop.prevent="cancelCreate"
+          @blur="cancelCreate"
+        />
+      </li>
       <!-- `..` sits OUTSIDE the v-for on purpose: it is navigation, not
            content, so neither the cap nor the filter may take it away. -->
       <li
@@ -774,6 +882,32 @@ defineExpose({ editPath: startEditing, focusSearch });
           <button class="menu-item" @click="downloadEntry(menu.entry)">
             <AppIcon name="download" :size="14" />
             Save to this computer…
+          </button>
+        </li>
+      </ul>
+    </PopupMenu>
+
+    <!-- Creation's menu: opened by the strip's `+` and by a right-click on
+         the listing's empty ground. `ignore` names the `+` so the press that
+         toggles it shut is not counted as "outside" first. -->
+    <PopupMenu
+      v-if="createMenu"
+      :anchor="createMenu.anchor"
+      :ignore="[plusBtn]"
+      label="New"
+      @close="createMenu = null"
+    >
+      <ul>
+        <li>
+          <button class="menu-item" @click="startCreate('file')">
+            <AppIcon name="file" :size="14" />
+            New file
+          </button>
+        </li>
+        <li>
+          <button class="menu-item" @click="startCreate('folder')">
+            <AppIcon name="folder" :size="14" />
+            New folder
           </button>
         </li>
       </ul>
@@ -1096,5 +1230,26 @@ defineExpose({ editPath: startEditing, focusSearch });
 }
 .error {
   padding: 0 var(--sp-3) var(--sp-2);
+}
+/* The naming row's field. The row keeps its entry metrics; the input takes
+   the name's slot and shares the path bar's control treatment (surface-2 over
+   border-strong, mono) so this pane's two "type a name" fields read alike. */
+.entry.creating {
+  cursor: default;
+}
+.create-input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-h-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  color: var(--fg);
+  padding: 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-200);
+}
+.create-input::placeholder {
+  color: var(--fg-muted);
 }
 </style>
