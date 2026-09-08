@@ -216,6 +216,75 @@ describe('files store open()', () => {
 });
 
 /**
+ * A folder click that the host refuses.
+ *
+ * `cd` used to let the realPath rejection escape, and nothing between the
+ * tree and the window caught it — so a dead folder row surfaced as the global
+ * diagnostics toast, raw IPC phrasing ("Error invoking remote method
+ * 'sftp:realPath'") and all, while the tree itself looked untouched. Two
+ * things are pinned here: the failure is a LISTING fact and lands in the
+ * tree's footer channel with the path named; and a failed click re-lists
+ * where the pane stands, because the ordinary cause is a readdir gone stale —
+ * the row was rendered from a listing that has since stopped being true on
+ * the host.
+ */
+describe('files store cd() failures', () => {
+  const openAt = async (cwd: string, deadRow: string) => {
+    realPath.mockImplementation((_c, p) =>
+      p === `${cwd}/${deadRow}` ? Promise.reject(new Error('No such file')) : Promise.resolve(p),
+    );
+    list.mockResolvedValue([{ name: deadRow, type: 'dir' }]);
+    const files = useFilesStore();
+    await files.open(CONN, cwd);
+    return files;
+  };
+
+  it('reports a dead row in the tree footer and stays where it was', async () => {
+    const files = await openAt('/home/u/git', 'faq-opik');
+
+    await files.cd(CONN, 'faq-opik');
+
+    expect(files.cwd).toBe('/home/u/git');
+    expect(files.error).toContain('/home/u/git/faq-opik');
+    expect(files.error).toContain('No such file');
+  });
+
+  it('re-lists the current directory, which is what retires the stale row', async () => {
+    const files = await openAt('/home/u/git', 'faq-opik');
+    list.mockClear();
+
+    await files.cd(CONN, 'faq-opik');
+
+    // The failed click cost one readdir of where we still are — the refresh
+    // that replaces the row the click came from.
+    expect(list).toHaveBeenCalledWith(CONN, '/home/u/git');
+  });
+
+  it('lets the refresh speak when the directory itself is gone too', async () => {
+    const files = await openAt('/home/u/git', 'faq-opik');
+    list.mockRejectedValue(new Error('No such file'));
+
+    await files.cd(CONN, 'faq-opik');
+
+    // cwd stopped existing between the listing and the click: the refresh's
+    // verdict is the more immediate one, and stacking the cd's message on top
+    // of it would be noise.
+    expect(files.error).toBe('No such file');
+  });
+
+  it('still navigates past one failure', async () => {
+    const files = await openAt('/home/u/git', 'faq-opik');
+    await files.cd(CONN, 'faq-opik');
+    expect(files.error).not.toBeNull();
+
+    await files.cd(CONN, 'other');
+
+    expect(files.cwd).toBe('/home/u/git/other');
+    expect(files.error).toBeNull();
+  });
+});
+
+/**
  * Leaving the Files tab must not cost the user their place.
  *
  * The tab is behind a `v-if`, so switching to Terminal unmounts the view.

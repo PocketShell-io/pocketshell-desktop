@@ -751,6 +751,14 @@ export const useFilesStore = defineStore('files', () => {
     }
   }
 
+  /**
+   * Enter `dir` (a name in cwd, or an absolute path). Never rejects: the
+   * click that calls this has nowhere better than the tree to say why it did
+   * nothing, so a failure is written to the LISTING's channel — the footer
+   * the tree already renders — and the pane stays where it was. Letting the
+   * rejection escape is what used to turn a dead folder row into the global
+   * diagnostics toast, raw IPC phrasing and all.
+   */
   async function cd(connectionId: ConnectionId, dir: string): Promise<void> {
     const ticket = ++navTicket;
     // Resolve relative paths against cwd.
@@ -765,7 +773,21 @@ export const useFilesStore = defineStore('files', () => {
       // Same rule on the error path: a stale cd's failure is not the pane's
       // business any more. Only the current navigation reports.
       if (ticket !== navTicket) return;
-      throw e;
+      // A row that will not resolve is a claim that the LISTING is lying: the
+      // row was rendered from a readdir that has since gone stale — on a dev
+      // box where other sessions rename and prune directories under the pane,
+      // the ordinary cause. So the answer is not the message alone: re-list
+      // where we stand, which is what retires the row that lied (and shows
+      // whatever replaced it). The message goes in AFTER the refresh, because
+      // refresh clears `error` on entry — and when the refresh fails too, its
+      // own verdict (the directory itself is gone) is the more immediate one
+      // and stands.
+      await refresh(connectionId, ticket);
+      if (ticket !== navTicket) return;
+      if (error.value == null) {
+        error.value = `Could not open ${next}: ${errorMessage(e)}`;
+      }
+      return;
     }
     await refresh(connectionId, ticket);
     if (ticket !== navTicket) return;
