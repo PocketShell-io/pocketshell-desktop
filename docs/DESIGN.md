@@ -244,6 +244,22 @@ The `.terminal` element itself: `padding: 8px` (defaults.json), background
 was removed in xterm 5 and no bell is emitted), so the user's setting is
 satisfied by doing nothing.
 
+### 3.5 Character widths — Unicode 11, not xterm's default 6
+
+xterm parses panes with Unicode 6 width tables unless told otherwise, and
+Unicode 6 counts emoji as one column. The fonts that actually draw them
+render two, so the next cell painted straight over the overflow: on any row
+carrying a background — diff output, TUI panels — the right half of every
+emoji vanished. The far end never disagreed; tmux and the agent TUIs lay out
+with current Unicode tables and expect two columns.
+
+Every pane therefore applies the Unicode 11 provider
+(`@xterm/addon-unicode11`) at construction, before the first output byte is
+parsed — buffer cells keep the width they were parsed with, so a switch
+cannot land under already-streamed content. The mechanism and its rationale
+live in `src/renderer/terminalUnicode.ts`; the regression test runs the real
+headless emulator (`tests/unit/terminalUnicode.test.ts`).
+
 ---
 
 ## 4. Colour tokens

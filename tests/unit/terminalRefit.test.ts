@@ -32,6 +32,8 @@ import { nextTick } from 'vue';
 let fits = 0;
 /** Every `focus()` the component asks xterm for. */
 let focuses = 0;
+/** The live `unicode` object of the mounted terminal, so widths can be read. */
+let termUnicode: { activeVersion: string } | undefined;
 /** The live options object of the mounted terminal, so writes can be read. */
 let termOptions: Record<string, unknown> = {};
 /** Pending animation-frame callbacks, run by hand so timing is deterministic. */
@@ -48,6 +50,7 @@ vi.mock('@xterm/xterm', () => ({
       // also where "the first render already honours the setting" is visible.
       this.options = { ...opts };
       termOptions = this.options;
+      termUnicode = this.unicode;
     }
     loadAddon(): void {}
     open(): void {}
@@ -78,6 +81,10 @@ vi.mock('@xterm/xterm', () => ({
       },
     };
     attachCustomKeyEventHandler(): void {}
+    unicode = {
+      activeVersion: '6',
+      register: (): void => {},
+    };
   },
 }));
 
@@ -172,6 +179,7 @@ beforeEach(() => {
   fits = 0;
   focuses = 0;
   termOptions = {};
+  termUnicode = undefined;
   frames = [];
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
     frames.push(cb);
@@ -185,6 +193,15 @@ describe('the terminal re-fits when the cell or the viewport changes', () => {
     useSettingsStore().set('terminalFontSize', 22);
     await mountTerminal();
     expect(termOptions['fontSize']).toBe(22);
+  });
+
+  it('parses every pane under the Unicode 11 width tables', async () => {
+    // terminalUnicode.ts: under xterm's default (Unicode 6) provider emoji
+    // measure one column, and the font draws two — the next cell paints over
+    // the overflow. The switch must happen at construction, before the first
+    // output byte is parsed; cells keep the width they were parsed with.
+    await mountTerminal();
+    expect(termUnicode?.activeVersion).toBe('11');
   });
 
   it('applies a font-size change AND asks for a fit', async () => {

@@ -63,6 +63,7 @@ vi.mock('@xterm/xterm', () => ({
         return { dispose: () => {} };
       },
     };
+    unicode = { activeVersion: '6', register: (): void => {} };
     attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean): void {
       customKeyHandler = fn;
     }

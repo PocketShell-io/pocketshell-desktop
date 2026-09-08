@@ -60,6 +60,7 @@ vi.mock('@xterm/xterm', () => ({
         return { dispose: () => {} };
       },
     };
+    unicode = { activeVersion: '6', register: (): void => {} };
     attachCustomKeyEventHandler(): void {}
   },
 }));
