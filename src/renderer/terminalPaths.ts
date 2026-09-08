@@ -209,6 +209,21 @@ function matchToken(token: string, base: number): PathMatch | null {
   let start = 0;
   const end = token.length;
 
+  // A markdown link `[label](target)`: the label is prose — often itself a
+  // filename-shaped word, which is exactly what the agent transcripts print —
+  // and the target is the address a click can open. Only the target
+  // underlines and opens; a target that is no path (an `#anchor`, a bare
+  // word) falls through to the rules below, which reject the whole token the
+  // way they reject any prose. This must come before the punctuation peeling
+  // below, whose closer-counting would otherwise keep the `)` and admit a
+  // nonsense candidate wearing the label and the brackets.
+  const mdTarget = /\]\(([^)]+)\)(?:[.,;:!?*]+)?$/.exec(token);
+  if (mdTarget !== null) {
+    const mdStart = token.length - mdTarget[0].length + 2;
+    const target = matchCandidate(token, base, mdStart, mdStart + (mdTarget[1]?.length ?? 0));
+    if (target !== null) return target;
+  }
+
   // `--output=tmp/a.mp3` — take the value, not the flag. The `=` only counts
   // as an assignment when nothing before it looks like a path, so a file
   // genuinely named `tmp/a=b/c.txt` is left whole rather than being cut at its

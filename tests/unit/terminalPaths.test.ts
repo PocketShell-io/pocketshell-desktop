@@ -431,3 +431,28 @@ describe('findPaths — rejections (each one seen next to a real path)', () => {
     expect(findPaths('/a/b.txt '.repeat(600))).toEqual([]);
   });
 });
+
+describe('findPaths — a markdown link a transcript prints', () => {
+  // The agent transcripts wrap their outputs in `[label](target)` markdown;
+  // the label is prose (often itself a filename-shaped word) and the target
+  // is the address a click can open.
+  it('opens the target under the label, not the bracketed junk', () => {
+    const line =
+      'Changed: - [02-accuracy-02-accuracy-example-crisp.png](/home/alexey/git/mlops-zoomcamp/img.png) noted';
+    expect(paths(line)).toEqual(['/home/alexey/git/mlops-zoomcamp/img.png']);
+  });
+
+  it('underlines the target alone, leaving the label and brackets out', () => {
+    const line = 'see [the guide](docs/setup.md) for details';
+    expect(spans(line)).toEqual(['docs/setup.md']);
+  });
+
+  it('still refuses a token whose target is no path', () => {
+    expect(paths('jump to [the section](#setup) first')).toEqual([]);
+    expect(paths('jump to [the section](README) first')).toEqual([]);
+  });
+
+  it('does not swallow a plain path that merely sits in brackets', () => {
+    expect(paths('see (docs/setup.md) for details')).toEqual(['docs/setup.md']);
+  });
+});

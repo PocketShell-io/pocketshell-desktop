@@ -364,6 +364,32 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(FIRST);
   });
 
+  it('joins the hang-indented wrap of a markdown link and opens its target', () => {
+    // The same captured pane, the very next block: a `[label](target)` link
+    // wrapped across the rows, the continuation indented two. The rows join
+    // through the indent and the detector opens the TARGET — the full
+    // absolute image path — not the bracketed junk the raw token carries.
+    const FIRST =
+      '  Changed: - [02-accuracy-02-accuracy-example-crisp.png](/home/alexey/git/machine-learning-';
+    const SECOND =
+      '  zoomcamp/cohorts/2026/04-evaluation/images/02-accuracy-02-accuracy-example-crisp.png) done';
+    const TARGET =
+      '/home/alexey/git/machine-learning-zoomcamp/cohorts/2026/04-evaluation/images/02-accuracy-02-accuracy-example-crisp.png';
+    const term = fakeScreen([FIRST, SECOND], FIRST.length);
+
+    const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
+    expect(links.map((l) => l.text)).toEqual([TARGET]);
+    // The underline spans the target across the wrap: from `/home` (cell 58)
+    // to the end of row 1, then through row 2 up to the last `png` character
+    // before the closing `)` — the indent's two cells skipped, the label and
+    // brackets left out.
+    expect(links[0]?.range).toEqual({ start: { x: 58, y: 1 }, end: { x: 86, y: 2 } });
+
+    const files = useFilesStore();
+    links[0]?.activate(CLICK, TARGET);
+    expect(files.reveal).toBe(TARGET);
+  });
+
   it('linkifies both report paths across their breaks, from the middle row', () => {
     const FIRST = 'Example: Cloudflare diagrams (2026/2026-06-17-cloudflare-workers-vectorize-agent/';
     const SECOND = 'diagrams) and its README (2026/2026-06-17-cloudflare-workers-vectorize-agent/';
