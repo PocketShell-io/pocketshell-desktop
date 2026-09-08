@@ -7,3 +7,6 @@
 *.jpg binary
 *.ico binary
 *.icns binary
+
+# Terminal screen captures and other byte-stream fixtures — never touch.
+*.bin binary

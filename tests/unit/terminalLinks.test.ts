@@ -291,6 +291,79 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     expect(files.reveal).toBe(PATH);
   });
 
+  it('joins a wrap whose continuation carries the block hanging indent', () => {
+    // The seventh report, transcribed from the live pane: the Codex transcript
+    // hang-indents the wrapped rows of its own block — the continuation began
+    // with ELEVEN spaces before the content completing the row above's cut
+    // (`…list in docs/image-`). A space cannot sit inside a token, so the run
+    // is the renderer's layout and the content after it is what the guards
+    // judge: the tail ends in `-` — the one tail shape that need not already
+    // be a path so far — and the head would not have fitted at the render
+    // width, so the rows join with the indent's cells dropped.
+    const FIRST =
+      '    Search decision|screenshot|conceptual|merge|reviewer|imagegen|list in docs/image-';
+    const term = fakeScreen([FIRST, '           regeneration-workflow.md'], 91);
+
+    expect(scanBufferLine(term, 1).text.trimEnd()).toBe(`${FIRST}regeneration-workflow.md`);
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(
+      'docs/image-regeneration-workflow.md',
+    );
+  });
+
+  it('drops the indent cells from the underline range', () => {
+    const FIRST =
+      '    Search decision|screenshot|conceptual|merge|reviewer|imagegen|list in docs/image-';
+    const term = fakeScreen([FIRST, '           regeneration-workflow.md'], 91);
+
+    const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
+    // The path starts on the cut row at `docs/` (cell 75, 1-based) and ends on
+    // the indented row after `regeneration-workflow.md` — the eleven indent
+    // cells are skipped, not underlined.
+    expect(links[0]?.range).toEqual({ start: { x: 75, y: 1 }, end: { x: 35, y: 2 } });
+  });
+
+  it('still refuses an indented row when the tail carries no cut evidence', () => {
+    // `current-illustration-audit.md` is a finished filename and the indented
+    // row below it starts a new sentence — the indent changes where content
+    // begins, not whether the row above ended a token.
+    const FIRST = '  └ Read current-illustration-audit.md';
+    const term = fakeScreen(
+      [FIRST, '    Search decision|screenshot|conceptual|merge|original|reviewer'],
+      91,
+    );
+
+    expect(scanBufferLine(term, 1).text.trimEnd()).toBe(FIRST);
+  });
+
+  it('refuses an indented continuation indented past the cap', () => {
+    // Deep code-block indentation is layout this feature has no business
+    // guessing through, whatever the tail looks like.
+    const FIRST = 'wrote /home/alexey/git/machine-learning-';
+    const term = fakeScreen([FIRST, '                   zoomcamp/README.md'], 60);
+
+    expect(scanBufferLine(term, 1).text.trimEnd()).toBe(FIRST);
+  });
+
+  it('refuses an indented continuation whose head would have fitted above', () => {
+    // The fit guard survives the indent: `ok` is two wide and the render width
+    // the block's own rows set is 27, so the wrapper left the row by choice.
+    const term = fakeScreen(['wrote assets/img/', '    ok', 'and pruned the stale copies'], 27);
+
+    expect(scanBufferLine(term, 1).text.trimEnd()).toBe('wrote assets/img/');
+  });
+
+  it('does not let rule 1 across an indent, even on a full row', () => {
+    // Rule 1's evidence is an overflow: content at column 0 because the writer
+    // ran out of room. An indented row is the renderer CHOOSING where a row
+    // begins, so even a full row above with a path-so-far tail stays separate
+    // unless the content-guarded rules accept it — and here the tail is a
+    // finished extension path, which 1a refuses.
+    const FIRST = 'moved /var/data/2026/backup.tar';
+    const term = fakeScreen([FIRST, '  done earlier today'], FIRST.length);
+
+    expect(scanBufferLine(term, 1).text.trimEnd()).toBe(FIRST);
+  });
+
   it('linkifies both report paths across their breaks, from the middle row', () => {
     const FIRST = 'Example: Cloudflare diagrams (2026/2026-06-17-cloudflare-workers-vectorize-agent/';
     const SECOND = 'diagrams) and its README (2026/2026-06-17-cloudflare-workers-vectorize-agent/';

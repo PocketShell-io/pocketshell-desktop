@@ -63,6 +63,17 @@
  *     columns left over, and the tail does not already end looking like a
  *     finished `name.ext` — which is what a COMPLETE path about to be
  *     followed by the next line's prose looks like.
+ *   - the Codex transcript hang-indents the wrapped rows of its own blocks:
+ *     the continuation began with ELEVEN spaces before the content that
+ *     continued the row above's cut — `…list in image-` / `
+ *     regeneration-workflow.md`. Every rule used to refuse any row whose
+ *     first cell held a space, on the grounds that a space means the row
+ *     above's token ended cleanly; but the spaces are the renderer's LAYOUT,
+ *     and a token cannot contain a space, so the run is decoration and the
+ *     content after it is what the guards must judge. Rules 1a and 1b now
+ *     read past a bounded indent (rule 1 stays column-0 — an indent is the
+ *     renderer choosing where a row begins, which is the opposite of the
+ *     overflow rule 1 reconstructs).
  *
  * Both rules are deliberately narrow, for the reason terminalPaths.ts's header
  * gives: joining two rows that were never one line can only invent a path that
@@ -184,6 +195,24 @@ const WRAP_SHORTFALL = 4;
  */
 const GUTTER = /^ {0,8}[│┃] /;
 
+/**
+ * The hanging indent a transcript renderer puts in front of the wrapped rows of
+ * its own block — `           regeneration-workflow.md` in the Codex output the
+ * seventh report was read from: the continuation row began with ELEVEN spaces,
+ * the block's indent plus the wrap column, before the content that continues
+ * the row above's `…list in image-`.
+ *
+ * The run is decoration, not a token boundary: a token cannot contain a space,
+ * so spaces at the head of a continuation are always the renderer's indent, and
+ * the content after them is what may or may not continue the tail. Capped at
+ * {@link INDENT_LIMIT} columns — past that sits deep code-block territory where
+ * a join has no business guessing.
+ */
+const HANGING_INDENT = /^ +/;
+
+/** How much leading indentation a continuation row may carry and still join. */
+const INDENT_LIMIT = 16;
+
 /** One flattened logical line, plus the cell each character came from. */
 export interface ScannedLine {
   text: string;
@@ -290,9 +319,10 @@ function inferWrapWidth(buf: IBuffer, y0: number, scratch: IBufferCell): number 
  * columns.
  *
  * @returns how many leading CELLS of [next] to drop before joining (0 for a
- *   plain wrap, the gutter's width for a gutter-marked one), or null for "these
- *   are two different lines" — which is the answer this function is built to
- *   give, and gives for everything it is not certain about.
+ *   plain wrap, the gutter's width for a gutter-marked one, the hanging
+ *   indent's width for an indented one), or null for "these are two different
+ *   lines" — which is the answer this function is built to give, and gives for
+ *   everything it is not certain about.
  */
 function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number | null {
   if (prev.lastCol < 0) return null;
@@ -308,14 +338,32 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
   // it used to demand a ROOTED tail, and every relative path failed it — the
   // rows of `assets/images/exam/` + `quizgen-landing-page.png` stayed two
   // lines, the row above kept a link to the truncated directory, and the
-  // filename fragment got nothing.
-  if (!continuesPath(asPath ?? tail)) return null;
+  // filename fragment got nothing. One carve-out beside that: a tail ending
+  // in `-`. A trailing hyphen is cut evidence in its own right — it is the
+  // break-opportunity character the wrapper stopped on, and the one case
+  // where the tail need not be a path SO FAR because the joined token is
+  // what becomes one (`image-` + `regeneration-workflow.md`, the seventh
+  // report's first-segment cut). The per-rule guards below still decide; the
+  // slash keeps its stricter treatment, because `and/` is `and/or` prose and
+  // not a break anyone's wrapper made.
+  if (!tail.endsWith('-') && !continuesPath(asPath ?? tail)) return null;
 
   const gutter = GUTTER.exec(next.text);
   if (gutter === null) {
-    const first = next.text.charAt(0);
-    if (first === '' || first === ' ') return null;
-    const head = /^\S+/.exec(next.text)?.[0] ?? '';
+    // The hanging indent ({@link HANGING_INDENT}): leading spaces are the
+    // renderer's decoration and the CONTENT starts after them. Past the cap,
+    // or with nothing but spaces on the row, none of the rules below may
+    // speak — `content` starts past the indent, and an all-indent row is a
+    // blank one.
+    const indentMatch = HANGING_INDENT.exec(next.text);
+    const indent = indentMatch !== null && indentMatch[0].length <= INDENT_LIMIT
+      ? indentMatch[0].length
+      : 0;
+    const overIndented = indentMatch !== null && indentMatch[0].length > INDENT_LIMIT;
+    const content = next.text.slice(indent);
+    const first = content.charAt(0);
+    if (first === '' || first === ' ' || overIndented) return null;
+    const head = /^\S+/.exec(content)?.[0] ?? '';
 
     // RULE 1 — the hard wrap tmux repainted away.
     //
@@ -325,11 +373,16 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     // exact situation in which xterm would have set `isWrapped` had the bytes
     // reached it as one overlong line instead of as two positioned rows.
     //
+    // A continuation carrying a hanging indent never gets here even when the
+    // row above is full: an indent means the renderer CHOSE where this row
+    // begins, which is layout, not an overflow — the content-guarded rules
+    // below decide those.
+    //
     // Not caught, deliberately: a row whose last column was left blank because
     // a double-width character would not fit in it. Reconstructing that needs a
     // second guess on top of this one, and the cost of being wrong is an
     // underline running through unrelated text.
-    if (prev.lastCol === prev.width - 1) return 0;
+    if (indent === 0 && prev.lastCol === prev.width - 1) return 0;
 
     // RULE 1a — the hard wrap that stopped a few columns SHORT of the margin.
     //
@@ -339,9 +392,9 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     // evidence is missing by a cell or two, and rule 1b's is missing because
     // this wrapper wraps at its width, not at opportunity characters. A row
     // ending within {@link WRAP_SHORTFALL} columns of the margin is still a
-    // row that ran out of room, and the continuation at column 0 still
-    // reconstructs it, under guards that name the difference between a cut
-    // token and a finished line:
+    // row that ran out of room, and the continuation's content — at column 0
+    // or after its hanging indent — still reconstructs it, under guards that
+    // name the difference between a cut token and a finished line:
     //
     //   - the continuation's first token could not have been placed in the
     //     columns left over (`head.length > left`). The wrapper's own
@@ -367,7 +420,7 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
       head.length > left &&
       !HAS_EXTENSION.test(tail)
     ) {
-      return 0;
+      return indent;
     }
 
     // RULE 1b — the break a wrapper puts INSIDE the token, at an opportunity
@@ -397,7 +450,7 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     if (!tail.endsWith('-') && !tail.endsWith('/')) return null;
     if (head === '' || head.startsWith('/')) return null;
     if (prev.lastCol + 1 + head.length <= wrapWidth) return null;
-    return 0;
+    return indent;
   }
 
   // RULE 2 — the TUI wrapped its own block and marked the continuation.
@@ -464,7 +517,7 @@ export function scanBufferLine(term: Terminal, bufferLineNumber: number): Scanne
   }
 
   // Cells to drop from the front of the row about to be read: a reconstructed
-  // gutter, never anything else.
+  // gutter or a hanging indent, never anything else.
   let skip = 0;
   joined = 0;
   for (;;) {
