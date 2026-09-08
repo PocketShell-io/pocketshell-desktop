@@ -364,6 +364,25 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(FIRST);
   });
 
+  it('joins the sent-input wrap cut mid-UUID at column two', () => {
+    // The ninth report, transcribed from the pane: a `Sent input to` block
+    // whose quoted path wraps after `01a07b59-81f1-`, the continuation row
+    // beginning at the block's two-space indent. Near-full row, hyphen cut,
+    // indent-skipped head — rules 1a and 1b both reach it, and the whole
+    // absolute path linkifies.
+    const FIRST =
+      '  └ The second imagegen candidate at /home/alexey/.codex/generated_images/01a07b59-81f1-';
+    const PATH =
+      '/home/alexey/.codex/generated_images/01a07b59-81f1-7ad0-8caf-684763eaf05e/exec-a36d8454-8b3d-4ba2-b160-646af7b766fc.png';
+    const term = fakeScreen([FIRST, '  7ad0-8caf-684763eaf05e/exec-a36d8454-8b3d-4ba2-b160-646af7b766fc.png is t…'], 91);
+
+    const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
+    expect(links.map((l) => l.text)).toEqual([PATH]);
+    // From `/home` (after the candidate-at prose, cell 38) through the
+    // indented row to the last `png` cell before ` is t…`.
+    expect(links[0]?.range).toEqual({ start: { x: 38, y: 1 }, end: { x: 70, y: 2 } });
+  });
+
   it('joins the hang-indented wrap of a markdown link and opens its target', () => {
     // The same captured pane, the very next block: a `[label](target)` link
     // wrapped across the rows, the continuation indented two. The rows join
