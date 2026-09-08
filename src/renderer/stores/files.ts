@@ -1023,17 +1023,18 @@ export const useFilesStore = defineStore('files', () => {
    * and there is no reason to make the user close and re-open the file for it.
    *
    * The second is a real limitation of a preview that cannot run scripts, and
-   * is the reason this exists at all. A previewed page may contain ordinary
+   * is the reason this exists at all. A previewed document may contain
    * `<a href="https://…">` links. Clicking one is a navigation of the frame,
-   * and the app's own CSP refuses it (`frame-src` names no remote scheme) —
-   * correctly, since following it would tell that server which document on
-   * which host the user is inspecting. But Chromium's refusal replaces the
-   * frame's document with its error page, and with no scripts in the frame
-   * there is nothing we can install to intercept the click first. So a stray
-   * click on a link empties the preview, and this is how the user gets it
-   * back. Re-minting rather than reloading because the token is one-shot: it
-   * resets the asset budget too, which is what a deliberate re-render should
-   * do.
+   * and main hands the URL to the system browser while the app's own CSP
+   * refuses the in-app navigation (`frame-src` names no remote scheme) —
+   * correctly, since following it in-app would tell that server which document
+   * on which host the user is inspecting. But Chromium's refusal can replace
+   * the frame's document with its error page, and with no scripts in the frame
+   * there is nothing we can install to intercept the click first. So a click
+   * that opens a web link can leave the preview showing that error page, and
+   * this is how the user gets the render back. Re-minting rather than
+   * reloading because the token is one-shot: it resets the asset budget too,
+   * which is what a deliberate re-render should do.
    */
   async function reloadPreview(connectionId: ConnectionId): Promise<void> {
     if (!hasPreview(openMode.value) || openPath.value == null) return;

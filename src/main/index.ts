@@ -184,7 +184,7 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
-  // A previewed HTML page may contain links, and a link click inside the
+  // A previewed document may contain links, and a link click inside the
   // preview frame is a NAVIGATION rather than a `window.open` — so it does not
   // pass through the handler above.
   //
@@ -197,10 +197,23 @@ function createWindow(): void {
   // at and when. Sub-frames may navigate WITHIN the preview scheme (following
   // a relative link to the page next door is a reasonable thing to want) and
   // nowhere else. The main frame is untouched: that is the app's own routing.
+  //
+  // A WEB link — and only a web link, by the same allow-list the handler above
+  // uses — is not kept from the user, it is HANDED OFF: the OS browser opens
+  // it, which is what clicking a link in a local viewer means. The hand-off
+  // carries nothing about the preview: the browser arrives with no referrer
+  // naming the file or the host, so the server learns only that someone
+  // clicked a link to it. Every other scheme stays refused-and-logged: a
+  // remote box must not get to pick which local program opens, here any more
+  // than in the handler above.
   mainWindow.webContents.on('will-frame-navigate', (details) => {
     if (details.isMainFrame) return;
     if (details.url.startsWith(`${PREVIEW_SCHEME}://`)) return;
-    console.warn('[pocketshell] refused preview-frame navigation:', details.url);
+    if (isWebUrl(details.url)) {
+      void shell.openExternal(details.url);
+    } else {
+      console.warn('[pocketshell] refused preview-frame navigation:', details.url);
+    }
     details.preventDefault();
   });
 

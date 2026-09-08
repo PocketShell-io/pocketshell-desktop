@@ -313,6 +313,25 @@ const openName = computed(() => files.openPath?.split('/').pop() ?? '');
 const sizeLabel = computed(() => (files.openSize > 0 ? formatBytes(files.openSize) : ''));
 
 /**
+ * The preview iframe's sandbox, per open document.
+ *
+ * EMPTY for HTML and SVG — the maximally restrictive sandbox, see the long
+ * argument beside the frame. A MARKDOWN preview adds exactly one token,
+ * `allow-popups`, and nothing else: markdown source may carry raw-HTML badge
+ * links written with `target="_blank"`, and without the token such a click is
+ * swallowed by the sandbox itself — no event, no navigation, nothing any
+ * handler in main can see. With it, the click arrives at the main window's
+ * `setWindowOpenHandler`, which allow-lists web URLs into the system browser
+ * and denies every in-app window, so the popup document itself never exists.
+ * That is one new capability, and it is the same one plain links already have
+ * via `will-frame-navigate`: a click can hand a web URL to the OS. It runs no
+ * code, opens no socket, and the frame stays scriptless either way.
+ */
+const previewSandbox = computed(() =>
+  files.openMode === 'markdown' ? 'allow-popups' : '',
+);
+
+/**
  * What the preview toolbar says about the render, in the order the reader
  * needs it.
  *
@@ -576,15 +595,18 @@ onUnmounted(() => imagePaneObserver?.disconnect());
              XML, the editor round-trips it losslessly with highlighting, and
              the render is the presentation that did not exist here before.
 
-             The `sandbox` attribute below is EMPTY on purpose and must stay
-             that way. An empty sandbox is the maximally restrictive one: the
-             document lands on an opaque origin (so it is cross-origin to this
-             app and cannot touch its DOM), no script runs, no form submits, no
-             popup opens, and nothing may navigate the top-level page. Adding a
-             single token — `allow-scripts` above all — would hand a remote
-             host arbitrary execution inside the renderer process that holds
-             this app's SSH sessions. The reasoning, and what a scripted
-             preview would cost and buy, is written out in full at
+             The `sandbox` attribute is bound to `previewSandbox` (above):
+             EMPTY for HTML and SVG, which is the maximally restrictive one —
+             the document lands on an opaque origin (so it is cross-origin to
+             this app and cannot touch its DOM), no script runs, no form
+             submits, no popup opens, and nothing may navigate the top-level
+             page. A markdown preview adds only `allow-popups`, so that
+             `target="_blank"` badge links reach the window-open handler
+             instead of dying silently in the sandbox. Adding anything more —
+             `allow-scripts` above all — would hand a remote host arbitrary
+             execution inside the renderer process that holds this app's SSH
+             sessions. The reasoning, and what a scripted preview would cost
+             and buy, is written out in full at
              src/main/preview/HtmlPreviewService.ts.
 
              The document is ALSO governed by a strict Content-Security-Policy
@@ -643,9 +665,10 @@ onUnmounted(() => imagePaneObserver?.disconnect());
             <!-- Recovers a preview that a link click emptied, as well as
                  re-reading a file that changed on the host. See the store's
                  `reloadPreview` for why a preview can end up empty at all —
-                 briefly: a remote link is refused by the app's CSP, and with
-                 no scripts in the frame there is nothing to intercept the
-                 click before Chromium paints its error page. -->
+                 briefly: a remote link is handed to the system browser and
+                 the in-app navigation is refused by the app's CSP, and with
+                 no scripts in the frame there is nothing to stop Chromium
+                 painting its error page in the meantime. -->
             <button
               v-if="files.docView === 'preview'"
               type="button"
@@ -674,10 +697,10 @@ onUnmounted(() => imagePaneObserver?.disconnect());
               'md-frame': files.openMode === 'markdown',
               'svg-frame': files.openMode === 'svg',
             }"
-            sandbox=""
             referrerpolicy="no-referrer"
             :src="files.previewUrl"
             :title="`Preview of ${openName}`"
+            :sandbox="previewSandbox"
           />
           <!-- The preview could not be minted at all (the file moved, the
                connection went away). The source is still right there, so this

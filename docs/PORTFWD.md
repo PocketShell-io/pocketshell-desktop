@@ -413,9 +413,10 @@ purpose (`listenHost` verbatim); a wide host (`0.0.0.0`, `::`, empty) maps to
 `127.0.0.1` rather than putting `0.0.0.0` in an address bar. The open itself
 is `window.open(url, '_blank', 'noopener,noreferrer')` — not an IPC verb —
 because main's `setWindowOpenHandler` already allow-lists http(s) into
-`shell.openExternal` (`index.ts`); that is the one route every in-app link
-must take, and new open affordances go through it, not around it. Tests:
-`tests/unit/portPanelOpen.test.ts`.
+`shell.openExternal` (`index.ts`); that, together with the preview-frame
+navigation guard's hand-off to the same function, is the one destination
+every in-app link must take, and new open affordances go through it, not
+around it. Tests: `tests/unit/portPanelOpen.test.ts`.
 
 ---
 

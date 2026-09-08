@@ -789,11 +789,16 @@ toggle keeps what the classifier used to offer on its own: an `.svg` edits as
 XML with highlighting, losslessly.
 
 **Known limits, all shared with the HTML preview.** Clicking an *external*
-link empties the frame — the CSP refuses the navigation, which is correct, and
-Chromium paints its own error page with no scripts available to intercept the
-click first; the Reload button restores it. And the preview always renders the
-HOST's copy, so unsaved edits are not shown; the toolbar says so, alongside
-counts of assets loaded, refused as outside the folder, and missing.
+link does not navigate the frame: main hands a web URL to the **system
+browser** (`will-frame-navigate`, the same http(s)-only allow-list that
+`window.open` goes through) and the CSP refuses the in-app navigation — the
+preview itself never touches the network. Chromium's refusal can leave the
+frame on its error page; the Reload button re-renders it. A markdown preview
+adds one sandbox token, `allow-popups`, so raw-HTML `target="_blank"` badge
+links reach the same browser hand-off instead of dying in the sandbox. And
+the preview always renders the HOST's copy, so unsaved edits are not shown;
+the toolbar says so, alongside counts of assets loaded, refused as outside
+an HTML preview's folder, and missing.
 
 ### 5.8 Iconography — no character ever does an icon's job
 
