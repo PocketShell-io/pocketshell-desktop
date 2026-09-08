@@ -54,13 +54,28 @@ import { sanitiseAppearance, sanitisePalette, type PreviewStyle } from './previe
  * argues about, and it is answered the same way — by narrowing, not by
  * sanitising:
  *
- *  1. **One directory.** Every request is folded to an absolute path
- *     (previewPaths.normalisePosixPath), checked for containment in the
- *     previewed file's own directory, then re-resolved on the HOST with
+ *  1. **One directory — for HTML and SVG.** Every request is folded to an
+ *     absolute path (previewPaths.normalisePosixPath), checked for containment
+ *     in the previewed file's own directory, then re-resolved on the HOST with
  *     `realpath` and checked AGAIN. The first check refuses a path that
  *     spells its way out (`../../etc/passwd`, `%2e%2e/`); the second refuses
  *     one that walks out through a symlink, which no amount of string work
  *     can see. Neither is sufficient alone.
+ *
+ *     A MARKDOWN preview deliberately widens the first boundary to the whole
+ *     host: `root` is minted as `/`, so a link — or an image — naming any path
+ *     the SSH account can read is served. That is the feature, not a leak:
+ *     markdown documents are cross-referenced by absolute and `../` paths
+ *     (`[the design doc](../docs/DESIGN.md)`), and every file the frame can
+ *     name is one the user can already open in the Files tab or by clicking it
+ *     in terminal output. The folding and the `realpath` re-resolution still
+ *     run, unchanged — what they guard (NUL bytes, malformed escapes,
+ *     non-canonical spellings) is orthogonal to how wide the root is. The
+ *     second containment check passes trivially at that width and is skipped
+ *     only as dead code, never as an opened hole: the per-response CSP, the
+ *     empty sandbox, and the request/byte budgets below all still apply, and
+ *     the worst a hostile markdown file can do stays what it was — DISPLAY
+ *     bytes to the user, on a frame with no scripts and no network.
  *  2. **No network, no scripts.** Every response carries a
  *     `Content-Security-Policy` header of its own (see {@link FRAME_CSP}),
  *     and the frame is additionally `sandbox`ed with no tokens by the
@@ -69,10 +84,11 @@ import { sanitiseAppearance, sanitisePalette, type PreviewStyle } from './previe
  *     this handler.
  *
  * Read those together and the interesting property falls out: the worst a
- * hostile page can do is DISPLAY, to the user, the contents of files that are
- * in the folder the user just opened — which they can already read, since
- * they are browsing that folder over SFTP. There is no channel by which it can
- * tell anyone else what it found, because there is no channel at all.
+ * hostile page can do is DISPLAY, to the user, the contents of files the SSH
+ * account can read — for an HTML or SVG preview, files in the folder the user
+ * just opened; for a markdown preview, anywhere on the host. There is no
+ * channel by which it can tell anyone else what it found, because there is no
+ * channel at all.
  *
  * ## What is deliberately NOT granted
  *
@@ -118,7 +134,7 @@ interface Preview {
    * at, on an event that happens by hand.
    */
   style: PreviewStyle | null;
-  /** Symlink-resolved directory that bounds every read. */
+  /** Directory that bounds every read: the file's own for HTML/SVG, `/` for markdown. */
   root: string;
   /** Symlink-resolved path of the document itself. */
   entry: string;
@@ -376,14 +392,20 @@ export class HtmlPreviewService {
   }
 
   /**
-   * The shared body of both verbs: resolve, bound, and hand back a capability.
+   * The shared body of all three verbs: resolve, bound, and hand back a
+   * capability.
    *
-   * The root is resolved with `realpath` HERE rather than being taken as
-   * given, because it is the fixed point every later containment check is
-   * measured against: if the root itself were a path containing symlinks, a
-   * request whose realpath lands inside the physical directory would compare
-   * unequal to the logical root and be refused for no reason. Resolving both
-   * ends the same way makes the comparison meaningful.
+   * For HTML and SVG the root is resolved with `realpath` HERE rather than
+   * being taken as given, because it is the fixed point every later
+   * containment check is measured against: if the root itself were a path
+   * containing symlinks, a request whose realpath lands inside the physical
+   * directory would compare unequal to the logical root and be refused for no
+   * reason. Resolving both ends the same way makes the comparison meaningful.
+   *
+   * A markdown preview takes `/` instead — see the class header's "One
+   * directory" note for why the widening is the feature and why it costs
+   * nothing — and so needs neither the root realpath nor the entry-in-root
+   * check, which is trivially true at that width.
    */
   private async mint(
     connectionId: string,
@@ -394,10 +416,13 @@ export class HtmlPreviewService {
     const entry = await this.sftp.realPath(connectionId, path);
     const info = await this.sftp.stat(connectionId, entry);
     if (info.type !== 'file') throw new Error(`Not a regular file: ${path}`);
-    const root = await this.sftp.realPath(connectionId, parentDirOf(entry));
-    // A page whose own directory resolved somewhere that does not contain it
-    // is not something to reason further about — refuse rather than guess.
-    if (!containedIn(root, entry)) throw new Error(`Cannot preview ${path} from ${root}`);
+    let root = '/';
+    if (mode !== 'markdown') {
+      root = await this.sftp.realPath(connectionId, parentDirOf(entry));
+      // A page whose own directory resolved somewhere that does not contain it
+      // is not something to reason further about — refuse rather than guess.
+      if (!containedIn(root, entry)) throw new Error(`Cannot preview ${path} from ${root}`);
+    }
 
     const token = newToken();
     this.previews.set(token, {
@@ -473,7 +498,9 @@ export class HtmlPreviewService {
     // The second half of the traversal defence. `realpath` is the host's own
     // answer to "where does this actually point", which is the only way to
     // see through a symlink — `assets/theme` being a link to `/etc` passes
-    // every string check there is and must still be refused.
+    // every string check there is and must still be refused. (For a markdown
+    // preview, whose root is `/`, this check passes by construction; the
+    // realpath still runs, because the canonical path is what gets read.)
     let real: string;
     try {
       real = await this.sftp.realPath(preview.connectionId, resolved.path);
@@ -505,14 +532,16 @@ export class HtmlPreviewService {
     if (real !== preview.entry) preview.stats.loaded++;
     this.emitStats(preview);
 
-    // Under a markdown preview, EVERY `.md` inside the root is rendered — not
-    // only the entry document.
+    // Under a markdown preview, EVERY `.md` the frame navigates to is
+    // rendered — not only the entry document.
     //
     // That single rule is what makes `[the design doc](DESIGN.md)` a link that
     // works rather than a link that dead-ends, and it costs nothing extra: the
     // frame resolves the relative href by itself, the request arrives here like
-    // any other, and it is already bounded by the same containment checks as an
-    // image would be. A `docs/` folder therefore browses as a small site.
+    // any other, and it is already bounded by the same checks as an image
+    // would be. Since a markdown preview's root is the host, that means a
+    // `docs/` tree browses as a small site wherever its files live — `../`
+    // climbs and absolute paths included.
     //
     // What it does NOT do is render markdown found under an HTML or SVG
     // preview: there the user opened a real page (or a drawing), and a `.md`

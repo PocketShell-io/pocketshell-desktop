@@ -383,7 +383,7 @@ describe('HtmlPreviewService.openMarkdown', () => {
    * it, `[design](DESIGN.md)` would hand the frame a `text/markdown` response
    * and dead-end.
    */
-  it('renders every markdown file inside the root, not only the entry', async () => {
+  it('renders every markdown file the frame navigates to, not only the entry', async () => {
     const service = makeService(fakeSftp({ files: DOCS, dirs: DOC_DIRS }));
     const { url } = await service.openMarkdown('c1', '/home/u/docs/README.md', {
       palette: PALETTE,
@@ -396,16 +396,32 @@ describe('HtmlPreviewService.openMarkdown', () => {
     expect(await res.text()).toContain('<h2 id="the-design">The design</h2>');
   });
 
-  it('still refuses a markdown file outside the root', async () => {
+  /**
+   * A markdown preview answers for the HOST, not one folder — that is what
+   * makes `[../README](../README.md)` and absolute links between docs open
+   * instead of dead-ending on "Outside the previewed folder". The bound is
+   * still the SSH account: a path that account cannot read 404s exactly as an
+   * in-folder miss does.
+   */
+  it('renders a markdown file outside the entry folder, and misses like any read', async () => {
     const service = makeService(fakeSftp({ files: DOCS, dirs: DOC_DIRS }));
     const { token } = await service.openMarkdown('c1', '/home/u/docs/README.md', {
       palette: PALETTE,
       appearance: 'dark',
     });
 
-    const res = await handle(`psview://${token}/home/u/other/secret.md`);
+    const other = await handle(`psview://${token}/home/u/other/secret.md`);
+    expect(other.status).toBe(200);
+    expect(other.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+    expect(await other.text()).toContain('<h1 id="not-yours">not yours</h1>');
 
-    expect(res.status).toBe(403);
+    // An absolute image a `../` climb names loads as an asset like any other.
+    const png = await handle(`psview://${token}/home/u/docs/img/shot.png`);
+    expect(png.status).toBe(200);
+
+    // The host bound: nothing may be read that the account itself cannot.
+    const missing = await handle(`psview://${token}/root/nope.md`);
+    expect(missing.status).toBe(404);
   });
 
   it('leaves the assets a rendered document names exactly as they were', async () => {
@@ -469,9 +485,13 @@ describe('HtmlPreviewService.openMarkdown', () => {
 
     await handle(url);
     await handle(new URL('img/shot.png', url).href);
+    // A host-wide root means this absolute path LOADS rather than blocks;
+    // what still counts as blocked is a request that cannot even be folded
+    // into a path (`%2e%2e` escaping above `/`).
     await handle(`psview://${token}/etc/passwd`);
+    await handle(`psview://${token}/%2e%2e%2fetc`);
 
-    expect(seen.at(-1)).toEqual({ loaded: 1, blocked: 1 });
+    expect(seen.at(-1)).toEqual({ loaded: 2, blocked: 1 });
   });
 
   it('refuses to preview a directory, exactly as the HTML verb does', async () => {

@@ -753,12 +753,15 @@ and Ctrl+S.
 **Markdown reuses the HTML preview's argument rather than making a second
 one.** Every guarantee that preview rests on is a property of how bytes are
 SERVED, not of where they came from: the empty sandbox, a per-response CSP
-naming no remote scheme, and containment checked twice (folded on the string,
-then re-resolved with `realpath` on the host). Converting markdown to HTML in
-main and handing it to that same handler inherits all three unchanged, and
+naming no remote scheme, and request paths always folded on the string and
+re-resolved with `realpath` on the host. Converting markdown to HTML in
+main and handing it to that same handler inherits all of it unchanged, and
 relative images resolve exactly as a real page's do — because they become a
-real page's. What is genuinely new is only *what the converter may emit*, which
-is argued in `src/main/preview/markdownDocument.ts`.
+real page's. One boundary is deliberately wider: a markdown preview answers
+for the whole host rather than one folder (§5.7b's link row), because a
+README is cross-referenced by `../` and absolute paths. What remains
+genuinely new is *what the converter may emit*, argued in
+`src/main/preview/markdownDocument.ts`.
 
 | Decision | What it is, and why |
 |---|---|
@@ -766,7 +769,7 @@ is argued in `src/main/preview/markdownDocument.ts`.
 | Where | **In main**, so the served bytes are plain HTML, the renderer never grows the dependency, and a relative link to another `.md` can be rendered too |
 | Raw HTML in markdown | **Passed through**, not escaped or stripped. Under `sandbox=""` and this CSP nothing it can spell is live, and escaping would cost every README that uses `<details>`, `<img width>` or `<p align>` while removing no threat the pipeline does not already accept for `.html` files |
 | Styling | A small inline stylesheet in the app's tokens (`previewStyle.ts`), values passed from the renderer and re-validated in main against a strict character allowlist — no `;`, `}`, `<`, `>`, `:`, `/` or `\`, so a value cannot end the rule, close the element or spell a URL |
-| Markdown links | A `.md` **inside the preview's root** is rendered too, so `[design](DESIGN.md)` navigates and a `docs/` folder browses as a small site. Outside the root it is refused, exactly as an image would be |
+| Markdown links | A `.md` the frame navigates to is rendered too, so `[design](DESIGN.md)` works and a docs tree browses as a small site. A markdown preview is bounded by the **host**, not one folder: `../` climbs and absolute paths open, because every file it can name is one the SSH user can already open in the Files tab. HTML and SVG previews keep the one-folder rule |
 | Heading anchors | Slugged from heading text, deduplicated per document, so a table of contents works — a fragment link needs no script and no network |
 | Code blocks | Styled in `--term-bg`/`--term-fg` so a fence matches the editor beside it. **Not** syntax-highlighted: the editor is one click away |
 

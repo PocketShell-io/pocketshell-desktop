@@ -203,8 +203,10 @@ export const useFilesStore = defineStore('files', () => {
    * against anything and every real page renders unstyled. The URL here is on
    * a scheme main serves (src/main/preview/HtmlPreviewService.ts), so the
    * frame has a genuine base URL and the page's own relative references come
-   * back to main as further requests, each answered by an SFTP read inside the
-   * previewed file's folder.
+   * back to main as further requests, each answered by an SFTP read inside
+   * the previewed file's folder — or, for a markdown preview, anywhere on the
+   * host, so `../` and absolute links between docs open like the Files tab's
+   * own browsing does.
    *
    * The token is a capability held on this side only so it can be handed back
    * to `preview.release`. Nothing in the renderer can do anything else with it.

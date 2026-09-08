@@ -22,8 +22,12 @@ import { markdownStylesheet, type PreviewStyle } from './previewStyle.js';
  *   - a per-response `Content-Security-Policy` naming no remote scheme, so the
  *     document reaches no network at all;
  *   - traversal defended twice — folded on the string, then re-resolved with
- *     `realpath` on the host — so the only paths a document can name are inside
- *     the previewed file's own folder.
+ *     `realpath` on the host — so the paths a document can name are always
+ *     canonical and well-formed. For an HTML preview they are also confined to
+ *     the previewed file's own folder; a markdown preview is bounded by the
+ *     host instead, because a README is cross-referenced by `../` and absolute
+ *     paths and every file it can name is one the user can already open in the
+ *     Files tab (see HtmlPreviewService's mint for that decision).
  *
  * None of those three asks what produced the HTML. A markdown file converted to
  * HTML and handed to that pipeline inherits all of them unchanged, and its
@@ -85,9 +89,9 @@ import { markdownStylesheet, type PreviewStyle } from './previewStyle.js';
  *   `<a href="https:…">`  Navigates, is refused by the app's own `frame-src`,
  *                         and Chromium paints its error page — the known limit
  *                         the HTML preview already carries and Reload recovers.
- *   local `<img src>`     Reads a file inside the folder the user just opened
- *                         and shows it TO THE USER, who is browsing that folder
- *                         over SFTP and can already read it. No new capability.
+ *   local `<img src>`     Reads a file on the host and shows it TO THE USER,
+ *                         who is browsing that host over SFTP and can already
+ *                         read it. No new capability.
  *
  * What escaping WOULD cost is not hypothetical: `<details><summary>`,
  * `<img width>`, `<p align="center">`, `<br>` and badge tables are how real

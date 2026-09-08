@@ -17,7 +17,10 @@
  * about, and it is the reason the resolution below is written as a separate,
  * pure, over-tested module rather than three lines inside a request handler.
  * The rule it enforces is: every path a preview may read is inside ONE
- * directory, the one the previewed file itself lives in, after normalisation.
+ * directory, given per preview, after normalisation — the previewed file's
+ * own for HTML and SVG, `/` (the host) for markdown, whose widening is
+ * argued where it is decided, in HtmlPreviewService's mint. Whichever width
+ * is chosen, every check here still runs.
  *
  * ## Normalising ourselves rather than trusting the URL parser
  *
