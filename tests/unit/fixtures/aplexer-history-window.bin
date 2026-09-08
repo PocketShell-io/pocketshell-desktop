@@ -1,0 +1,10 @@
+[K    [2m 1 file changed, 0 insertions(+), 0 deletions(-)[39m[49m[0m
+[39;49m[K    [2m6[39m[49m[0m
+[39;49m[K    [2m-rw-rw-r-- 1 alexey alexey 16384 Sep  7 10:15 cohorts/2026/05-monitoring/[39m[49m[0m
+[39;49m[K    [2mimages/12-grafana-01-docker-run-command.jpg[39m[49m[0m
+[39;49m[K[39m[49m[0m
+[39;49m[K[1m[38;5;2;49m•[22m[39;49m [1mRan[22m [38;2;137;180;250;49mfile[38;2;205;214;244;49m cohorts/2026/05-monitoring/images/12-grafana-01-docker-run-command.jpg [38;2;148;226;213;49m&&[39m[49m[0m
+[39;49m[K[2m  │ [22m[38;2;137;180;250;49mpython3[38;2;147;153;178;49m -[38;2;235;160;172;49mc[38;2;205;214;244;49m [38;2;166;227;161;49m"[39m[49m[0m
+[39;49m[K[2m  │ [22m[38;2;166;227;161;49mfrom PIL import Image[39m[49m[0m
+[39;49m[K[2m  │ … +5 lines[39m[49m[0m
+[39;49m[K[2m  └ cohorts/20
