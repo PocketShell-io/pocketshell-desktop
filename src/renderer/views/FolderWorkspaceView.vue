@@ -1163,6 +1163,14 @@ function adoptRenamedSession(
   );
   // The row, so the tab bar, the panel tree and `sessionMeta` re-derive now.
   sessions.renameLocal(from, to, workspace);
+  // A pane record can outlive its session: only the in-app kill drops one, so
+  // a session that left the bar any other way — stopped on the host, killed
+  // from another surface — leaves its record behind, filtered out of the v-for
+  // and rendering nothing. Renaming onto that name must drop the leftover
+  // first, or two records answer `to`: both pass `sessionPanes`' filter, both
+  // match the pane's `v-show`, and the flex row splits between two terminals
+  // subscribed to the same PTY — the session painted twice, side by side.
+  openPanes.value = openPanes.value.filter((p) => p.session !== to);
   // The mounted pane keeps its instance — its v-for key is the record id, not
   // the name — and its TerminalView re-points itself off the prop change.
   const pane = openPanes.value.find((p) => p.session === from);

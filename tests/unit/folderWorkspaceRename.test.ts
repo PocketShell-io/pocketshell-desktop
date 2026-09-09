@@ -523,3 +523,48 @@ describe('an aplexer row renames its TAG, and the prefix stays out of it', () =>
     expect(wrapper.find('input.rename-input').exists()).toBe(false);
   });
 });
+
+describe('a rename onto a name with a leftover pane record inherits nothing', () => {
+  function accepted(sessionName: string): unknown {
+    return { ok: true, sessionName, error: null, code: null };
+  }
+
+  it('leaves ONE pane for the new name, not two mirrors of the same stream', async () => {
+    // Two sessions, both visited — so both carry a mounted pane record.
+    sessionsList.mockResolvedValue([row('git-x'), row('git-y', 2)]);
+    useSessionsStore().sessions = [row('git-x'), row('git-y', 2)] as never;
+    const wrapper = await openWorkspace();
+    const tabs = wrapper.findAll('nav.tabs button.tab');
+    const second = tabs[1];
+    if (!second) throw new Error('no second session tab to visit');
+    await second.trigger('click');
+    await flush(2);
+    expect(wrapper.findAll('.stub-terminal').length).toBe(2);
+
+    // `git-y` leaves the bar out-of-band — stopped on the host, not through
+    // this workspace's Stop. Its tab goes; its pane record stays by design,
+    // filtered out of the v-for and rendering nothing.
+    sessionsList.mockResolvedValue([row('git-x')]);
+    useSessionsStore().sessions = [row('git-x')] as never;
+    await flush();
+    expect(wrapper.findAll('nav.tabs button.tab').length).toBe(1);
+
+    // Rename `git-x` onto the departed name. The host accepts: the name is
+    // free on the host even though the pane record for it lingers here.
+    renameSession.mockImplementation(() => {
+      sessionsList.mockResolvedValue([row('git-y')]);
+      return Promise.resolve(accepted('git-y'));
+    });
+    await beginRename(wrapper);
+    await typeAndCommit(wrapper, 'git-y');
+
+    // The leftover record is dropped at the rename, so the new name owns one
+    // pane. The bug left both records answering `git-y` — both passed the
+    // sessionPanes filter and the pane v-show, and the flex row split into a
+    // side-by-side mirror of one PTY stream.
+    const slots = wrapper.findAll('.terminal-slot');
+    expect(slots.length).toBe(1);
+    expect(slots[0]?.attributes('style') ?? '').not.toContain('none');
+    expect(wrapper.find('.stub-terminal').attributes('session-key')).toBe('git-y');
+  });
+});
