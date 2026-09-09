@@ -431,4 +431,4 @@ The one deliberate exception — kept, not pending:
 
 | File | Why it keeps its own matcher |
 |---|---|
-| `main/index.ts`, `shared/zoomKeys.ts` | `zoom.*` and `window.*` are recognised in the main process, before the page sees the key, and main cannot read the renderer's localStorage. Listed and locked rather than wired. |
+| `main/windowChords.ts`, `shared/zoomKeys.ts` | `zoom.*` and `window.*` are recognised in the main process, before the page sees the key, and main cannot read the renderer's localStorage. Listed and locked rather than wired. |

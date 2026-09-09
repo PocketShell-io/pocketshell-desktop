@@ -349,24 +349,26 @@ npm run test:coverage
 three source trees included (`src/main`, `src/preload`, `src/renderer`,
 `src/shared`) — a report that only watched `src/main` would silently claim
 the renderer was covered when it was merely unmeasured. Baseline
-(2026-09-03): **86.6% statements overall**; renderer/shared sit at 90–100%,
+(2026-09-09): **89.7% statements overall**; renderer/shared sit at 90–100%,
 and the honest gaps are deliberate:
 
 - `main/index.ts` (0%) — the Electron bootstrap: window creation, the
   single-instance lock, protocol registration. It is what the E2E tier
   launches, so unit-mocking Electron to raise the number would test the
-  mocks.
+  mocks. Its link policy and chord dispatch live in `windowLinks.ts` and
+  `windowChords.ts` precisely so they CAN be unit-tested (both at 100%).
 - `SshService`/`SftpService` connection paths — exercised by the Docker
   integration tier against a real sshd; mocked-channel unit tests there
   would pin nothing the fixtures don't already.
 - The **preload bridge** (`preloadBridge.test.ts`) and the **IPC
   registrars** (`ipcRegistrars.test.ts`) are the deliberately-tested
   boundaries: the walker asserts every bridge method against the channel
-  `shared/channels.ts` declares, and the registrar tests invoke handlers
-  through a mocked `ipcMain` to pin their policies (the session fence, the
-  128 MiB read ceiling, the update URL allow-list). These two suites are the
-  reason a drifted channel name or a weakened clamp now fails in CI instead
-  of at runtime.
+  `shared/channels.ts` declares, and the registrar tests invoke every
+  handler through a mocked `ipcMain` — pinning the policies (the session
+  fence, the 128 MiB read ceiling, the update URL allow-list) and a table
+  that maps each remaining channel to its service call. These two suites
+  are the reason a drifted channel name or a weakened clamp now fails in
+  CI instead of at runtime.
 
 ---
 
