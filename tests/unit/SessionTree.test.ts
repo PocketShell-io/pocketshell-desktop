@@ -111,6 +111,8 @@ const MenuStub = {
  * Mount the panel against a host holding `sessions`, with `roots` registered
  * in Settings, and let the two mounted fetches settle.
  */
+const mounted: VueWrapper[] = [];
+
 async function open(
   sessions: SessionSummary[],
   roots: string[] = [],
@@ -134,6 +136,7 @@ async function open(
   const wrapper = mount(SessionTree, {
     global: { stubs: { NewSessionDialog: DialogStub, PopupMenu: MenuStub } },
   });
+  mounted.push(wrapper);
   await flush(wrapper);
   return wrapper;
 }
@@ -220,6 +223,21 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.clearAllMocks();
   killSession.mockResolvedValue({ ok: true });
+});
+
+// A panel left mounted keeps its REAL-clock 5 s poll running for the rest of
+// the file, and every stray tick lands in the shared `sessionsList` spy —
+// count assertions then depend on how much wall time the file happened to
+// take, which under a loaded parallel run is "some tests randomly fail".
+// Unmounting everything at test end is what stops the clock they tick on.
+afterEach(() => {
+  while (mounted.length) {
+    try {
+      mounted.pop()!.unmount();
+    } catch {
+      // A test that unmounted its own wrapper already stopped its clock.
+    }
+  }
 });
 
 describe('SessionTree — the foot button is gone, and nothing went with it', () => {
