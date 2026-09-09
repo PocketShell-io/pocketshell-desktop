@@ -7,16 +7,12 @@ the local URL opens in the system browser. The served folder appears in the
 
 Distinct from the **HTML preview**, which renders one remote file by pulling
 its assets over SFTP: this runs the actual site, with working relative URLs,
-working `fetch`, and working routing, because a real origin is serving it.
+`fetch` and routing, because a real origin is serving it.
 
-| Role | File |
-|---|---|
-| Command construction, port choice, URL, failure classification (pure) | `src/main/portfwd/serveCommand.ts` |
-| Channel, forward, lifetime | `src/main/portfwd/ServeService.ts` |
-| IPC (`serve:start` / `stop` / `list` / `event:changed`) | `src/main/ipc.ts`, `src/shared/channels.ts`, `src/preload/index.ts` |
-| The action | `src/renderer/components/FileTree.vue` |
-| Visible + stoppable | `src/renderer/views/PortPanelView.vue`, `src/renderer/stores/forwards.ts` |
-| Tests | `tests/unit/serveCommand.test.ts`, `tests/unit/ServeService.test.ts` |
+The pure parts (command construction, port choice, URL, failure
+classification) live in `src/main/portfwd/serveCommand.ts`; execution and
+lifetime in `ServeService.ts`. Tests: `tests/unit/serveCommand.test.ts`,
+`tests/unit/ServeService.test.ts`.
 
 ---
 
@@ -35,10 +31,8 @@ too.
 
 A "share this on my LAN" feature, if it is ever wanted, must be a separate,
 explicitly-named, explicitly-confirmed action — never a widening of
-`SERVE_BIND_ADDRESS`.
-
-`tests/unit/serveCommand.test.ts` asserts `--bind 127.0.0.1` is present and
-that `0.0.0.0` never appears in a constructed command.
+`SERVE_BIND_ADDRESS`. `tests/unit/serveCommand.test.ts` asserts `--bind
+127.0.0.1` is present and that `0.0.0.0` never appears in a command.
 
 ---
 
@@ -50,20 +44,9 @@ python3 -u -m http.server <port> --bind 127.0.0.1 --directory <dir> [--protocol 
 
 The stdlib server ships with the interpreter and works in any folder on any
 host today; `--bind`, `--directory` and `--protocol` are probed, not assumed.
-It serves directory indexes, falls back to `index.html` when there is one, and
-streams files instead of reading them whole into memory. Its traversal guard
-is `translate_path`: normalise the URL path, drop `..` segments, `os.path.join`
-the survivors onto the root — no prefix comparison to get wrong.
-
-The buildcamp ASGI app once suggested for the job (`mdtohtml/http_server.py`,
-run as `uv run --with 'uvicorn[standard]' uvicorn http_server:app`) was
-rejected: it is one file in one repo on one machine, with a network-dependent
-`uv` resolution in front of an action whose whole value is being instant; it
-reads whole files into memory and serves no directory listings; and its
-traversal check is the **weak spelling** of the idiom —
-`str(file_path).startswith(str(root))`, which also accepts `/rootabc` for a
-root of `/root`. Copying that onto a live box was not worth it.
-
+An ASGI app was once suggested for the job and rejected: a network-dependent
+`uv` resolution in front of an action whose whole value is being instant, no
+directory listings, and a traversal check in the weak `startswith` spelling.
 `pocketshell serve` (§6) is the right long-term home; deferred, because it
 would ship dead on every host that has not upgraded the helper.
 
@@ -71,122 +54,73 @@ would ship dead on every host that has not upgraded the helper.
 
 ## 3. The tunnel is the existing one
 
-Nothing in this feature opens a socket of its own. `AutoForwarder`'s scan runs
-every 5s and keys on the **port**, not the bind address
-(`PortScanner.extractPort`), so it sees the server like any other listener,
-and "forward this one" is the same `force-on` intent the Ports panel's own
-per-row toggle uses. The served folder is therefore an ordinary row — name,
-byte counters, status, local port, stoppable from the panel — and there is
-exactly one kind of tunnel in the app, one place where local port allocation,
-collision handling and reconnect live.
+Nothing here opens a socket of its own. The auto-forward scan keys on the
+port, so it sees the server like any other listener, and "forward this one"
+is the same `force-on` intent the Ports panel uses — one kind of tunnel in
+the app, one place where allocation, collisions and reconnect live.
 
-**Known side effect.** `ForwardService.setIntent` calls `ensure`, which lazily
-starts the whole auto-forward engine for that host and persists
-`autoEnabled: true`. Serving a folder therefore turns auto-forwarding on. That
-is the app's existing contract for forcing a port on (the renderer already
-documents it in `stores/forwards.ts`), not something invented here — but it is
-a real, visible side effect and it is written down rather than hidden.
+Two consequences written down rather than hidden:
 
-**Port range.** `8081–8180`, chosen to sit inside `DEFAULT_AUTO_CONFIG`'s
-auto-forward window (≥1024, ≤10000) and away from the numbers dev servers
-squat on — 3000, 5173, 8000 (`http.server`'s own default) and 8080. The probe
-lists the host's listeners and the first free candidate wins; a lost bind race
-is detected from the server's own `Address already in use` and retried on the
-next candidate, up to three attempts.
+- **Serving a folder turns auto-forwarding on** — that is the app's existing
+  contract for forcing a port (`ForwardService.setIntent` → `ensure`).
+- **Port range `8081–8180`**: inside the auto-forward window, away from the
+  ports dev servers squat on (3000, 5173, 8000, 8080). A lost bind race is
+  retried on the next candidate, up to three attempts.
 
 ---
 
 ## 4. Lifetime — the part that matters on someone else's production box
 
-The server is **not detached**. It runs on a PTY channel from
-`SshService.openTrackedShell`, and the command `exec`s the login shell away so
-python is the session leader on that pty. Closing the channel is a hangup, and
-a hangup on a pty kills its session. So every way the app can go away kills the
-server with it, with no bookkeeping that could be wrong:
+The server is **not detached**. It runs on a PTY channel, `exec`ing the login
+shell away so python is the session leader; closing the channel is a hangup,
+and a hangup on a pty kills its session. So every way the app can go away
+kills the server with it, with no bookkeeping that could be wrong:
 
 | Event | Mechanism |
 |---|---|
 | user presses **stop** | `ServeService.stop` → `ssh.shellClose` |
 | user disconnects | `SshService.close` → `ShellTracker.closeAllForConnection` |
 | transport drops | sshd tears the channel down from its end |
-| app quits | `before-quit` → `registry.clear()` → `client.end()` on every connection |
+| app quits | `before-quit` → `registry.clear()` → `client.end()` |
 
-The alternative — `execBackground` + `setsid` + a pidfile — survives all four,
-which sounds like a feature and is not: the failure mode becomes an orphaned
-`http.server` still publishing a directory on a live box, recoverable only
-through a pidfile that is itself a thing that can be wrong. Surviving a
-reconnect is not worth that; re-serving is one right-click. The honest cost:
-**a dropped connection stops the server.** The panel says so rather than
-leaving a URL that quietly answers nothing.
+The alternative — `setsid` + a pidfile — survives all four, which sounds like
+a feature and is not: the failure mode becomes an orphaned `http.server`
+still publishing a directory on a live box, recoverable only through a
+pidfile that is itself a thing that can be wrong. The honest cost: **a
+dropped connection stops the server**, and the panel says so.
 
 **Caveat, stated plainly:** the hangup-kills-the-server property is reasoned,
-not observed — it follows from `exec` making python the pty session leader and
-sshd's SIGHUP on channel close, and the four teardown paths were traced in the
-code, but no end-to-end "quit the app, check the host" run has been done. The
-open manual check — no stray `python3 -m http.server` after quitting — is
-tracked in `docs/BACKLOG.md`.
+not observed — the four teardown paths were traced in the code, but no
+end-to-end "quit the app, check the host" run has been done. The open manual
+check is tracked in `docs/BACKLOG.md`.
 
-### Stopping is three operations, in order
-
-1. kill the server (`shellClose`);
-2. remove the forward by key (`forwards.remove`);
-3. clear the intent and the name.
-
-Step 2 has to be explicit. A `force-on` port is forwarded with
-`origin: 'manual'`, and `AutoForwarder.stopPass` deliberately never reaps
-manual forwards — so without it the local listener would outlive the server and
-answer with a connection refused from the far end. Step 3 clears the
-`force-off` that `remove` sets, so serving the same folder again is not
-silently blocked by the last time it was stopped.
-
-For the same reason the panel **disables** the per-row toggle and the remove
-button on a served row: both close the tunnel and would leave the server
-running with nothing in the app pointing at it. `stop` is the operation that
-ends both.
+**Stopping is three operations, in order:** kill the server; remove the
+forward by key (manual forwards are never reaped by the scan, so this must be
+explicit); clear the intent, so re-serving the folder is not blocked by the
+last time it was stopped. For the same reason the panel disables the per-row
+toggle and remove button on a served row — `stop` is the operation that ends
+both halves.
 
 ---
 
 ## 5. Failures, and how each one is legible
 
-Everything below produces a sentence in the Files tab's error banner, never a
-silent no-op. The first four are refused by the **probe**, before a channel is
-opened, so they cost one round trip.
-
-| Failure | Detected by | What the user sees |
-|---|---|---|
-| no python3 on the host | probe: `command -v python3 \|\| command -v python` | "No python3 on the host — the folder server needs it." |
-| python too old (<3.7, or python 2) | probe: `python -V` | "…is too old to serve a folder; 3.7 or newer is needed." |
-| directory gone / is a file / unreadable | probe: `[ -e ]` / `[ -d ]` / `[ -r ] && [ -x ]` | "/srv/x is not there on the host." etc. |
-| every candidate port busy | probe listener scan + `choosePort` | "No free port in 8081-8180 on the host." |
-| lost bind race | server's `Address already in use` | *(recovered silently — next candidate)* |
-| server dies later | PTY channel `close` | row goes `failed`, tunnel torn down, panel updates |
-| tunnel never opens | `waitForForward` timeout | everything is torn down and the error names the port — **no record with a null URL is ever returned** |
-
-Both `r` and `x` are checked on the directory: one without the other produces a
-server that starts fine and then 403s everything, which is the least legible
-outcome available.
+Every failure produces a sentence in the Files tab's error banner, never a
+silent no-op. The probe pre-flights — before any channel is opened — the
+python binary and version, the directory (there, a directory, readable *and*
+executable: one without the other starts fine and then 403s everything), and
+port availability; a server that dies later fails its row and tears the
+tunnel down. A lost bind race is recovered silently on the next candidate. A
+tunnel that never opens tears everything down and names the port — **no
+record with a null URL is ever returned**.
 
 ---
 
-## 6. `pocketshell serve` — the follow-up, and what it costs
+## 6. `pocketshell serve` — the follow-up
 
-The helper is a `uv`-installed tool on the host (`~/.local/bin/pocketshell`),
-and its versions are pinned to Android releases. Adding a subcommand is
-mechanically trivial — a `@click.command` and one `add_command` line — the
-cost is everything around it: `pyproject.toml` pins the helper version to
-`versionName` in `app/build.gradle.kts` (enforced by
-`scripts/check-pypi-version.sh` in CI), so a subcommand means an
-Android-release version bump and a PyPI publish; and every host has to upgrade
-before the desktop feature works at all, with no backwards-compat — this app
-does not sniff helper versions and deliberately deleted the machinery that
-used to, so a feature gated on `pocketshell serve` is simply broken on every
-host until each one upgrades.
-
-So: ship on the stdlib today, propose the subcommand separately (filed as
-`alexeygrigorev/pocketshell#2333`). Retiring the stdlib path later costs one
-function — `serveCommand()` — because everything else in `ServeService` is
-about channels and forwards, not about which binary is on the far end. If it
-is built, the subcommand should earn its keep by doing what the stdlib cannot:
-pick and report a free port atomically (closing the TOCTOU this implementation
-retries around), emit a machine-readable ready line instead of prose we
-pattern-match, and hold the socket itself so there is no bind race at all.
+Adding the subcommand is mechanically trivial; the cost is the version pinning
+and the per-host upgrade treadmill (this app does not sniff helper versions).
+Filed as `alexeygrigorev/pocketshell#2333`. Retiring the stdlib path later
+costs one function — `serveCommand()` — and the subcommand should earn its
+keep by doing what the stdlib cannot: pick and report a free port atomically,
+emit a machine-readable ready line, and hold the socket itself.
