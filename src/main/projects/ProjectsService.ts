@@ -40,13 +40,8 @@ import {
   type ReposCloneOptions,
   type ReposListOptions,
 } from './commands.js';
-import {
-  childPath,
-  normaliseProjectFolderName,
-  resolveAplexerTag,
-  resolveSessionName,
-  sanitiseName,
-} from './sessionName.js';
+import { childPath, normaliseProjectFolderName } from './sessionName.js';
+import { resolveAplexerTag, resolveSessionName, sanitiseName } from '../../shared/sessionNameParts.js';
 import {
   mergeRepos,
   type ReposListResult,
@@ -1093,4 +1088,4 @@ function scopeOk(scope: ReposScopeResult | null): boolean {
 
 // Re-exported so the preload can type `window.api.projects` without reaching
 // into three modules.
-export type { ReposListResult, ReposScopeResult, ReposCloneOptions, CreateSessionVia };
+export type { ReposListResult, ReposCloneOptions, CreateSessionVia };

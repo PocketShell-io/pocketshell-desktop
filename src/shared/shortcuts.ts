@@ -384,7 +384,7 @@ export function formatChord(chord: Chord, mac = false): string {
 // The registry data lives in shortcutTable.ts; these re-exports keep the
 // one-import surface every chord handler already reads (the same move
 // sessionName.ts made when its parts split).
-export { SHORTCUTS, shortcutById, shortcutIds, shortcutsForSurface, type ShortcutOwner, type ShortcutSpec } from './shortcutTable';
+export { SHORTCUTS, shortcutById, shortcutIds, shortcutsForSurface, type ShortcutSpec } from './shortcutTable';
 import { SHORTCUTS, shortcutById } from './shortcutTable';
 
 // ---------------------------------------------------------------------------

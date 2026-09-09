@@ -12,7 +12,6 @@ const MIRROR_SWEEP_DISTANCE = 1_000;
 
 /** Re-exported so the IPC/preload layer imports the type from one place. */
 export type { ForwardState };
-export { forwardKey };
 
 /**
  * Auto-forward engine: periodically scans the remote host for listening TCP

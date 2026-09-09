@@ -1,39 +1,21 @@
 /**
- * Directory-derived tmux session naming.
+ * Directory-derived tmux session naming — folder-name validation and path
+ * joining. Both apps must name the same folder the same way, because the
+ * session name IS the folder identity on the host — `tmuxctl` uses the same
+ * convention, so a session created from the phone and one created from the
+ * desktop in `~/git/pocketshell` are the same session, not two.
  *
  * A faithful port of the Android app's
  * `app/src/main/java/com/pocketshell/app/projects/SessionNameDerivation.kt`
- * (`baseName` at :100, `sanitisePart` at :149, `resolveSessionName` at :74).
- * Both apps must name the same folder the same way, because the session name
- * IS the folder identity on the host — `tmuxctl` uses the same convention, so
- * a session created from the phone and one created from the desktop in
- * `~/git/pocketshell` are the same session, not two.
+ * (`normaliseProjectFolderName` ← FolderListGateway.kt:2059).
  *
- * ## Where the derivation actually lives now
- *
- * `sanitisePart` was moved to ../../shared/sessionNameParts.ts long ago,
- * because the renderer's redundancy test had to run the exact regex that
- * derived the name it was testing. `sessionBaseName`, `sanitiseName` and
- * `resolveSessionName` followed it there for the same reason, one level up:
- * the folder workspace labels its tabs by stripping a folder's derived base
- * name off its sessions, so the renderer needs the
- * derivation itself and not merely the sanitiser. Two implementations of a
- * rule this exact would drift, and the symptom would be tab labels that
- * quietly stop stripping.
- *
- * They are re-exported here so every existing caller — and every existing
- * test — is unaffected by where the source sits. What remains genuinely
- * project-side is below: folder-name validation and path joining, neither of
- * which is a naming rule.
+ * The name-derivation rules themselves (`sessionBaseName`, `sanitiseName`,
+ * `sanitisePart`, `resolveSessionName`, `resolveAplexerTag`) live in
+ * ../../shared/sessionNameParts.ts — the renderer's folder workspace labels
+ * its tabs by stripping a folder's derived base name off its sessions, so it
+ * needs the derivation itself, not merely the sanitiser, and two
+ * implementations of a rule this exact would drift.
  */
-
-export {
-  resolveAplexerTag,
-  resolveSessionName,
-  sanitiseName,
-  sanitisePart,
-  sessionBaseName,
-} from '../../shared/sessionNameParts.js';
 
 import { trimTrailingSlash } from '../../shared/sessionNameParts.js';
 

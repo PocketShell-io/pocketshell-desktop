@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  childPath,
-  normaliseProjectFolderName,
-  resolveSessionName,
-  sanitiseName,
-  sessionBaseName,
-} from '@main/projects/sessionName';
+import { resolveSessionName, sanitiseName, sessionBaseName } from '../../src/shared/sessionNameParts';
+import { childPath, normaliseProjectFolderName } from '@main/projects/sessionName';
 
 /**
  * The derivation rule is a PORT, so these cases are pinned to the Kotlin they
