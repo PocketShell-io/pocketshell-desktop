@@ -1123,14 +1123,30 @@ async function commitRename(): Promise<void> {
   const connectionId = connection.connectionId;
   if (!target || !connectionId) return cancelRename();
 
-  const next = renamedSessionName(renameText.value, prefix.value, target.remainder, sanitisePart);
+  // An untouched field is a cancel, not a commit — including when what the
+  // field opened with is not the session's full name (an aplexer tag that
+  // carries the folder prefix opens STRIPPED, and committing that blind would
+  // silently shorten the tag). Blur calls this as readily as Enter does.
+  if (renameText.value === (target.remainder ?? target.session)) return cancelRename();
+
+  // An aplexer row is addressed `workspace:tag`, and the rename touches only
+  // the tag — the workspace half is metadata on the record, so the folder
+  // prefix is neither needed to keep the grouping nor wanted on the tag, whose
+  // defaults read `main`, `main-2`, … A tmux row has no such metadata: its name
+  // is the only grouping there is, so there the prefix is re-applied.
+  const aplexerRef = aplexerRefFor(target.session);
+  const next = renamedSessionName(
+    renameText.value,
+    prefix.value,
+    aplexerRef ? null : target.remainder,
+    sanitisePart,
+  );
   if (next === null) {
     renameError.value = 'that leaves nothing a session can be called';
     return;
   }
   if (next === target.session) return cancelRename();
 
-  const aplexerRef = aplexerRefFor(target.session);
   const result = await projects.renameSession(connectionId, target.session, next, aplexerRef);
   if (!result.ok || !result.sessionName) {
     renameError.value = result.error ?? 'rename failed';

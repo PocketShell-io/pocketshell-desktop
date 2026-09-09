@@ -435,3 +435,92 @@ describe('the rename field takes a hyphen', () => {
     expect(wrapper.find('nav.tabs button.tab').text()).toContain('foo-bar');
   });
 });
+
+describe('an aplexer row renames its TAG, and the prefix stays out of it', () => {
+  function accepted(sessionName: string): unknown {
+    return { ok: true, sessionName, error: null, code: null };
+  }
+
+  /**
+   * An aplexer-backed row of the shape `helper.sessionsList` returns: the name
+   * IS the tag, and the workspace/id are what address it. Nothing here needs
+   * the name to encode the folder — which is the point of every test below.
+   */
+  function aplexerRow(tag: string, created = 1): unknown {
+    return {
+      name: tag,
+      created,
+      activity: created,
+      attached: false,
+      path: '/home/me/git/x',
+      agentKind: null,
+      backend: 'aplexer',
+      workspace: '/home/me/git/x',
+      aplexerId: `apx-${tag}`,
+    };
+  }
+
+  const aplexerRef = {
+    backend: 'aplexer' as const,
+    workspace: '/home/me/git/x',
+    aplexerId: 'apx-git-x-second',
+  };
+
+  it('commits what was typed as the bare tag, without re-applying the folder prefix', async () => {
+    // The tag happens to carry the folder prefix (created before this rule),
+    // so the field opens with the stripped remainder — and a tmux row in the
+    // same shape would commit `git-x-staging`. Aplexer needs none of that: the
+    // workspace half of `workspace:tag` is metadata the rename never touches.
+    renameSession.mockImplementation(() => {
+      sessionsList.mockResolvedValue([aplexerRow('staging')]);
+      return Promise.resolve(accepted('staging'));
+    });
+    sessionsList.mockResolvedValue([aplexerRow('git-x-second')]);
+    useSessionsStore().sessions = [aplexerRow('git-x-second')] as never;
+
+    const wrapper = await openWorkspace();
+    await beginRename(wrapper);
+    const input = wrapper.find('input.rename-input');
+    expect((input.element as HTMLInputElement).value).toBe('second');
+    await typeAndCommit(wrapper, 'staging');
+
+    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x-second', 'staging', aplexerRef);
+    expect(wrapper.find('nav.tabs button.tab').text()).toContain('staging');
+  });
+
+  it('renames a default tag (`main`) the same bare way', async () => {
+    renameSession.mockImplementation(() => {
+      sessionsList.mockResolvedValue([aplexerRow('staging')]);
+      return Promise.resolve(accepted('staging'));
+    });
+    sessionsList.mockResolvedValue([aplexerRow('main')]);
+    useSessionsStore().sessions = [aplexerRow('main')] as never;
+
+    const wrapper = await openWorkspace();
+    await beginRename(wrapper);
+    await typeAndCommit(wrapper, 'staging');
+
+    expect(renameSession).toHaveBeenCalledWith(
+      'conn-1',
+      'main',
+      'staging',
+      expect.objectContaining({ backend: 'aplexer', workspace: '/home/me/git/x' }),
+    );
+  });
+
+  it('an untouched field commits nothing, even when it opened stripped', async () => {
+    // The field opens with `second` while the real tag is `git-x-second`, and
+    // blur calls commit as readily as Enter does — without the untouched guard,
+    // clicking away would silently shorten the tag on the host.
+    sessionsList.mockResolvedValue([aplexerRow('git-x-second')]);
+    useSessionsStore().sessions = [aplexerRow('git-x-second')] as never;
+
+    const wrapper = await openWorkspace();
+    await beginRename(wrapper);
+    await wrapper.find('input.rename-input').trigger('blur');
+    await flush(6);
+
+    expect(renameSession).not.toHaveBeenCalled();
+    expect(wrapper.find('input.rename-input').exists()).toBe(false);
+  });
+});
