@@ -43,7 +43,7 @@
 // so a tab switch cannot cost a draft. It follows the ACTIVE SESSION TAB — its
 // per-session record is keyed on the session name, so switching session tabs
 // swaps the draft and switching back restores it.
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type VNode } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from '../ipc';
 import { registerWorkspaceFocus, unregisterWorkspaceFocus } from '../workspaceFocus';
@@ -1064,16 +1064,22 @@ const renameText = ref('');
 const renameError = ref<string | null>(null);
 
 /**
- * Focus the rename field the moment it exists.
+ * Focus the rename field, once, as it mounts.
  *
- * A function ref rather than the `autofocus` attribute, which the browser only
- * honours for an element present at page load and silently ignores for one a
- * framework inserts later — SettingsView's capture field made the same switch
- * for the same reason. Select, not just focus: the field opens holding the
- * name it is renaming, and the common gesture is "type the replacement", which
- * wants the old name pre-picked.
+ * The `autofocus` attribute is no good here — the browser honours it only for
+ * an element present at page load and silently ignores one a framework inserts
+ * later — but a FUNCTION ref is no good either: Vue invokes it on every
+ * re-render of its owner, not only at mount, and this component re-renders on
+ * every keystroke (`renameText` feeds the field). A re-invoked `focus()` is a
+ * harmless no-op, but the `select()` that makes typing replace the old name
+ * would re-select the whole field after every character, and the next
+ * keystroke would overwrite it — one letter per keystroke, the last one
+ * winning. `@vnode-mounted` runs exactly once per mount, which is the whole
+ * behaviour wanted: the keyboard lands with the old name pre-picked, and
+ * typing from there on is the user's.
  */
-function bindRenameInput(el: unknown): void {
+function onRenameFieldMounted(vnode: VNode): void {
+  const el = vnode.el;
   if (el instanceof HTMLInputElement) {
     el.focus();
     el.select();
@@ -2014,7 +2020,7 @@ function onFocusTerminal(): void {
               :value="renameText"
               :title="renameError ?? 'Enter to rename, Escape to cancel'"
               :class="{ invalid: renameError }"
-              :ref="bindRenameInput"
+              @vue:mounted="onRenameFieldMounted"
               @input="onRenameInput"
               @keydown.enter.prevent="commitRename"
               @keydown.esc.prevent="cancelRename"
