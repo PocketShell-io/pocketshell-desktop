@@ -371,8 +371,8 @@ the `…` opens a menu of the hidden folders, each still a link; the `title`
 carries the full path; the editable path bar takes a typed one. The menu
 rather than the tooltip alone is NN/g's rule — information a user needs in
 order to *act* has to be on screen. This rule was learned twice — the
-session rows shipped middle-collapse-on-character-truncate first (BACKLOG
-finding) — which is why it is written as a ladder, not a cell count.
+session rows shipped middle-collapse-on-character-truncate first —
+which is why it is written as a ladder, not a cell count.
 
 #### 5.7.2 Creating a file or folder — an inline row, not a dialog
 

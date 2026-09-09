@@ -323,7 +323,7 @@ with no sessions still renders.
    to the first segment under the root. Genuinely attractive — it would make
    the level mean *project* — but the full directory is what the row label,
    the collision pass and the tooltip are built on. **This is the divergence
-   most likely to be wrong** (BACKLOG open question), and cheap to revisit:
+   most likely to be wrong**, and cheap to revisit:
    one projection of the directory key.
 4. **Roots are per host**, keyed by the `~/.ssh/config` alias — `~/git` can
    exist on one instance and not another, and the alias is the identity that
@@ -395,7 +395,7 @@ session minutes later. The commit bar carries `Start shell` (no choice) and
 `Start session…` (chains). The chain reuses `LaunchSessionDialog` whole,
 mounted *instead of* the picker rather than on top of it — two `OverlayPanel`s
 share a z-index and both listen for Escape on `document`, so one keypress
-would have closed two dialogs (BACKLOG finding).
+would have closed two dialogs.
 
 ---
 

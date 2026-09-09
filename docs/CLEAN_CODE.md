@@ -5,8 +5,7 @@ Code* and tightened for what this repo actually is: TypeScript everywhere,
 Vue 3 in the renderer, an Electron main process that owns an SSH transport.
 Rules marked with a check are enforced mechanically by `eslint.config.js`
 (type-checked linting); the rest are enforced by review. Full-repo audits
-have been run; their findings became commits and their open worklist lives in
-`docs/BACKLOG.md` ("Accepted, not started").
+have been run; their findings became commits.
 
 The rules are additive to `AGENTS.md` (one concern per commit, rebuild before
 handoff) and `docs/TESTING.md` (a red file, never a green tick nobody
@@ -84,7 +83,7 @@ changed the code.
 **12. Vue components are small and single-purpose.** Reusable reactive logic
 goes into composables (`usePaneWidth`, `useStripDrag`); cross-component state
 lives in stores; a component over ~1000 lines is flagged for extraction with
-the specific sections named (the flag lives in `docs/BACKLOG.md`). Templates
+the specific sections named. Templates
 do not compute; computeds do not mutate.
 
 ---
@@ -99,7 +98,7 @@ do not compute; computeds do not mutate.
   definition-of-done; the precedent for mechanical rule enforcement. Rules 7
   and 8 have graduated into it when a violation class reappears.
 - Periodic full audits — findings become commits, one concern each, referenced
-  back to the rule number; the open worklist lands in `docs/BACKLOG.md`.
+  back to the rule number.
 
 ---
 
@@ -110,8 +109,7 @@ do not compute; computeds do not mutate.
   `usageParsers.ts` / `cliParsers.ts`; `sessionGrouping.ts` into the row model
   plus `sessionRoots.ts` and `sessionTree.ts`; `shortcuts.ts` into the engine
   plus `shortcutTable.ts`; `ipc.ts` into a composer plus `ipc/` per-domain
-  registrars sharing an `IpcContext`. What is still over the line is listed
-  in `docs/BACKLOG.md`.
+  registrars sharing an `IpcContext`.
 - `env.d.ts` declares every `.vue` import as an `any`-typed
   `DefineComponent` (the repo's only `any`). Consequence: component props
   are unchecked at call sites, and seven call sites hand-write structural

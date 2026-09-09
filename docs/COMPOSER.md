@@ -801,7 +801,7 @@ Every dismissal routes through `requestClose()`. An empty sheet still
 closes on one Escape — a doodle opened by mistake must not argue. A sheet
 with work raises a confirmation in its own footer, REPLACING the action row
 rather than stacking above it (two stacked modals share one Escape listener
-and no stacking order — BACKLOG finding). An open caption is flushed into
+and no stacking order). An open caption is flushed into
 the document first, so it counts as work. Escape keeps its §12.2 meaning —
 it never destroys work: it arms the confirmation, and a second Escape
 **dismisses the confirmation** rather than confirming it — the safe
