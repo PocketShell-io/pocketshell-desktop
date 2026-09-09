@@ -1,29 +1,12 @@
 # Backlog
 
-Every request made against this app, with where it landed — a list in someone's
-head is not a list.
+Every request made against this app that is not answered by the code — open
+questions, accepted work, manual checks, and findings. A list in someone's
+head is not a list. Shipped work lives in git log, not here.
 
-**Conventions.** `✅` done (shipped, or a manual check resolved). `⬜` accepted
-but not started. `❓` open question for the user. `🔍` a finding or manual check
-worth keeping. Add at the bottom of the relevant section rather than
-reordering.
-
----
-
-## Shipped
-
-Everything below landed and is in the app; git log has the commits. One line
-per area:
-
-- **Session panel and folder workspaces** — the real tree (`git → folder → session`), worktrees grouped under their repo, extra roots in Settings, tabs per session (rename, drag, cycle, MRU close, confirmed stop), multiple Files tabs, the panel→agent chain (`takeAgentLaunch` in `views/FolderWorkspaceView.vue`), the durable session-to-folder registry (`tree get`/`tree upsert`, fails closed) — `docs/SESSIONLIST.md`.
-- **Composer** — a floating, movable card overlaying the terminal, per-workspace drafts, doodle annotations (`components/DoodleCanvas.vue`) — `docs/COMPOSER.md`.
-- **Files** — the SFTP browser (path bar, breadcrumbs, load-more), HTML and markdown previews (`main/preview/markdownDocument.ts`), binary-never-as-text, syntax highlighting, and **Serve this folder** (`portfwd/serveCommand.ts`) — `docs/SERVE.md`.
-- **Terminal and connection** — join through the helper, instant tab switching, garble repair, clickable paths, logs, auto-reconnect with a 5s→60s backoff (`shared/reconnectBackoff.ts`).
-- **Chrome and settings** — a Settings screen and default host (`views/SettingsView.vue`, `autoConnect.ts`), themes and palettes, and the shortcut registry every chord handler reads (`shared/shortcuts.ts`) — `docs/SHORTCUTS.md`.
-- **Env editor** — the F16 panel on the Files tab (`views/EnvPanelView.vue`).
-- **FEATURES.md remainder** — window state (`windowState.ts`), the PR gate (build matrix + Docker smoke in `.github/workflows/publish.yml`), the keyboard-navigable FILES tree.
-- **Housekeeping** — old code and backwards compatibility removed; unimported `keytar`/`ssh2-sftp-client` and the duplicated CodeMirror dropped from the installer.
-- Superseded, not shipped: the folder's path in the workspace header (the element it would have lived in was deleted).
+**Conventions.** `⬜` accepted but not started. `❓` open question for the user.
+`🔍` a finding or manual check worth keeping. Add at the bottom of the relevant
+section rather than reordering.
 
 ---
 
@@ -32,6 +15,7 @@ per area:
 | | Item | Why it is worth doing |
 |---|---|---|
 | ⬜ | A `serve` subcommand in the pocketshell CLI | Filed as `alexeygrigorev/pocketshell#2333`. The desktop side ships on `python3 -m http.server`; retiring that costs one function. |
+| ⬜ | Component/store refactor passes filed by the clean-code audit | The extractions that pay first, largest first: the composer's doodle orchestration (~370 lines) → `useDoodleSheet`; TerminalView's geometry reconcile loop → a module; SettingsView's chord capture → `useChordCapture`; FileTree's roving tabindex → `useRovingList`. Components over the 1000-line bar: `FolderWorkspaceView.vue` (~2390), `PromptComposer.vue` (~2170), `SessionTree.vue` (~1800), `NewSessionDialog.vue` (~1580), `TerminalView.vue` (~1520), `DoodleCanvas.vue` (~1420), `SettingsView.vue` (~1420), `FileTree.vue` (~1100), `PortPanelView.vue` (~1030). Also filed: a `fileModel.ts` for the `files` store's pure helpers (1301 lines), per-domain api builders for the preload (758), grouping `PocketshellClient`'s helper verbs by feature (1046). Each is a UI-risk refactor that wants its own session. |
 
 ---
 
