@@ -12,14 +12,14 @@
 // back, collapse, `hetzner · alexey@135.181.114.209`, Ports/Usage/Settings,
 // disconnect — spent a full --topbar-h above every terminal mostly on an
 // identity label, in an app whose whole point is the terminal. It went four
-// ways (docs/DESIGN.md §5.3b):
+// ways:
 //
 //   - the IDENTITY is the OS window title now (the `win:setTitle` watch
 //     below) — the native title bar was already there, saying "PocketShell";
 //   - BACK and COLLAPSE moved into the session panel's own header row, which
 //     was already paying for its --topbar-h;
 //   - PORTS / USAGE / SETTINGS were a panel-FOOT row, and now sit as controls
-//     in that same header (docs/DESIGN.md §5.3c→e) — the user asked for them
+//     in that same header — the user asked for them
 //     at the top, and since §5.3e each of Ports and Usage is its OWN icon
 //     there rather than a row of an overflow menu. The overlays did not move;
 //     only their triggers did;
@@ -43,9 +43,11 @@ import { isShortcut } from '../../shared/shortcuts';
 import { MAX_ATTEMPTS } from '../../shared/reconnectBackoff';
 import AppIcon from '../components/AppIcon.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
+import PopupMenu from '../components/PopupMenu.vue';
 import SessionTree from '../components/SessionTree.vue';
 import HostPanelButtons from '../components/HostPanelButtons.vue';
 import { type HostPanel } from '../hostPanels';
+import { type Box } from '../../shared/popupPlacement';
 import { requestWorkspaceFocus } from '../workspaceFocus';
 import { useFolderTree } from '../folderTree';
 import { adjacentIndex } from '../../shared/listNavigation';
@@ -94,7 +96,7 @@ const panel = ref<HostPanel | null>(null);
 
 /**
  * Whether auto-forward is on for this host — the state behind the Ports
- * button's ring-and-dot indicator (docs/PORTFWD.md §16).
+ * button's ring-and-dot indicator.
  *
  * Deliberately NOT read off the forwards store's own `autoOn`: that ref is
  * only live while the ports overlay is mounted (PortPanelView subscribes on
@@ -130,7 +132,7 @@ watch(
 
 /**
  * How many forwards are live for this host — the Ports button's count pill
- * (docs/PORTFWD.md §16). Same home as `autoFwd` for the same reason: the
+ *. Same home as `autoFwd` for the same reason: the
  * forwards store is only fresh while the ports overlay is mounted, and the
  * badge has to be right the rest of the time.
  *
@@ -320,7 +322,7 @@ const activeFolder = computed(() => (route.params['folder'] as string | undefine
  * chords below. The SAME derivation `SessionTree` renders from — see
  * `folderTree.ts` for why deriving it twice is the bug this avoids.
  */
-const { folders } = useFolderTree();
+const { folders, roots } = useFolderTree();
 
 /**
  * Open a folder's workspace. [session] names a tab to arrive on, which the
@@ -349,6 +351,62 @@ function onSelectFolder(folder: SessionDirectory, session?: string): void {
     ...(session === undefined ? {} : { query: { tab: session } }),
   });
 }
+
+/* ── The collapsed rail's session switcher ─────────────────────────────────
+ * With the panel hidden, the tab bar covers only the OPEN folder's sessions;
+ * every other workspace costs "show panel → click its row → hide it again" —
+ * two clicks and a trip through a 280px column to move once. The switcher is
+ * the panel's list folded into a menu: the SAME `useFolderTree` derivation the
+ * panel draws from, in the same order, keyed the same way, so it cannot show
+ * a row the panel would not (the argument is folderTree.ts's, and the
+ * `Ctrl+↑`/`Ctrl+↓` chords already stand on it).
+ *
+ * It navigates and creates nothing: a click is `onSelectFolder`, the panel
+ * row's own handler, so re-picking the open folder keeps the row's re-click
+ * semantics (focus the pane, navigate nowhere), and the rail keeps its no-`+`
+ * rule — creating a session is still something you do while looking at the
+ * list you are adding to.
+ *
+ * `PopupMenu` rather than an inline dropdown because it is the app's ONE menu:
+ * teleported past every clipping ancestor, placed from a measured box, and
+ * capped to the viewport — which a folder list long enough to need a switcher
+ * can comfortably outgrow.
+ */
+const switcherBtn = ref<HTMLButtonElement | null>(null);
+/** Open state; carries the anchor box snapshotted from the rail button. */
+const switcher = ref<{ anchor: Box } | null>(null);
+
+function toggleSwitcher(): void {
+  if (switcher.value) {
+    switcher.value = null;
+    return;
+  }
+  // A DOMRect is assignable to Box (popupPlacement.ts); the fallback never
+  // fires through the UI — the button owns the handler — and only keeps the
+  // type honest.
+  const el = switcherBtn.value;
+  switcher.value = {
+    anchor: el?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 },
+  };
+}
+
+/** Pick a folder in the switcher: close, then the same answer a row click gets. */
+function pickFolder(dir: SessionDirectory): void {
+  switcher.value = null;
+  onSelectFolder(dir);
+}
+
+/**
+ * Live sessions on the host, for the button's tooltip — the one place the
+ * collapsed state can still answer "how much is running" without opening
+ * anything, worded the way HostPanelButtons words its own ("…, 2 ports").
+ */
+const sessionTotal = computed(() => folders.value.reduce((n, dir) => n + dir.rows.length, 0));
+
+/** The rail button's word, extended while there is something to switch to. */
+const switcherTitle = computed(() =>
+  sessionTotal.value > 0 ? `Sessions — ${sessionTotal.value}` : 'Sessions',
+);
 
 /* ── `Ctrl+↑` / `Ctrl+↓`: the workspace above, the workspace below ─────────
  *
@@ -490,6 +548,19 @@ async function onRefreshUsage(): Promise<void> {
         <button class="icon-btn" title="Back to hosts" @click="onBack">
           <AppIcon name="arrow-left" :size="14" />
         </button>
+        <!-- The session switcher (the block comment in the script). Under the
+             nav pair with it, because it IS navigation — the jump the panel
+             hidden makes expensive — and above the separator, leaving the
+             host-overlay half of the rail untouched. The `folder` mark is the
+             menu's own contents: the panel's folder rows, one list. -->
+        <button
+          ref="switcherBtn"
+          class="icon-btn"
+          :title="switcherTitle"
+          @click="toggleSwitcher"
+        >
+          <AppIcon name="folder" :size="14" />
+        </button>
         <!-- The rail exists so host controls are not stranded when the panel is
              hidden (ca79ae2). The header holds Ports and Usage as their own
              icon buttons since §5.3e, so the rail carries the same pair
@@ -499,10 +570,11 @@ async function onRefreshUsage(): Promise<void> {
              overlays: a 36px rail has no room for text either way, and the
              words live in each tooltip exactly as they do in the header.
 
-             There is no `+` here on purpose. The rail is an ESCAPE HATCH — show
-             the panel, go back, reach the host overlays — and creating a
-             session is a thing you do while looking at the list you are about
-             to add to. One click on the top button brings that list back. -->
+             There is still no `+` here. The rail is an ESCAPE HATCH — show
+             the panel, go back, switch workspace, reach the host overlays —
+             and creating a session is a thing you do while looking at the list
+             you are about to add to. One click on the top button brings that
+             list back; the switcher below reads it without it. -->
         <div class="rail-sep" />
         <HostPanelButtons
           :auto-forward="autoFwd"
@@ -513,6 +585,55 @@ async function onRefreshUsage(): Promise<void> {
           <AppIcon name="settings" :size="14" />
         </button>
       </aside>
+
+      <!-- The switcher's menu. Teleported to `body` by PopupMenu; `ignore`
+           names the trigger so a press on it is not read as "outside" first —
+           without it the mousedown would close the menu and the button's own
+           click would reopen it, and the toggle would look frozen open
+           (PopupMenu.vue's header documents the mechanism). -->
+      <PopupMenu
+        v-if="switcher"
+        :anchor="switcher.anchor"
+        :ignore="[switcherBtn]"
+        label="Sessions"
+        @close="switcher = null"
+      >
+        <ul>
+          <!-- One head per root, one item per folder: the panel's two levels,
+               in the panel's order. A root holding no folders is skipped — its
+               header is a label over rows that are not there, and a switcher
+               item you cannot switch to is noise (the expanded panel, which
+               can explain an empty registered root in words, still draws it). -->
+          <template v-for="root in roots" :key="root.key">
+            <li v-if="root.directories.length" class="menu-head switch-root">
+              {{ root.key }}
+            </li>
+            <li v-for="dir in root.directories" :key="dir.key">
+              <button
+                class="menu-item switch-item"
+                :class="{ current: dir.key === activeFolder }"
+                @click="pickFolder(dir)"
+              >
+                <!-- The panel row's two marks, same meanings: the dot says
+                     something live is in here, the check says this is the
+                     workspace already on screen. -->
+                <span class="dot" :class="{ active: dir.active }" />
+                <span class="switch-label">{{ dir.label }}</span>
+                <span v-if="dir.rows.length > 1" class="switch-count muted">
+                  {{ dir.rows.length }}
+                </span>
+                <AppIcon
+                  v-if="dir.key === activeFolder"
+                  name="check"
+                  :size="14"
+                  class="current-check"
+                />
+              </button>
+            </li>
+          </template>
+          <li v-if="!folders.length" class="menu-head switch-root">no sessions</li>
+        </ul>
+      </PopupMenu>
 
       <!-- Persistent session panel: always mounted, never navigated away from.
            v-show, not v-if — collapsing must not cost the tree its disclosure
@@ -554,7 +675,7 @@ async function onRefreshUsage(): Promise<void> {
     <OverlayPanel v-if="panel === 'ports'" title="Port forwarding" @close="panel = null">
       <!-- Scan lives HERE, in the overlay's action row beside the close
            control — the same seat Usage's refresh occupies — rather than in
-           the panel's face (docs/PORTFWD.md §18): the engine rescans on its
+           the panel's face: the engine rescans on its
            own every few seconds, so an always-visible Scan button spent the
            panel's best row on a thing you almost never open the panel to do.
            One policy-applying pass is what a press means (forwards.ts). -->
@@ -696,6 +817,52 @@ async function onRefreshUsage(): Promise<void> {
   padding: var(--sp-1);
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+/* The switcher menu's own register, on top of PopupMenu's `.menu-item`. The
+   root head is a PATH (`~/git`), not a label — uppercasing it would spell the
+   directory wrong, so it opts out of the menu-head transform the way the
+   panel's own `path-prefix` keeps `~/` in its lower-case voice. */
+.switch-root {
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* The panel row's marks at menu size: the same 8px dot with the same two
+   states (grey quiet, green something-live), and a label that ellipsises
+   rather than pushes the count and check off the menu. */
+.switch-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  flex: none;
+}
+.switch-item .dot.active {
+  background: var(--success);
+}
+.switch-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Count hugs its label the way the panel's row count does, and the check —
+   the open workspace's mark — takes the far end. */
+.switch-count {
+  flex: none;
+  font-size: var(--fs-200);
+}
+.current-check {
+  margin-left: auto;
+  color: var(--accent);
+  flex: none;
+}
+.switch-item.current {
+  background: var(--state-selected);
+}
+.switch-item.current .switch-label {
+  color: var(--accent);
+  font-weight: var(--fw-medium);
 }
 /* Transparent at rest: the session panel's own 1px right border is the visual
    seam, and the 4px --bg band this used to paint read as a dark gutter

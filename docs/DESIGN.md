@@ -253,7 +253,14 @@ disconnect moved to the **host picker**, on the connected host's row, at its
 destination — and that row re-enters the workspace without re-dialling (a
 second dial would orphan the live connection). **Collapsed state is a ~36px
 rail, not nothing** — a zero-width collapse would take every host control
-off screen — and the rail offers nothing less than the expanded panel.
+off screen — and the rail offers nothing less than the expanded panel. With
+the panel hidden the tab bar covers only the *open* folder, so the rail also
+carries a **session switcher** (`HostWorkspaceView.vue`): a menu mirror of
+the panel's folder list — same root grouping, same order, same keys — from
+the one `useFolderTree` derivation the panel and the `Ctrl+↑`/`Ctrl+↓`
+chords already share. A pick is `onSelectFolder`, the panel row's own
+handler, so re-picking the open folder keeps its re-click semantics (focus
+the pane, navigate nowhere); it navigates and creates nothing.
 
 ### 5.3c–e — Host panel header strip
 
