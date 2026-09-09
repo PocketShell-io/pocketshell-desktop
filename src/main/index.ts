@@ -1,6 +1,5 @@
-import { app, BrowserWindow, Menu, powerMonitor, shell } from 'electron';
+import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
 import { HtmlPreviewService, registerPreviewScheme } from './preview/HtmlPreviewService.js';
-import { PREVIEW_SCHEME } from './preview/previewPaths.js';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -14,9 +13,9 @@ import { ProjectsService } from './projects/ProjectsService.js';
 import { registerIpcHandlers } from './ipc.js';
 import { APP_TITLE } from '../shared/windowTitle.js';
 import { ipc } from '../shared/channels.js';
-import { zoomCommandForInput } from '../shared/zoomKeys.js';
-import { windowCommandForInput } from '../shared/windowKeys.js';
 import { readWindowBounds, writeWindowBounds } from './windowState.js';
+import { applyLinkPolicy } from './windowLinks.js';
+import { applyChordDispatch } from './windowChords.js';
 
 // Electron + ESM: __dirname is not defined for the bundled output under some
 // loaders; electron-vite emits CJS for main, so __dirname is available. We
@@ -154,111 +153,11 @@ function createWindow(): void {
     }
   });
 
-  // Open external links in the system browser, never in-app — and only if
-  // they are web links.
-  //
-  // `shell.openExternal` hands the URL to the OS to dispatch by SCHEME, and
-  // this handler used to pass whatever it was given. Two consequences, one
-  // visible and one not:
-  //
-  //   - A click that produced no real URL still reached here as
-  //     `about:blank` (that is what Electron reports when `window.open` has
-  //     nothing usable), so Windows popped "We can't open this 'about'
-  //     link — your device needs a new app to open this link".
-  //   - More seriously, the renderer linkifies TERMINAL OUTPUT, which is
-  //     bytes from a remote host. Anything that host can print, it could
-  //     get handed to the OS shell: `file:`, `ms-`, a custom protocol
-  //     registered by some other installed app. A remote box should not be
-  //     able to pick which local program opens.
-  //
-  // So the scheme is allow-listed, parsing is guarded (a malformed URL
-  // throws in the URL constructor rather than falling through), and
-  // everything else is dropped with a log rather than silently ignored —
-  // a link that does nothing at all is its own bug report.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isWebUrl(url)) {
-      void shell.openExternal(url);
-    } else {
-      console.warn('[pocketshell] refused to open non-web link:', url);
-    }
-    return { action: 'deny' };
-  });
+  applyLinkPolicy(mainWindow.webContents);
 
-  // A previewed document may contain links, and a link click inside the
-  // preview frame is a NAVIGATION rather than a `window.open` — so it does not
-  // pass through the handler above.
-  //
-  // The renderer's CSP already lists `psview:` for `frame-src` and nothing
-  // remote, and `frame-src` is checked on every navigation of a nested
-  // browsing context, not only its first. This is the belt to that braces, and
-  // it is worth having because the two failure modes are so different: a CSP
-  // mistake here would mean a remote document could make the app fetch an
-  // arbitrary http URL — leaking, at minimum, which file the user is looking
-  // at and when. Sub-frames may navigate WITHIN the preview scheme (following
-  // a relative link to the page next door is a reasonable thing to want) and
-  // nowhere else. The main frame is untouched: that is the app's own routing.
-  //
-  // A WEB link — and only a web link, by the same allow-list the handler above
-  // uses — is not kept from the user, it is HANDED OFF: the OS browser opens
-  // it, which is what clicking a link in a local viewer means. The hand-off
-  // carries nothing about the preview: the browser arrives with no referrer
-  // naming the file or the host, so the server learns only that someone
-  // clicked a link to it. Every other scheme stays refused-and-logged: a
-  // remote box must not get to pick which local program opens, here any more
-  // than in the handler above.
-  mainWindow.webContents.on('will-frame-navigate', (details) => {
-    if (details.isMainFrame) return;
-    if (details.url.startsWith(`${PREVIEW_SCHEME}://`)) return;
-    if (isWebUrl(details.url)) {
-      void shell.openExternal(details.url);
-    } else {
-      console.warn('[pocketshell] refused preview-frame navigation:', details.url);
-    }
-    details.preventDefault();
-  });
-
-  // Zoom chords. Recognised here, DECIDED in the renderer.
-  //
-  // Two jobs, and they are inseparable. The first is to catch every spelling
-  // of "zoom in" — Ctrl+=, Ctrl+Shift+=, a layout's dedicated +, the numeric
-  // keypad's + — which is the reported bug: Electron's default menu binds
-  // `CommandOrControl+Plus`, and `Plus` is SHIFTED `=`, so plain Ctrl+= hit
-  // nothing while Ctrl+- and Ctrl+0 worked. See src/shared/zoomKeys.ts.
-  //
-  // The second is `preventDefault()`, which is load-bearing rather than
-  // tidy-up: it suppresses the page's keydown AND the menu shortcut, and
-  // suppressing the menu shortcut is what stops the default menu's zoom roles
-  // driving Chromium's zoom directly, behind the settings store's back. With
-  // them live, Ctrl+- would move the window without the store ever hearing
-  // about it and the percentage in Settings would be a lie one keystroke
-  // later. That is why the intent is forwarded rather than applied here: main
-  // does not know the current zoom and must not guess it. The renderer's
-  // settings store steps its own value, persists it, and applies it — one
-  // value, one writer, no way for the two to disagree.
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    const zoom = zoomCommandForInput(input);
-    if (zoom) {
-      event.preventDefault();
-      mainWindow?.webContents.send(ipc.win.zoomCommand, zoom);
-      return;
-    }
-
-    // Window chords, and unlike zoom these are DECIDED here: closing a window
-    // and opening DevTools are main's own business, with no renderer state to
-    // keep in step. See src/shared/windowKeys.ts for the whole argument —
-    // in short, the default menu that used to carry them is gone on Windows
-    // and Linux (it had Ctrl+W on Close, which cost the app to a keystroke
-    // meant for a text field), and these two are the only entries worth
-    // bringing back. `preventDefault()` here is the same instrument as above
-    // and cuts the same two ways: it suppresses the page's keydown as well as
-    // any accelerator, which is exactly why nothing the terminal uses may be
-    // matched.
-    const command = windowCommandForInput(input);
-    if (!command) return;
-    event.preventDefault();
-    if (command === 'close') mainWindow?.close();
-    else mainWindow?.webContents.toggleDevTools();
-  });
+  // Zoom chords are recognised here and DECIDED in the renderer; window
+  // chords are decided here. Both policies live in windowChords.ts.
+  applyChordDispatch(mainWindow.webContents, () => mainWindow?.close());
 
   // electron-vite: dev server URL in dev, built file in prod.
   const devUrl = process.env['ELECTRON_RENDERER_URL'];
@@ -355,19 +254,3 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   registry.clear();
 });
-
-/**
- * True only for `http:` and `https:`.
- *
- * Deliberately an allow-list rather than a deny-list of known-bad schemes:
- * the set of protocols an arbitrary Windows install has registered is
- * unknowable from here, so anything not explicitly a web link is refused.
- */
-function isWebUrl(raw: string): boolean {
-  try {
-    const { protocol } = new URL(raw);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
