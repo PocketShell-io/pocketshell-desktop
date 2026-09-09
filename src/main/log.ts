@@ -48,19 +48,23 @@ export function log(scope: string, message: string, data?: Record<string, unknow
   // A diagnostic file is only worth having if everything in it happened to the
   // user.
   if (process.env['VITEST'] != null) return;
-  const stamp = new Date().toISOString();
-  const detail = data == null ? '' : ` ${safeJson(data)}`;
-  const line = `${stamp} [${scope}] ${message}${detail}\n`;
   try {
     const path = logPath();
     mkdirSync(dirname(path), { recursive: true });
-    appendFileSync(path, line, 'utf8');
+    appendFileSync(path, formatLogLine(scope, message, data), 'utf8');
   } catch (err) {
     if (!warnedOnce) {
       warnedOnce = true;
       console.warn('[pocketshell] file logging unavailable:', err);
     }
   }
+}
+
+/** One log record as it lands in the file — trailing newline included. */
+export function formatLogLine(scope: string, message: string, data?: Record<string, unknown>): string {
+  const stamp = new Date().toISOString();
+  const detail = data == null ? '' : ` ${safeJson(data)}`;
+  return `${stamp} [${scope}] ${message}${detail}\n`;
 }
 
 /**
