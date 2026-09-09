@@ -88,7 +88,7 @@ export class AttachmentStager {
   }
 
   /**
-   * Upload `sources` into `~/.pocketshell/attachments/<safeScope>/` and
+   * Upload `sources` into `~/.pocketshell/attachments/<safeScopePath>/` and
    * return the tilde-form display paths to splice into the prompt.
    *
    * Never rejects. Partial failures (issue #570) resolve with
@@ -103,7 +103,7 @@ export class AttachmentStager {
   ): Promise<StageAttachmentsResult> {
     if (sources.length === 0) return { ok: true, paths: [], failedCount: 0 };
 
-    const safeScope = safeScopeSegment(scopeKey);
+    const safeScope = safeScopePath(scopeKey);
     const remoteDir = `${REMOTE_DIRECTORY}/${safeScope}`;
     const displayDir = `~/${remoteDir}`;
 
@@ -180,8 +180,9 @@ export class AttachmentStager {
 
   /**
    * `mkdir -p` the scope directory. The path is built from a constant
-   * plus {@link safeScopeSegment} output (`[a-z0-9_-]` only), so it is
-   * safe inside the double quotes that let `$HOME` expand.
+   * plus {@link safeScopePath} output (`[a-z0-9_-]` per `/`-segment, so
+   * no `..` and no absolute paths), which makes it safe inside the
+   * double quotes that let `$HOME` expand.
    *
    * `exec` never throws on a non-zero exit (see SshService), so the exit
    * code is checked explicitly.
@@ -241,6 +242,27 @@ export class AttachmentStager {
  * blank falls back to `session`, capped at 80 characters.
  */
 export function safeScopeSegment(scopeKey: string): string {
+  return foldScopeSegment(scopeKey) || 'session';
+}
+
+/**
+ * Normalise a scope key that may name a NESTED directory — an aplexer
+ * session scopes its uploads as `<workspace-name>/<tag>` so files from
+ * the same project land together across its tags — into a safe relative
+ * path. Each `/`-separated segment goes through the single-segment rule
+ * independently, so no segment can contain a slash, `..` folds away
+ * before it can traverse, and a leading `/` becomes a dropped empty
+ * segment rather than an absolute path. Blank segments disappear; if
+ * nothing survives, the result is `session`, matching
+ * {@link safeScopeSegment}'s fallback.
+ */
+export function safeScopePath(scopeKey: string): string {
+  const segments = scopeKey.split('/').map(foldScopeSegment).filter((s) => s !== '');
+  return segments.length > 0 ? segments.join('/') : 'session';
+}
+
+/** {@link safeScopeSegment}'s character folding, without the fallback. */
+function foldScopeSegment(scopeKey: string): string {
   let cleaned = '';
   for (const ch of scopeKey) {
     if (ch >= 'A' && ch <= 'Z') cleaned += ch.toLowerCase();
@@ -254,8 +276,7 @@ export function safeScopeSegment(scopeKey: string): string {
   let end = cleaned.length;
   while (start < end && cleaned[start] === '-') start++;
   while (end > start && cleaned[end - 1] === '-') end--;
-  const trimmed = cleaned.slice(start, end);
-  return (trimmed === '' ? 'session' : trimmed).slice(0, 80);
+  return cleaned.slice(start, end).slice(0, 80);
 }
 
 /**

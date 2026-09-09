@@ -243,7 +243,7 @@ export type AttachmentSource =
 export interface StageAttachmentsResult {
   /** True only when every source uploaded. */
   ok: boolean;
-  /** Tilde-form remote paths, e.g. `~/.pocketshell/attachments/main/20260824-101500-01-shot.png`. */
+  /** Tilde-form remote paths, e.g. `~/.pocketshell/attachments/dtc-site/main/20260824-101500-01-shot.png`. */
   paths: string[];
   /** How many sources failed. */
   failedCount: number;

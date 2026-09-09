@@ -30,6 +30,26 @@ export interface HasRemotePath {
 }
 
 /**
+ * The scope a session's attachments upload into, relative to
+ * `~/.pocketshell/attachments`.
+ *
+ * An aplexer session carries its workspace (the canonical remote path of
+ * the checkout) and its session name IS the tag within that workspace, so
+ * the scope nests `<workspace-basename>/<tag>` — `dtc-site/main`,
+ * `dtc-site/main-2` — and files from one project land in one directory
+ * across all of its tags. Only the SHAPE is decided here: the segments
+ * come back raw, and `AttachmentStager.safeScopePath` sanitises each one.
+ *
+ * A session without a workspace — every tmux session, whose names are
+ * host-global and need no disambiguation — scopes to the bare session
+ * name, the shape every upload had before workspaces existed.
+ */
+export function attachmentScopeKey(sessionName: string, workspace?: string | null): string {
+  const name = (workspace ?? '').replace(/\/+$/, '').split('/').pop() ?? '';
+  return name !== '' ? `${name}/${sessionName}` : sessionName;
+}
+
+/**
  * Swap `targetPath` for `next`, keeping the target's POSITION.
  *
  * Returns a new array, or `null` when `targetPath` is not in `list` — which is

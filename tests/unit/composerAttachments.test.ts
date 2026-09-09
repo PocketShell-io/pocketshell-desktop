@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   absoluteAttachmentPath,
+  attachmentScopeKey,
   doodleAttachmentName,
   replaceStagedAttachment,
 } from '../../src/shared/composerAttachments';
@@ -139,5 +140,23 @@ describe('doodleAttachmentName', () => {
     expect(doodleAttachmentName('20260825-101500-01-annotated-.png', STAMP)).toBe(
       `doodle-${STAMP}.png`,
     );
+  });
+});
+
+describe('attachmentScopeKey', () => {
+  it('nests <workspace-basename>/<tag> for a session with a workspace', () => {
+    expect(attachmentScopeKey('main', '/home/dev/git/dtc-site')).toBe('dtc-site/main');
+    expect(attachmentScopeKey('main-2', '/home/dev/git/dtc-site/')).toBe('dtc-site/main-2');
+  });
+
+  it('scopes a workspaceless session to the bare name', () => {
+    expect(attachmentScopeKey('main')).toBe('main');
+    expect(attachmentScopeKey('main', null)).toBe('main');
+    expect(attachmentScopeKey('main', '')).toBe('main');
+  });
+
+  it('still scopes to the bare name when the workspace has no basename', () => {
+    expect(attachmentScopeKey('main', '/')).toBe('main');
+    expect(attachmentScopeKey('main', '//')).toBe('main');
   });
 });

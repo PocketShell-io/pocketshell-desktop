@@ -231,8 +231,8 @@ is legal. Example:
 what is wrong here
 
 Attached files:
-- ~/.pocketshell/attachments/main/20260824-101500-01-shot.png
-- ~/.pocketshell/attachments/main/20260824-101500-02-log.txt
+- ~/.pocketshell/attachments/dtc-site/main/20260824-101500-01-shot.png
+- ~/.pocketshell/attachments/dtc-site/main/20260824-101500-02-log.txt
 ```
 
 Called once, at send time only, from `dispatchSendNow` (`:670`). The draft text
@@ -325,7 +325,15 @@ at `PromptComposerViewModel.kt:2183-2189`, list at `:2245`.
 - **Seeding**: `seedAttachment(remotePath)` (`:443-473`) attaches an
   already-uploaded path without re-uploading (the share-into-session flow),
   de-duplicating.
-- **Remote location**: `~/.pocketshell/attachments/<scope>/`
+- **Remote location**: `~/.pocketshell/attachments/<scope>/`. The scope is
+  `<workspace-basename>/<tag>` for a session that has an aplexer workspace —
+  one directory per project, shared by all of its tags — and the bare session
+  name otherwise (every tmux session). The renderer composes the raw scope
+  (`attachmentScopeKey`, `src/shared/composerAttachments.ts`) and the stager
+  sanitises each `/`-segment independently
+  (`safeScopePath`, `src/main/attachments/AttachmentStager.ts`); lineage is
+  the Android one-scope-per-session
+  `~/.pocketshell/attachments/<scope>/`
   (`app/src/main/java/com/pocketshell/app/composer/PromptAttachmentStager.kt:212`).
 - **Failure copy**: `"Attachment upload failed: <detail>. Your draft was kept;
   reconnect or choose a smaller/readable file."` (`:2681-2689`).
@@ -682,7 +690,7 @@ Follow the `defineStore(id, setup)` style used by
 
 ```ts
 export interface StagedAttachment {
-  remotePath: string;      // stable identity, e.g. ~/.pocketshell/attachments/main/…png
+  remotePath: string;      // stable identity, e.g. ~/.pocketshell/attachments/dtc-site/main/…png
   displayName: string;
   mimeType?: string;
   previewDataUrl?: string; // images only, for the tile thumbnail

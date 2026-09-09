@@ -72,6 +72,7 @@ import {
 } from '../../shared/composerText';
 import {
   absoluteAttachmentPath,
+  attachmentScopeKey,
   replaceStagedAttachment,
 } from '../../shared/composerAttachments';
 import {
@@ -98,7 +99,12 @@ import type { AttachmentSource, ConnectionId } from '../../shared/types';
 
 const props = defineProps<{
   connectionId: ConnectionId;
-  /** Session name — the composer's identity, and the attachment scope key. */
+  /**
+   * Session name — the composer's identity. For attachments it is the TAG
+   * half of the scope: with a workspace the uploads nest
+   * `<workspace>/<name>`, without one the name is the whole scope (see
+   * `attachmentScopeKey`).
+   */
   sessionName: string;
   /**
    * Which runtime owns the session, and (for aplexer) which workspace.
@@ -301,7 +307,7 @@ async function stageSources(
   if (sources.length === 0) return;
   await composer.stage(key.value, {
     connectionId: props.connectionId,
-    scopeKey: props.sessionName,
+    scopeKey: attachmentScopeKey(props.sessionName, props.workspace),
     sources,
     ...(previews ? { previews } : {}),
   });
@@ -882,7 +888,7 @@ async function replaceWithAnnotation(
   try {
     const staged = await api.attachments.stage({
       connectionId: props.connectionId,
-      scopeKey: props.sessionName,
+      scopeKey: attachmentScopeKey(props.sessionName, props.workspace),
       sources: [
         { kind: 'bytes', data: result.data, name: result.name, mimeType: 'image/png' },
       ],

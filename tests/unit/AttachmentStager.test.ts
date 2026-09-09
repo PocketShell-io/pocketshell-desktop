@@ -10,6 +10,7 @@ import {
   composeAttachmentName,
   formatAttachmentTimestamp,
   partialFailureMessage,
+  safeScopePath,
   safeScopeSegment,
   sanitiseSource,
   type StagerSftp,
@@ -45,6 +46,33 @@ describe('safeScopeSegment', () => {
   it('cannot produce a path separator', () => {
     expect(safeScopeSegment('../../etc')).not.toContain('/');
     expect(safeScopeSegment('../../etc')).toBe('etc');
+  });
+});
+
+describe('safeScopePath', () => {
+  it('keeps a nested scope as two sanitised segments', () => {
+    expect(safeScopePath('DTC Site/main-2')).toBe('dtc-site/main-2');
+  });
+
+  it('sanitises each segment independently so `/` survives as a separator only', () => {
+    expect(safeScopePath('my repo/~/..//x y/')).toBe('my-repo/x-y');
+  });
+
+  it('cannot traverse: `..` folds away and a leading slash is a dropped empty segment', () => {
+    expect(safeScopePath('../../etc/passwd')).toBe('etc/passwd');
+    expect(safeScopePath('/etc')).toBe('etc');
+    expect(safeScopePath('..')).toBe('session');
+  });
+
+  it('falls back to "session" when no segment survives', () => {
+    expect(safeScopePath('')).toBe('session');
+    expect(safeScopePath('///')).toBe('session');
+  });
+
+  it('caps each segment at 80 characters', () => {
+    const [a, b] = safeScopePath(`${'a'.repeat(200)}/${'b'.repeat(200)}`).split('/');
+    expect(a).toHaveLength(80);
+    expect(b).toHaveLength(80);
   });
 });
 
@@ -232,6 +260,25 @@ describe('AttachmentStager.stage', () => {
     expect(remote.uploads.values().next().value?.toString('utf8')).toBe('PNGDATA');
     expect(remote.commands[0]).toBe(
       `mkdir -p "$HOME/${REMOTE_DIRECTORY}/my-session"`,
+    );
+  });
+
+  it('nests a workspace-scoped upload under <workspace-name>/<tag>', async () => {
+    const remote = fakeRemote();
+    const result = await stagerFor(remote).stage('conn-1', 'dtc-site/main', [
+      bytes('shot.png', 'PNGDATA'),
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(result.paths).toEqual([
+      `~/${REMOTE_DIRECTORY}/dtc-site/main/20260824-101500-01-shot.png`,
+    ]);
+    expect(remote.uploads.has(
+      `${HOME}/${REMOTE_DIRECTORY}/dtc-site/main/20260824-101500-01-shot.png`,
+    )).toBe(true);
+    // One `mkdir -p` builds both levels.
+    expect(remote.commands[0]).toBe(
+      `mkdir -p "$HOME/${REMOTE_DIRECTORY}/dtc-site/main"`,
     );
   });
 
