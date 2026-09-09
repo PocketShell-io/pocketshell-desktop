@@ -123,15 +123,17 @@ test.describe('folder-first session creation + port panel controls', () => {
     // the app's MAIN path — aplexer, on a host with `a` — so the cleanup aims
     // there, not at tmux; the settle sleep lets the worker die before `forget`
     // drops the record (an existing record would make the next run's
-    // `a start` for this folder refuse the tag).
+    // `a start` for this folder refuse the tag). The workspace is the CREATED
+    // FOLDER, not $HOME: on aplexer every session now tags `main`, and $HOME
+    // already holds the seeded `main` — aiming there would kill the fixture.
     try {
       execInFixture([
         previewedName
-          ? `a kill --workspace "$HOME" --tag "${previewedName}" --signal KILL --grace-ms 500 2>/dev/null || true`
+          ? `a kill --workspace "$HOME/${PROJECT_FOLDER}" --tag "${previewedName}" --signal KILL --grace-ms 500 2>/dev/null || true`
           : 'true',
         previewedName ? 'sleep 1' : 'true',
         previewedName
-          ? `a forget --workspace "$HOME" --tag "${previewedName}" --force 2>/dev/null || true`
+          ? `a forget --workspace "$HOME/${PROJECT_FOLDER}" --tag "${previewedName}" --force 2>/dev/null || true`
           : 'true',
         `rm -rf "$HOME/${PROJECT_FOLDER}"`,
       ]);
@@ -167,9 +169,10 @@ test.describe('folder-first session creation + port panel controls', () => {
       timeout: 20_000,
     });
     await page.locator('.folder-row', { hasText: 'demo-repo' }).first().click();
-    // `~/git/demo-repo` -> `git-demo-repo`, the same rule tmuxctl and the
-    // Android app apply.
-    await expect(page.locator('.preview-name')).toHaveText('git-demo-repo', { timeout: 20_000 });
+    // On an aplexer host the session will be TAGGED `main` whatever folder it
+    // starts in — the workspace does the grouping, not the name — so that, not
+    // a folder derivation, is what the preview may promise.
+    await expect(page.locator('.preview-name')).toHaveText('main', { timeout: 20_000 });
     await expect(page.locator('.preview-path')).toContainText('~/git/demo-repo');
   });
 
@@ -197,8 +200,10 @@ test.describe('folder-first session creation + port panel controls', () => {
     await page.getByRole('tab', { name: 'New folder' }).click();
     await page.locator('input[placeholder="my-project"]').fill(PROJECT_FOLDER);
     await expect(page.locator('.preview-path')).toContainText(PROJECT_FOLDER, { timeout: 20_000 });
+    // The first session in a workspace tags `main` on aplexer, and the preview
+    // promises exactly that — the tag the create will ask the host for.
     previewedName = (await page.locator('.preview-name').innerText()).trim();
-    expect(previewedName).toContain(PROJECT_FOLDER);
+    expect(previewedName).toBe('main');
 
     // `Start shell`, not `Start session…`. The primary button chains to the
     // AGENT step (docs/SESSIONLIST.md §13) — a second `OverlayPanel` that is
@@ -220,10 +225,9 @@ test.describe('folder-first session creation + port panel controls', () => {
     await expect(page.locator('.folder-workspace')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.dir-header.current')).toHaveCount(1);
     await expect(page.locator('.tab.active')).toBeVisible();
-    // The session that opened is the one the picker previewed. Asserted on the
-    // tooltip rather than the tab's text: a tab strips the folder's own prefix
-    // from its label, so the only session in `~/<PROJECT_FOLDER>` is labelled
-    // `main` (shared/workspaceTabs.ts) and the full name lives in `title`.
+    // The session that opened is the one the picker previewed, and the tab
+    // reads the session's NAME verbatim — `main`, same as `a ls` shows.
+    await expect(page.locator('.tab.active')).toHaveText(previewedName);
     await expect(page.locator('.tab.active')).toHaveAttribute(
       'title',
       new RegExp(previewedName),

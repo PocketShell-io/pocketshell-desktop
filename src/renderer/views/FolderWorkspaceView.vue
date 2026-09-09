@@ -66,7 +66,7 @@ import type { ConnectionId } from '../../shared/types';
 import { composerAgentKind } from '../../shared/composerSend';
 import { agentMark } from '../../shared/agentBadge';
 import { isShortcut } from '../../shared/shortcuts';
-import { normalisePart, sanitisePart, sessionBaseName } from '../../shared/sessionNameParts';
+import { normalisePart, sanitisePart } from '../../shared/sessionNameParts';
 import { adjacentIndex } from '../../shared/listNavigation';
 import { editingTarget } from '../editingTarget';
 import {
@@ -266,30 +266,6 @@ const folderPath = computed(() => {
   return path === UNTRACKED_PATH ? null : path;
 });
 
-/**
- * The prefix the tab labels strip.
- *
- * `sessionBaseName` is the SAME function the main process derives a new
- * session's name with — that is why it was moved into `shared/`. Deriving the
- * prefix any other way (the sessions' literal common prefix, say) would make
- * the labels depend on which sessions happen to be running rather than on the
- * folder, and would relabel a session that was never named after this folder
- * at all.
- *
- * The key is home-relative (`~/git/foo`), so it is expanded before derivation
- * when `$HOME` is known. When it is not, `sessionBaseName` handles the `~/`
- * form directly and produces the same answer for everything under home — the
- * one case it gets wrong without `$HOME` is the home directory ITSELF, whose
- * real name is `home-<basename>`.
- */
-const prefix = computed(() => {
-  const key = folderKey.value;
-  const home = projects.home;
-  if (home && key === '~') return sessionBaseName(home, home);
-  if (home && key.startsWith('~/')) return sessionBaseName(`${home}/${key.slice(2)}`, home);
-  return sessionBaseName(key, home);
-});
-
 const tabs = computed<WorkspaceTab[]>(() =>
   // Derived first, then the user's own arrangement on top. The order of the two
   // steps IS the resolution of the two instructions: §3.2's automatic order is
@@ -301,7 +277,6 @@ const tabs = computed<WorkspaceTab[]>(() =>
         name: row.session.name,
         created: row.session.created,
       })),
-      prefix.value,
       // `path: null` means "this tab was never given a seed", which resolves
       // to the folder.
       filesTabs.value.map((tab) => ({ id: tab.id, path: tab.path ?? folderPath.value })),
@@ -647,8 +622,8 @@ watch(tabs, (list) => {
 onMounted(async () => {
   loadFolderState();
   // Deep-linking straight to a folder (or a reload) can leave the stores empty,
-  // and BOTH matter here: without the session list there are no tabs at all,
-  // and without `$HOME` the label prefix is derived from the `~/` form.
+  // and both matter here: without the session list there are no tabs at all,
+  // and the home value feeds the panel's path labels.
   if (connection.connectionId) {
     if (!sessions.sessions.length) await sessions.refresh(connection.connectionId);
     await projects.ensureHome(connection.connectionId);
@@ -1059,7 +1034,7 @@ onBeforeUnmount(() => unregisterWorkspaceFocus(requestFocus));
 // Rename
 // ---------------------------------------------------------------------------
 /** The tab being renamed, and the text in its field. */
-const renaming = ref<{ id: string; session: string; remainder: string | null } | null>(null);
+const renaming = ref<{ id: string; session: string } | null>(null);
 const renameText = ref('');
 const renameError = ref<string | null>(null);
 
@@ -1088,11 +1063,10 @@ function onRenameFieldMounted(vnode: VNode): void {
 
 function beginRename(tab: WorkspaceTab): void {
   if (tab.kind !== 'session') return;
-  renaming.value = { id: tab.id, session: tab.session, remainder: tab.remainder };
-  // The field edits the LABEL, and for a derived name the label is the
-  // remainder — so what is in the box is the part that is actually the user's
-  // to change. A non-derived name has no prefix to re-apply, so it edits whole.
-  renameText.value = tab.remainder ?? tab.session;
+  renaming.value = { id: tab.id, session: tab.session };
+  // The label IS the session's name, so what is in the box is what the host
+  // will be asked to rename.
+  renameText.value = tab.session;
   renameError.value = null;
 }
 
@@ -1123,24 +1097,16 @@ async function commitRename(): Promise<void> {
   const connectionId = connection.connectionId;
   if (!target || !connectionId) return cancelRename();
 
-  // An untouched field is a cancel, not a commit — including when what the
-  // field opened with is not the session's full name (an aplexer tag that
-  // carries the folder prefix opens STRIPPED, and committing that blind would
-  // silently shorten the tag). Blur calls this as readily as Enter does.
-  if (renameText.value === (target.remainder ?? target.session)) return cancelRename();
+  // An untouched field is a cancel, not a commit. Blur calls this as readily
+  // as Enter does.
+  if (renameText.value === target.session) return cancelRename();
 
-  // An aplexer row is addressed `workspace:tag`, and the rename touches only
-  // the tag — the workspace half is metadata on the record, so the folder
-  // prefix is neither needed to keep the grouping nor wanted on the tag, whose
-  // defaults read `main`, `main-2`, … A tmux row has no such metadata: its name
-  // is the only grouping there is, so there the prefix is re-applied.
+  // The field edits the name and commits the name, for both backends alike —
+  // a tmux session and an aplexer tag are each called exactly what their tab
+  // says. The aplexer ref rides along because the HOST side needs it to
+  // address `workspace:tag`; it no longer changes what the name is.
   const aplexerRef = aplexerRefFor(target.session);
-  const next = renamedSessionName(
-    renameText.value,
-    prefix.value,
-    aplexerRef ? null : target.remainder,
-    sanitisePart,
-  );
+  const next = renamedSessionName(renameText.value, sanitisePart);
   if (next === null) {
     renameError.value = 'that leaves nothing a session can be called';
     return;
@@ -1755,10 +1721,9 @@ function renameFromMenu(): void {
  * never `Close`), same tinted item, same quiet-Cancel/error-fill sheet. Any
  * change to the wording here belongs there too.
  *
- * The dialog names the SESSION, not the tab label. The label is a projection
- * that strips the folder prefix (§3.3), so two folders' tabs can both read
- * `main` — and the one moment a user must be certain which thing is being
- * destroyed is the moment they are asked to confirm destroying it.
+ * The dialog names the SESSION. With labels verbatim this is the same string
+ * the tab shows — and it stays the full name, so a folder's tab reading `main`
+ * never leaves the user guessing which workspace's `main` is being destroyed.
  */
 const stopping = ref<string | null>(null);
 const stopBusy = ref(false);
@@ -2312,10 +2277,9 @@ function onFocusTerminal(): void {
 
     <!-- THE ONLY DESTRUCTIVE CONFIRMATION IN THIS APP.
 
-         It names the SESSION rather than the tab label, deliberately: the label
-         is a projection that strips the folder's prefix (§3.3), so two folders
-         can both show a tab called `main`, and the moment a user is asked
-         to destroy something is the moment they must be certain which thing it
+         It names the SESSION — the same string the tab reads, verbatim, so
+         what is being destroyed is spelled out in full and a tab called
+         `main` never leaves the user guessing which workspace's `main` it
          is. It also says what goes, because "Stop" undersells it — a session
           is usually an agent mid-task, and its scrollback and process
           tree go with it.

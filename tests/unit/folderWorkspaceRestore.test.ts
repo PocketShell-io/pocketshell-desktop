@@ -159,8 +159,8 @@ describe('a folder workspace across a relaunch', () => {
     // The manual order survived (`git-x-2` had been dragged first), and so did
     // the Files tab and the selection: no `?tab=` on a cold route, so the
     // restored `activeTab` is what the bar resolves.
-    expect(tabLabels(wrapper)).toEqual(['main 2', 'main', 'Files']);
-    expect(activeLabel(wrapper)).toBe('main 2');
+    expect(tabLabels(wrapper)).toEqual(['git-x-2', 'git-x', 'Files']);
+    expect(activeLabel(wrapper)).toBe('git-x-2');
   });
 
   it('shows no tab for a session killed while the app was closed, and prunes its stored ids', async () => {
@@ -170,8 +170,8 @@ describe('a folder workspace across a relaunch', () => {
 
     // No resurrection: the bar is derived from the host's live list, so the
     // dead session is simply not on it, and the selection falls back.
-    expect(tabLabels(wrapper)).toEqual(['main', 'Files']);
-    expect(activeLabel(wrapper)).toBe('main');
+    expect(tabLabels(wrapper)).toEqual(['git-x', 'Files']);
+    expect(activeLabel(wrapper)).toBe('git-x');
 
     // The stored ids pointing at the dead session go with it — out of the MRU
     // (which keeps the Files tab the bar does hold) and out of the manual
@@ -193,12 +193,12 @@ describe('a folder workspace across a relaunch', () => {
 
   it('persists what this window does, and the next window restores it', async () => {
     const first = await openColdWorkspace(['git-x', 'git-x-2']);
-    expect(tabLabels(first)).toEqual(['main', 'main 2']);
+    expect(tabLabels(first)).toEqual(['git-x', 'git-x-2']);
 
-    await clickTab(first, 'main 2');
+    await clickTab(first, 'git-x-2');
     await openFilesTab(first);
     // Leave Terminal 2 in front, the way the window actually closed.
-    await clickTab(first, 'main 2');
+    await clickTab(first, 'git-x-2');
     first.unmount();
 
     // What the first window left behind: the folder itself, for the picker's
@@ -213,14 +213,14 @@ describe('a folder workspace across a relaunch', () => {
     // tab still standing (a Files tab is not a session; nothing can have
     // killed it while the app was shut).
     const second = await openColdWorkspace(['git-x', 'git-x-2']);
-    expect(tabLabels(second)).toEqual(['main', 'main 2', 'Files']);
-    expect(activeLabel(second)).toBe('main 2');
+    expect(tabLabels(second)).toEqual(['git-x', 'git-x-2', 'Files']);
+    expect(activeLabel(second)).toBe('git-x-2');
   });
 
   it('a first-ever visit on a fresh machine persists nothing worth restoring', async () => {
     const wrapper = await openColdWorkspace(['git-x']);
-    expect(tabLabels(wrapper)).toEqual(['main']);
-    expect(activeLabel(wrapper)).toBe('main');
+    expect(tabLabels(wrapper)).toEqual(['git-x']);
+    expect(activeLabel(wrapper)).toBe('git-x');
     expect(readWorkspaceMemory(KEY)).toEqual({ filesTabs: [], activeTab: null, mru: ['git-x'] });
     expect(readLastFolder('host')).toBe('~/git/x');
   });

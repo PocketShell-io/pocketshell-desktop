@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalisePart, sanitisePart } from '../../src/shared/sessionNameParts';
+import {
+  APLEXER_DEFAULT_TAG,
+  normalisePart,
+  resolveAplexerTag,
+  sanitisePart,
+} from '../../src/shared/sessionNameParts';
 
 /**
  * These cases pin the ORDER of the replacements, not just their result: main
@@ -44,5 +49,26 @@ describe('normalisePart', () => {
     expect(normalisePart('-foo')).toBe('-foo');
     expect(normalisePart('-')).toBe('-');
     expect(sanitisePart('foo-')).toBe('foo');
+  });
+});
+
+/**
+ * The aplexer tag derivation. A tag is namespaced per workspace, so its
+ * default does not need the folder in it — it is `main`, and the free-tag
+ * walk continues `main-2`, `main-3` at create time.
+ */
+describe('resolveAplexerTag', () => {
+  it('falls back to `main`, not to the folder derivation', () => {
+    expect(resolveAplexerTag(null)).toBe('main');
+    expect(resolveAplexerTag(undefined)).toBe('main');
+    expect(resolveAplexerTag('')).toBe('main');
+    // Punctuation-only cannot be a name either.
+    expect(resolveAplexerTag('...')).toBe('main');
+    expect(APLEXER_DEFAULT_TAG).toBe('main');
+  });
+
+  it('honours a label that survives sanitising, and sanitises it', () => {
+    expect(resolveAplexerTag('Staging!')).toBe('Staging');
+    expect(resolveAplexerTag('  my tag  ')).toBe('my-tag');
   });
 });

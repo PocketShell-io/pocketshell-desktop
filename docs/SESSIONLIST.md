@@ -461,11 +461,13 @@ recency either.)*
   wins). With no home every absolute path falls into `other` — one
   undifferentiated bucket — so the fallback exists and is scoped like one:
   only the standard home parents count.
-- **`sanitisePart` reaches the renderer via shared.** It — and the rest of the
-  name derivation, `sessionBaseName` included — lives in
-  `src/shared/sessionNameParts.ts`, re-exported by
-  `src/main/projects/sessionName.ts`, so the renderer runs the derivation's
-  own regex instead of a duplicate. Covered by
+- **`sanitisePart` reaches the renderer via shared.** The name rules —
+  `sanitisePart`, `sessionBaseName`, `resolveSessionName` and the aplexer tag
+  fallback `resolveAplexerTag` — live in `src/shared/sessionNameParts.ts`,
+  re-exported by `src/main/projects/sessionName.ts`, so both processes run the
+  same regexes instead of duplicates. The renderer's live use is the rename
+  field's as-you-type pass; the tab bar labels sessions verbatim (what the
+  host lists is what the tab reads, shared/workspaceTabs.ts). Covered by
   tests/unit/sessionNameParts.test.ts.
 - **Design gates** (tests/unit/designGates.test.ts): no new hex; no
   character-as-icon — the `+` marks are `AppIcon name="plus"`, and every dot

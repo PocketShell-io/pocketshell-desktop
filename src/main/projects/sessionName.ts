@@ -28,6 +28,7 @@
  */
 
 export {
+  resolveAplexerTag,
   resolveSessionName,
   sanitiseName,
   sanitisePart,

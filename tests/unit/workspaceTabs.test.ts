@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildWorkspaceTabs,
-  labelForRemainder,
   numberCollisions,
   applyTabOrder,
   canDropTabAt,
@@ -10,73 +9,15 @@ import {
   pushMru,
   reorderTabs,
   renamedSessionName,
-  stripSessionPrefix,
   tabAfterClose,
-  MAIN_LABEL,
 } from '../../src/shared/workspaceTabs';
-import { sanitisePart, sessionBaseName } from '../../src/shared/sessionNameParts';
+import { sanitisePart } from '../../src/shared/sessionNameParts';
 
 /**
- * The pure half of the tab model. These are the rules the user
- * described in the most detail, so they are the ones worth pinning.
+ * The pure half of the tab model. The one rule worth pinning hardest is the
+ * one the user asked for outright: a tab's label IS the session's name, with
+ * no relabel on top — what the host lists is what the bar reads.
  */
-
-describe('stripSessionPrefix', () => {
-  it('returns an empty remainder for an exact match', () => {
-    expect(stripSessionPrefix('git-dtc-website', 'git-dtc-website')).toBe('');
-  });
-
-  it('strips the prefix and its separator', () => {
-    expect(stripSessionPrefix('git-dtc-website-import', 'git-dtc-website')).toBe('import');
-  });
-
-  it('requires the `-` boundary, so a longer folder name is not claimed', () => {
-    // `~/git/red-stamp` must not adopt `~/git/red-stampede`'s session just
-    // because one name is a character-prefix of the other.
-    expect(stripSessionPrefix('git-red-stampede', 'git-red-stamp')).toBeNull();
-  });
-
-  it('returns null for a name that is not derived from the folder', () => {
-    expect(stripSessionPrefix('nightly-build', 'git-dtc-website')).toBeNull();
-  });
-
-  it('never strips against an empty prefix', () => {
-    expect(stripSessionPrefix('anything', '')).toBeNull();
-  });
-});
-
-describe('labelForRemainder', () => {
-  it('labels the empty remainder `main`', () => {
-    // The folder's default session — the unnumbered member of the family the
-    // numbered tabs continue.
-    expect(labelForRemainder('')).toBe('main');
-    expect(MAIN_LABEL).toBe('main');
-  });
-
-  it('labels a purely numeric remainder `main <n>`', () => {
-    // This is what `freeSessionNameCommand`'s `-2`/`-3` walk produces.
-    expect(labelForRemainder('2')).toBe('main 2');
-    expect(labelForRemainder('17')).toBe('main 17');
-  });
-
-  it('numbers the family with a SPACE, not the name\'s hyphen', () => {
-    // The tmux names really are `git-dtc-website-2`, but this is a display
-    // label and every other numbered label on the bar is spaced (`Files 2`).
-    expect(labelForRemainder('2')).not.toBe('main-2');
-    expect(labelForRemainder('')).toBe(MAIN_LABEL);
-    expect(labelForRemainder('2')).toBe(`${MAIN_LABEL} 2`);
-  });
-
-  it('keeps a clear name clear', () => {
-    expect(labelForRemainder('import')).toBe('import');
-    // Not "just a number": a name that merely contains digits is a name.
-    expect(labelForRemainder('v2')).toBe('v2');
-    expect(labelForRemainder('2fa')).toBe('2fa');
-    // A remainder that IS the word keeps it verbatim too — no rewrite fires,
-    // and the collision counter (not this function) deals with the repeat.
-    expect(labelForRemainder('main')).toBe('main');
-  });
-});
 
 describe('numberCollisions', () => {
   it('leaves the first occurrence plain and numbers the rest', () => {
@@ -93,34 +34,24 @@ describe('numberCollisions', () => {
 });
 
 describe('buildWorkspaceTabs', () => {
-  const prefix = sessionBaseName('~/git/dtc-website', '/home/alexey');
-
-  it('derives the prefix the same way the host names the folder', () => {
-    expect(prefix).toBe('git-dtc-website');
+  it('labels every session tab with its NAME, verbatim', () => {
+    // No strip, no relabel: `main` on the bar means a session actually called
+    // `main` on the host, which is the whole point of the verbatim rule.
+    const tabs = buildWorkspaceTabs([
+      { name: 'main', created: 100 },
+      { name: 'main-2', created: 200 },
+      { name: 'staging', created: 300 },
+    ]);
+    expect(tabs.map((t) => t.label)).toEqual(['main', 'main-2', 'staging']);
   });
 
-  it('labels the brief\'s worked example', () => {
-    const tabs = buildWorkspaceTabs(
-      [
-        { name: 'git-dtc-website-import', created: 200 },
-        { name: 'git-dtc-website', created: 100 },
-      ],
-      prefix,
-    );
-    expect(tabs.map((t) => t.label)).toEqual(['main', 'import']);
-  });
-
-  it('renames the LABEL only — the id, the session and the remainder stand', () => {
-    // `main` is what the tab reads. What it joins, what the route keys off
-    // and what a rename edits are all still the tmux name and the stripped
-    // remainder, so nothing downstream can be keyed off the display word.
-    const tabs = buildWorkspaceTabs([{ name: 'git-dtc-website', created: 100 }], prefix);
+  it('carries the name as id, session and label alike', () => {
+    const tabs = buildWorkspaceTabs([{ name: 'main', created: 100 }]);
     expect(tabs[0]).toEqual({
       kind: 'session',
-      id: 'git-dtc-website',
-      session: 'git-dtc-website',
+      id: 'main',
+      session: 'main',
       label: 'main',
-      remainder: '',
       created: 100,
     });
   });
@@ -128,11 +59,10 @@ describe('buildWorkspaceTabs', () => {
   it('orders session tabs oldest first, then Files tabs', () => {
     const tabs = buildWorkspaceTabs(
       [
-        { name: 'git-dtc-website-3', created: 300 },
-        { name: 'git-dtc-website', created: 100 },
-        { name: 'git-dtc-website-2', created: 200 },
+        { name: 'main-3', created: 300 },
+        { name: 'main', created: 100 },
+        { name: 'main-2', created: 200 },
       ],
-      prefix,
       [{ id: 'f1' }, { id: 'f2' }],
     );
     expect(tabs.map((t) => t.kind)).toEqual([
@@ -142,12 +72,10 @@ describe('buildWorkspaceTabs', () => {
       'files',
       'files',
     ]);
-    // One family, in creation order: the folder's default, then its `-2` and
-    // `-3`, and the numbering reads as a list rather than as an exception.
     expect(tabs.map((t) => t.label)).toEqual([
       'main',
-      'main 2',
-      'main 3',
+      'main-2',
+      'main-3',
       'Files',
       'Files 2',
     ]);
@@ -156,46 +84,20 @@ describe('buildWorkspaceTabs', () => {
   it('breaks a creation-time tie on the name, so the order is total', () => {
     // Every row has the same timestamp on a host with no enrichment, because
     // `parseSessionsList` sets activity === created.
-    const tabs = buildWorkspaceTabs(
-      [
-        { name: 'git-dtc-website-zeta', created: 100 },
-        { name: 'git-dtc-website-alpha', created: 100 },
-      ],
-      prefix,
-    );
+    const tabs = buildWorkspaceTabs([
+      { name: 'zeta', created: 100 },
+      { name: 'alpha', created: 100 },
+    ]);
     expect(tabs.map((t) => t.label)).toEqual(['alpha', 'zeta']);
   });
 
-  it('keeps a non-derived session name in full', () => {
-    const tabs = buildWorkspaceTabs(
-      [
-        { name: 'git-dtc-website', created: 100 },
-        { name: 'nightly-build', created: 200 },
-      ],
-      prefix,
-    );
-    expect(tabs.map((t) => t.label)).toEqual(['main', 'nightly-build']);
-    expect(tabs[1]).toMatchObject({ remainder: null });
-  });
-
-  it('numbers a stripped remainder that collides with a foreign session name', () => {
-    const tabs = buildWorkspaceTabs(
-      [
-        { name: 'git-dtc-website-import', created: 100 },
-        { name: 'import', created: 200 },
-      ],
-      prefix,
-    );
-    expect(tabs.map((t) => t.label)).toEqual(['import', 'import 2']);
-  });
-
   it('numbers across kinds — a session called Files does not get a free pass', () => {
-    const tabs = buildWorkspaceTabs([{ name: 'Files', created: 100 }], prefix, [{ id: 'f1' }]);
+    const tabs = buildWorkspaceTabs([{ name: 'Files', created: 100 }], [{ id: 'f1' }]);
     expect(tabs.map((t) => t.label)).toEqual(['Files', 'Files 2']);
   });
 
   it('is a bar of Files tabs alone when the folder has no sessions', () => {
-    const tabs = buildWorkspaceTabs([], prefix, [{ id: 'f1', path: '~/git/dtc-website' }]);
+    const tabs = buildWorkspaceTabs([], [{ id: 'f1', path: '~/git/dtc-website' }]);
     expect(tabs).toEqual([
       { kind: 'files', id: 'f1', label: 'Files', path: '~/git/dtc-website' },
     ]);
@@ -203,41 +105,25 @@ describe('buildWorkspaceTabs', () => {
 });
 
 describe('renamedSessionName', () => {
-  const prefix = 'git-dtc-website';
-
-  it('re-applies the prefix, so a rename cannot detach a session from its folder', () => {
-    expect(renamedSessionName('staging', prefix, 'import', sanitisePart)).toBe(
-      'git-dtc-website-staging',
-    );
-  });
-
-  it('promotes a session to the folder default when the field is cleared', () => {
-    expect(renamedSessionName('   ', prefix, 'import', sanitisePart)).toBe('git-dtc-website');
-  });
-
-  it('commits the raw name for a tab whose label IS the session name', () => {
-    expect(renamedSessionName('release', prefix, null, sanitisePart)).toBe('release');
+  it('commits what was typed — the field edits the NAME, and there is no prefix', () => {
+    expect(renamedSessionName('staging', sanitisePart)).toBe('staging');
+    expect(renamedSessionName('  main-2  ', sanitisePart)).toBe('main-2');
   });
 
   it('sanitises to the alphabet `tmuxctl <name>` can still join', () => {
     // `.` and `:` collapse to `_`, everything else illegal collapses to `-`.
-    expect(renamedSessionName('my.branch', prefix, 'import', sanitisePart)).toBe(
-      'git-dtc-website-my_branch',
-    );
-    expect(renamedSessionName('feat/x', prefix, 'import', sanitisePart)).toBe(
-      'git-dtc-website-feat-x',
-    );
+    expect(renamedSessionName('my.branch', sanitisePart)).toBe('my_branch');
+    expect(renamedSessionName('feat/x', sanitisePart)).toBe('feat-x');
   });
 
   it('refuses a name with nothing alphanumeric left, rather than inventing one', () => {
-    expect(renamedSessionName(':::', '', null, sanitisePart)).toBeNull();
-    expect(renamedSessionName('', '---', 'import', sanitisePart)).toBeNull();
+    expect(renamedSessionName(':::', sanitisePart)).toBeNull();
+    expect(renamedSessionName('', sanitisePart)).toBeNull();
+    expect(renamedSessionName('   ', sanitisePart)).toBeNull();
   });
 });
 
 describe('the bar order the arrows walk', () => {
-  const prefix = 'git-dtc-website';
-
   // A real bar, built the way the view builds it, pinned against DISPLAY
   // order: two session tabs, then two Files tabs. The `Ctrl+Tab` cycle that
   // first wanted this assertion is gone; the arrows clamp along the same
@@ -248,13 +134,12 @@ describe('the bar order the arrows walk', () => {
       { name: 'git-dtc-website', created: 100 },
       { name: 'git-dtc-website-2', created: 200 },
     ],
-    prefix,
     [{ id: 'f1' }, { id: 'f2' }],
   );
 
   it('is built in the order it will be traversed', () => {
     expect(bar.map((t) => t.id)).toEqual(['git-dtc-website', 'git-dtc-website-2', 'f1', 'f2']);
-    expect(bar.map((t) => t.label)).toEqual(['main', 'main 2', 'Files', 'Files 2']);
+    expect(bar.map((t) => t.label)).toEqual(['git-dtc-website', 'git-dtc-website-2', 'Files', 'Files 2']);
   });
 });
 
@@ -276,7 +161,6 @@ const closeBar = buildWorkspaceTabs(
     { name: 'git-red-stamp-import', created: 200 },
     { name: 'git-red-stamp-2', created: 300 },
   ],
-  'git-red-stamp',
   [{ id: 'f1' }],
 );
 const [T1, T2, T3, F1] = closeBar.map((t) => t.id) as [string, string, string, string];
@@ -362,7 +246,7 @@ describe('tabAfterClose', () => {
   });
 
   it('has nothing to select when the closed tab was the only one', () => {
-    const one = buildWorkspaceTabs([{ name: 'git-red-stamp', created: 100 }], 'git-red-stamp');
+    const one = buildWorkspaceTabs([{ name: 'git-red-stamp', created: 100 }]);
     expect(tabAfterClose(one, 'git-red-stamp', 'git-red-stamp', [])).toBeNull();
   });
 
@@ -408,7 +292,6 @@ describe('applyTabOrder', () => {
         { name: 'git-red-stamp-2', created: 300 },
         { name: 'git-red-stamp-fresh', created: 400 },
       ],
-      'git-red-stamp',
       [{ id: 'f1' }, { id: 'f2' }],
     );
     expect(applyTabOrder(withNew, [T3, T1, T2, F1]).map((t) => t.id)).toEqual([

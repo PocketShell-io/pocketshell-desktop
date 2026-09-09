@@ -4,10 +4,13 @@
 // This replaces the bare "new session name" field that used to sit at the
 // bottom of SessionTree. That field had the model backwards. A session is not
 // named, it is PLACED: the user picks a project folder on the host and the
-// session name is DERIVED from it (`~/git/pocketshell` -> `git-pocketshell`)
-// by the same rule `tmuxctl` and the Android app use, so all three clients
-// agree about which session belongs to which folder. The derived name is shown
-// in the footer before anything is committed; it is never typed.
+// backend names the session from there — on aplexer the workspace's next free
+// tag (`main`, then `main-2`, …; the workspace half of `workspace:tag` does
+// the grouping), on the tmux fallback a derivation from the folder path
+// (`~/git/pocketshell` -> `git-pocketshell`, the rule `tmuxctl` and the
+// Android app apply so all three clients agree about which session belongs to
+// which folder). The name the create WILL ask for is previewed in the footer
+// before anything is committed; it is never typed.
 //
 // Three routes, one destination:
 //
@@ -293,7 +296,7 @@ const cloneRoot = ref('~/git');
  * "new" can only mean new.
  */
 
-/** Live preview of the name the host would derive. Never user-entered. */
+/** Live preview of the name the create will ask the host for. Never user-entered. */
 const derivedName = ref('');
 /** Set while a route's own slow step (mkdir, clone) is running. */
 const preparing = ref<string | null>(null);
@@ -453,9 +456,9 @@ const selectedRepoEntry = computed(
 
 /**
  * The folder the Start button would act on, or null when the route is not
- * ready. For `new` and `clone` this is the folder that WILL exist — it is
- * what the name preview is derived from, and the host re-derives it for real
- * once the folder is on disk.
+ * ready. For `new` and `clone` this is the folder that WILL exist — the name
+ * preview reads the same path, and the host resolves the name for real once
+ * the folder is on disk.
  */
 const targetFolder = computed<string | null>(() => {
   if (route.value === 'existing') return projects.cwd || null;

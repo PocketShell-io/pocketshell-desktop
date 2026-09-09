@@ -85,10 +85,9 @@ function aplexerRow(name: string): SessionSummary {
   };
 }
 
-// The sessions below are NOT named after the folder (`git-x` would be): a
-// session whose name equals the folder's derived prefix renders under the
-// bare `main` label (workspaceTabs §4), and the point of these assertions is
-// the tab text reading as the session it belongs to.
+// The point of these assertions is the tab text reading as the session it
+// belongs to — which under verbatim labels is true of every name, `alpha`
+// included: what the tab says is what the host calls it.
 
 /** What the host says when the kill landed. */
 function killed(): unknown {

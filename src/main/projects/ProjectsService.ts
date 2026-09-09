@@ -43,6 +43,7 @@ import {
 import {
   childPath,
   normaliseProjectFolderName,
+  resolveAplexerTag,
   resolveSessionName,
   sanitiseName,
 } from './sessionName.js';
@@ -257,15 +258,21 @@ export class ProjectsService {
   /**
    * The session name a folder WOULD get, for previewing in the picker.
    *
-   * This is the derived base name only — it does not consult the host, so it
-   * carries no `-2` suffix even under a `unique` policy. Resolving that
-   * suffix requires the host and belongs at create time.
+   * Backend-dependent, because the two backends name differently: on a host
+   * with aplexer the create will tag the session `main` (or the user's
+   * label), so that — not the folder derivation — is what a preview may
+   * promise. This is still the BASE name only: it does not walk the live
+   * tags, so it carries no `-2` suffix even under a `unique` policy.
+   * Resolving that suffix requires the host and belongs at create time.
    */
   async deriveSessionName(
     connectionId: string,
     folder: string,
     customName?: string,
   ): Promise<string> {
+    if (this.aplexer && (await this.aplexer.isAvailable(connectionId))) {
+      return resolveAplexerTag(customName);
+    }
     const { home } = await this.home(connectionId);
     return resolveSessionName(customName ?? null, folder, home);
   }
@@ -482,7 +489,19 @@ export class ProjectsService {
     // the callee reads the host itself.
     if (this.aplexer && (await this.aplexer.isAvailable(connectionId))) {
       const records = (await snapshot) ?? undefined;
-      return this.startAplexerSession(connectionId, canonical, base, policy, failed, records);
+      // The tag is NOT the folder-derived `base`: a tag is namespaced per
+      // workspace, so the default tag can be `main` and its successors
+      // `main-2`, `main-3` — the tag the user sees on `a ls` is the tag the
+      // tab bar shows. `base` stays the tmux path's answer, where the name
+      // IS the grouping and must carry the folder.
+      return this.startAplexerSession(
+        connectionId,
+        canonical,
+        resolveAplexerTag(request.customName),
+        policy,
+        failed,
+        records,
+      );
     }
 
     let name = base;
@@ -568,13 +587,17 @@ export class ProjectsService {
   /**
    * Start a session through aplexer — the main path on hosts with `a`.
    *
-   * The tag derivation is the SAME one the tmux path uses (`base` above), so
-   * a folder's session is called the same thing on both runtimes and the tab
-   * bar, the composer key, and the rename labelling work unchanged. The
-   * differences from the tmux flow are all consequences of the identity
-   * model: liveness and uniqueness are read from one snapshot (no per-name
-   * exec probes), and the free-name walk is client-side over that snapshot
-   * rather than a shell loop over tmux sockets.
+   * The tag comes from {@link resolveAplexerTag}: the user's label when there
+   * is one, else `main`, walking `main-2`, `main-3`… per workspace when a
+   * unique one is wanted. It is deliberately NOT the folder derivation the
+   * tmux path runs (`base` in {@link startSession}) — a tag needs no folder
+   * in it, because the workspace half of `workspace:tag` does the grouping,
+   * and the tag is the only name the session has, so it is named for the
+   * person reading `a ls` rather than for the grouper.
+   *
+   * Liveness and uniqueness are read from one snapshot (no per-name exec
+   * probes), and the free-name walk is client-side over that snapshot rather
+   * than a shell loop over tmux sockets.
    *
    * A finished record holding the pair is NOT a conflict: `a start` reclaims
    * it (archives the corpse, creates the session), so only a LIVE holder

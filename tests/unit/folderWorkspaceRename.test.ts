@@ -157,18 +157,17 @@ beforeEach(() => {
 describe('a failed tab rename is a sentence, and the sentence can be dismissed', () => {
   it('renders the host’s refusal as visible text under the tab strip', async () => {
     renameSession.mockResolvedValue(
-      refused('a session named "git-x-import" already exists on this host'),
+      refused('a session named "import" already exists on this host'),
     );
 
     const wrapper = await openWorkspace();
     await beginRename(wrapper);
     await typeAndCommit(wrapper, 'import');
 
-    // `git-x` is the folder-derived name, so the field edits the REMAINDER and
-    // the committed name is prefix + what was typed (workspaceTabs §4.3). The
-    // fourth argument is the aplexer ref — undefined for a tmux row, which
-    // addresses by bare name.
-    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'git-x-import', undefined);
+    // The label IS the name, so what was typed is what is committed — no
+    // prefix composition on either side. The fourth argument is the aplexer
+    // ref — undefined for a tmux row, which addresses by bare name.
+    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'import', undefined);
     // The point of the fix: the reason is ON SCREEN, not in a tooltip.
     expect(barError(wrapper)).toContain('already exists');
     // The field stays open and keeps its tint — the strip says why, the border
@@ -179,9 +178,8 @@ describe('a failed tab rename is a sentence, and the sentence can be dismissed',
   });
 
   it('renders the local refusal — a name that sanitises to nothing — the same way', async () => {
-    // A session whose name is NOT derived from the folder: its rename edits
-    // the WHOLE name (remainder null), which is the only path where an empty
-    // field cannot fall back to the prefix and has to be refused outright.
+    // An empty field has no fallback anymore: there is no prefix to revert to,
+    // so clearing the field is simply refused.
     sessionsList.mockResolvedValue([row('scratch')]);
     useSessionsStore().sessions = [row('scratch')] as never;
 
@@ -247,11 +245,11 @@ describe('the double-click is the rename gesture', () => {
     await wrapper.find('nav.tabs button.tab').trigger('dblclick');
     await flush(2);
 
-    // The field is open and holds the editable part — the remainder, since
-    // `git-x` is derived from the folder.
+    // The field is open and holds the session's name — the label IS the name,
+    // so the field opens with the whole of it.
     const input = wrapper.find('input.rename-input');
     expect(input.exists()).toBe(true);
-    expect((input.element as HTMLInputElement).value).toBe('');
+    expect((input.element as HTMLInputElement).value).toBe('git-x');
   });
 
   it('opens the field straight from a background tab, selecting it on the way', async () => {
@@ -321,23 +319,23 @@ describe('a committed rename is a relabel, not a reconnect', () => {
     // The listing is the slowest call in the app; hold it forever, so the only
     // way the new name can reach the bar is the local rewrite.
     sessionsList.mockReturnValue(new Promise(() => undefined));
-    renameSession.mockResolvedValue(accepted('git-x-import'));
+    renameSession.mockResolvedValue(accepted('import'));
 
     const wrapper = await openWorkspace();
     await beginRename(wrapper);
     await typeAndCommit(wrapper, 'import');
 
-    // The commit still went to the host under the derived name...
-    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'git-x-import', undefined);
+    // The commit went to the host under exactly what was typed...
+    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'import', undefined);
     // ...and the bar moved anyway, with the listing still in flight.
     expect(wrapper.find('nav.tabs button.tab').text()).toContain('import');
-    expect(useSessionsStore().sessions.map((s) => s.name)).toEqual(['git-x-import']);
+    expect(useSessionsStore().sessions.map((s) => s.name)).toEqual(['import']);
     // The listing was still asked for once — confirmation, not revelation.
     expect(sessionsList).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the same terminal pane mounted — a rename does not re-join', async () => {
-    hostAccepts('git-x-import', [row('git-x-import')]);
+    hostAccepts('import', [row('import')]);
 
     const wrapper = await openWorkspace();
     const paneBefore = wrapper.find('.stub-terminal').element;
@@ -360,7 +358,7 @@ describe('a committed rename is a relabel, not a reconnect', () => {
 
     // The host renames that tab, and its listing now reports the new name in
     // its place — same created stamp, same position in the bar.
-    hostAccepts('git-x-import', [row('git-x'), row('git-x-import', 2)]);
+    hostAccepts('import', [row('git-x'), row('import', 2)]);
     const wrapper = await openWorkspace();
     await beginRename(wrapper);
     await typeAndCommit(wrapper, 'import');
@@ -368,18 +366,18 @@ describe('a committed rename is a relabel, not a reconnect', () => {
     // The renamed id is remapped in the stored ranking, not pruned as a dead
     // tab — otherwise a rename would silently drop the tab's manual position.
     expect(JSON.parse(localStorage.getItem('ps.tabOrder.host.~/git/x') ?? '[]')).toEqual([
-      'git-x-import',
+      'import',
       'git-x',
     ]);
     const labels = wrapper.findAll('nav.tabs button.tab').map((b) => b.text());
     expect(labels[0]).toContain('import');
-    expect(labels[1]).toContain('main');
+    expect(labels[1]).toContain('git-x');
   });
 
   it('renaming a background tab leaves the selection alone', async () => {
     sessionsList.mockResolvedValue([row('git-x'), row('git-x-2', 2)]);
     useSessionsStore().sessions = [row('git-x'), row('git-x-2', 2)] as never;
-    hostAccepts('git-x-staging', [row('git-x'), row('git-x-staging', 2)]);
+    hostAccepts('staging', [row('git-x'), row('staging', 2)]);
 
     const wrapper = await openWorkspace();
     const tabs = wrapper.findAll('nav.tabs button.tab');
@@ -395,12 +393,12 @@ describe('a committed rename is a relabel, not a reconnect', () => {
 
     // Committing a label is not a request to be moved: the first tab stays
     // active, and the renamed one shows its new name in place.
-    expect(wrapper.find('nav.tabs button.tab.active').text()).toContain('main');
+    expect(wrapper.find('nav.tabs button.tab.active').text()).toContain('git-x');
     const labels = wrapper.findAll('nav.tabs button.tab').map((b) => b.text());
     expect(labels[1]).toContain('staging');
     expect(useSessionsStore().sessions.map((s) => s.name)).toEqual([
       'git-x',
-      'git-x-staging',
+      'staging',
     ]);
   });
 });
@@ -412,10 +410,10 @@ describe('the rename field takes a hyphen', () => {
 
   it('does not eat a `-` typed at the end of the field', async () => {
     // The commit's fire-and-forget refresh must land the RENAMED row, or it
-    // clobbers the optimistic one back to `main` (see `hostAccepts` above).
+    // clobbers the optimistic one back to `git-x` (see `hostAccepts` above).
     renameSession.mockImplementation(() => {
-      sessionsList.mockResolvedValue([row('git-x-foo-bar')]);
-      return Promise.resolve(accepted('git-x-foo-bar'));
+      sessionsList.mockResolvedValue([row('foo-bar')]);
+      return Promise.resolve(accepted('foo-bar'));
     });
 
     const wrapper = await openWorkspace();
@@ -431,7 +429,7 @@ describe('the rename field takes a hyphen', () => {
     await input.trigger('keydown.enter');
     await flush(6);
 
-    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'git-x-foo-bar', undefined);
+    expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x', 'foo-bar', undefined);
     expect(wrapper.find('nav.tabs button.tab').text()).toContain('foo-bar');
   });
 });
@@ -466,11 +464,11 @@ describe('an aplexer row renames its TAG, and the prefix stays out of it', () =>
     aplexerId: 'apx-git-x-second',
   };
 
-  it('commits what was typed as the bare tag, without re-applying the folder prefix', async () => {
-    // The tag happens to carry the folder prefix (created before this rule),
-    // so the field opens with the stripped remainder — and a tmux row in the
-    // same shape would commit `git-x-staging`. Aplexer needs none of that: the
-    // workspace half of `workspace:tag` is metadata the rename never touches.
+  it('commits what was typed as the bare tag, with the ref addressing the row', async () => {
+    // The tag happens to carry the folder prefix (created before tags were
+    // named `main`), and the field opens with ALL of it — no strip, same as a
+    // tmux row. What the aplexer ref changes is the ADDRESS (`workspace:tag`
+    // on the host side), never the name that is committed.
     renameSession.mockImplementation(() => {
       sessionsList.mockResolvedValue([aplexerRow('staging')]);
       return Promise.resolve(accepted('staging'));
@@ -481,7 +479,7 @@ describe('an aplexer row renames its TAG, and the prefix stays out of it', () =>
     const wrapper = await openWorkspace();
     await beginRename(wrapper);
     const input = wrapper.find('input.rename-input');
-    expect((input.element as HTMLInputElement).value).toBe('second');
+    expect((input.element as HTMLInputElement).value).toBe('git-x-second');
     await typeAndCommit(wrapper, 'staging');
 
     expect(renameSession).toHaveBeenCalledWith('conn-1', 'git-x-second', 'staging', aplexerRef);
@@ -508,12 +506,13 @@ describe('an aplexer row renames its TAG, and the prefix stays out of it', () =>
     );
   });
 
-  it('an untouched field commits nothing, even when it opened stripped', async () => {
-    // The field opens with `second` while the real tag is `git-x-second`, and
-    // blur calls commit as readily as Enter does — without the untouched guard,
-    // clicking away would silently shorten the tag on the host.
-    sessionsList.mockResolvedValue([aplexerRow('git-x-second')]);
-    useSessionsStore().sessions = [aplexerRow('git-x-second')] as never;
+  it('an untouched field commits nothing', async () => {
+    // Blur calls commit as readily as Enter does; without the untouched guard
+    // — the field opening with the name it must stay equal to — clicking away
+    // would recommit what is already there, or worse when the sanitiser would
+    // answer differently than the display.
+    sessionsList.mockResolvedValue([aplexerRow('main')]);
+    useSessionsStore().sessions = [aplexerRow('main')] as never;
 
     const wrapper = await openWorkspace();
     await beginRename(wrapper);

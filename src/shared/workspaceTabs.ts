@@ -5,31 +5,27 @@
  * sit in, how two tabs that want the same name are told apart — is decided
  * here, with no Vue, no store and no DOM. It is separated for the usual reason
  * this repo separates things (a rule with a unit test beats a rule inside a
- * template), and for one specific one: the labelling rule is the part of this
- * design the user described in the most detail and the part a reader is most
- * likely to disagree with, so it should be readable in one file.
+ * template).
  *
- * ## The prefix is the FOLDER'S name, not the sessions' common prefix
+ * ## A tab's label IS the session's name
  *
- * The user said "we remove the prefix — the prefix is common for them". It is
- * common because every session in a folder is named after that folder:
- * `sessionBaseName('~/git/dtc-website', home)` is `git-dtc-website`, and
- * `tmuxctl`, the phone and this app all derive it the same way, which is the
- * whole point of that function existing in `shared/`.
+ * There is no display relabel on top of the name. What `a ls` or `tmux ls`
+ * prints is what the tab reads: `main`, `main-2`, `staging`, whatever the
+ * session is actually called on the host. An earlier design stripped the
+ * folder's derived base name off each session and relabelled the remainders
+ * (`main`, `main 2`), which put words on the bar that existed nowhere on the
+ * host; that projection is gone, and with it the whole strip/remainder
+ * machinery the rename field used to work through. The rename field now edits
+ * the NAME, and what it commits is what the host stores.
  *
- * Taking the LITERAL longest common prefix of the names instead would be
- * shorter to write and wrong in the case that matters. A folder holding
- * `git-dtc-website` and a hand-made session called `git-scratch` has a literal
- * common prefix of `git-`, so both tabs would be relabelled — `dtc-website`
- * and `scratch` — inventing a shared identity out of a coincidence of
- * spelling, and renaming a tab whose name was never derived from anything.
- * The folder's own base name cannot do that: a session either starts with it
- * or it does not.
+ * The only label still invented here is collision numbering: a second tab
+ * wanting an already-shown label reads `… 2` (see {@link numberCollisions}),
+ * which is display-only disambiguation and never touches the name.
  */
 
 /** A session tab, before labelling. */
 export interface SessionTabInput {
-  /** The tmux session name — the join key, and this tab's identity. */
+  /** The session name (tmux name, or aplexer tag) — the join key and identity. */
   name: string;
   /** Epoch seconds of creation. Drives tab order; see {@link buildWorkspaceTabs}. */
   created: number;
@@ -50,87 +46,12 @@ export type WorkspaceTab =
       id: string;
       session: string;
       label: string;
-      /**
-       * The part of the label the user may edit, i.e. the remainder after the
-       * folder prefix was stripped. Null when the session's name is not
-       * derived from the folder at all, in which case a rename edits the whole
-       * name.
-       */
-      remainder: string | null;
       created: number;
     }
   | { kind: 'files'; id: string; label: string; path: string | null };
 
-/**
- * What a folder's default session — the one named exactly after the folder —
- * reads as on the bar, and the stem the numbered ones are built from.
- */
-export const MAIN_LABEL = 'main';
-
 /** Files tabs all read `Files`; a second one becomes `Files 2` by §3.4. */
 export const FILES_LABEL = 'Files';
-
-/**
- * Strip [prefix] off [name], returning the remainder, or null when [name] is
- * not derived from [prefix] at all.
- *
- * The `-` boundary is required and is not a detail: without it a prefix of
- * `git-red-stamp` would claim `git-red-stampede`, which is a different folder's
- * session that merely starts with the same letters. `sessionBaseName` joins
- * components with `-`, so `-` is the only boundary a derived name can have.
- *
- * An exact match returns the empty string — a real remainder, distinct from
- * null, and the one the bare `main` label is for.
- */
-export function stripSessionPrefix(name: string, prefix: string): string | null {
-  if (prefix.length === 0) return null;
-  if (name === prefix) return '';
-  if (name.startsWith(`${prefix}-`)) return name.slice(prefix.length + 1);
-  return null;
-}
-
-/**
- * The label a remainder reads as, before collisions are resolved.
- *
- * Two rewrites, and they are ONE family:
- *
- *   ""   -> `main`
- *   "2"  -> `main 2`
- *   "17" -> `main 17`
- *
- * The empty remainder is the folder's DEFAULT session — the one named exactly
- * after the folder — and `main` is what it reads as: the unnumbered member of
- * the list the numbered tabs continue. A default label sharing no word with
- * its neighbours would break the list in two — nothing about `main` predicts
- * a second tab numbered under a different word — so both halves take the same
- * stem, and `main`, `main 2`, `main 3` reads as one family with a first
- * element.
- *
- * The SPACE is deliberate, though the underlying names join with a hyphen.
- * The hyphen is real in the NAME — `freeSessionNameCommand` builds
- * `git-red-stamp-2` and `tmuxctl` joins that string — but this function
- * returns a display label, and a label that mimics the name's punctuation
- * invites the reader to type it back as one. Every other numbered label on
- * this bar is spaced (`Files 2`, and everything {@link numberCollisions}
- * touches), so a spaced `main 2` is the bar's own convention rather than a
- * second one.
- *
- * The digit rule is not a flourish. `freeSessionNameCommand`
- * (src/main/projects/commands.ts) walks `<base>-2`, `<base>-3` when a folder
- * needs a second session, so the remainder of the second session in
- * `~/git/dtc-website` is literally `2`. A tab labelled `2` sitting beside a tab
- * labelled `import` says nothing at all; `main 2` says what it is. The user
- * spelled out the condition — "if it's just a number".
- *
- * Anything else is the remainder verbatim: "if there is a clear name then we
- * have a clear name." A remainder that merely CONTAINS digits (`v2`, `2fa`) is
- * a name someone chose, so it is left alone.
- */
-export function labelForRemainder(remainder: string): string {
-  if (remainder === '') return MAIN_LABEL;
-  if (/^\d+$/.test(remainder)) return `${MAIN_LABEL} ${remainder}`;
-  return remainder;
-}
 
 /**
  * Append ` 2`, ` 3`… to every label after the first that wants it.
@@ -141,22 +62,20 @@ export function labelForRemainder(remainder: string): string {
  * on it. Alphabetical numbering would let a new `git-foo-aardvark` take the
  * plain label away from a tab that has had it all day.
  *
- * Note the bare `main` label cannot collide with itself — two sessions with
- * an empty remainder would both be named exactly `<prefix>`, and tmux permits
- * only one session per name. Collisions are real between a stripped remainder
- * and a foreign session that happens to be called the same thing, which is why
- * the rule is applied uniformly instead of special-cased per label kind.
+ * Note the session labels themselves cannot collide with each other within a
+ * folder — a tmux name is host-global and an aplexer tag is per-workspace, and
+ * both namespaces are unique, so two tabs in ONE bar are two different names.
+ * Collisions are real against the Files label, which is invented here rather
+ * than stored on the host, which is why the rule is applied uniformly instead
+ * of special-cased per label kind.
  *
- * This rule and {@link labelForRemainder} can also arrive at the same string
- * from two directions: a foreign session literally named `main` sitting after
- * the folder's default is numbered to `main 2`, which is also what a remainder
- * of `2` produces. That is a pre-existing shape of this one-pass counter (the
- * same is already true of a session named `Files 2` beside two Files tabs) —
- * the counter reads the labels it was handed, not the ones it writes — and it
- * needs a folder to hold a hand-made session named after the label itself
- * before it can happen. Left alone deliberately: this pass is display-only,
- * and the ids underneath stay distinct, so the cost is a repeated word on the
- * bar and not an ambiguous target.
+ * The counter reads the labels it was handed, not the ones it writes: a session
+ * named `Files 2` beside two Files tabs comes out `Files 2 2`. That is a
+ * pre-existing shape of this one-pass counter and it needs a hand-made session
+ * named after a label this module invents before it can happen. Left alone
+ * deliberately: this pass is display-only, and the ids underneath stay
+ * distinct, so the cost is a repeated word on the bar and not an ambiguous
+ * target.
  */
 export function numberCollisions<T extends { label: string }>(tabs: T[]): T[] {
   const seen = new Map<string, number>();
@@ -190,8 +109,9 @@ export function numberCollisions<T extends { label: string }>(tabs: T[]): T[] {
  * than it claimed.
  *
  * Creation order is also what makes "session one is
- * one tab, session two is another tab" literally true, since `sessions create`
- * walks `<base>`, `<base>-2`, `<base>-3` in exactly that order. Ties break on
+ * one tab, session two is another tab" literally true, since the create walks
+ * `main`, `main-2`, `main-3` in exactly that order (aplexer) and
+ * `<folder>`, `<folder>-2`, `<folder>-3` (tmux). Ties break on
  * the name so the order is total even on a host whose table reports one
  * timestamp for everything (`parseSessionsList` sets `activity === created`,
  * because the helper's table carries three columns and no more).
@@ -201,25 +121,17 @@ export function numberCollisions<T extends { label: string }>(tabs: T[]): T[] {
  */
 export function buildWorkspaceTabs(
   sessions: readonly SessionTabInput[],
-  prefix: string,
   files: readonly FilesTabInput[] = [],
 ): WorkspaceTab[] {
   const sessionTabs: WorkspaceTab[] = [...sessions]
     .sort((a, b) => a.created - b.created || a.name.localeCompare(b.name))
-    .map((s) => {
-      const remainder = stripSessionPrefix(s.name, prefix);
-      return {
-        kind: 'session' as const,
-        id: s.name,
-        session: s.name,
-        // A name that is not derived from this folder keeps its own name in
-        // full. Stripping is not applicable to it, and pretending otherwise is
-        // how `nightly-build` would become `build`.
-        label: remainder === null ? s.name : labelForRemainder(remainder),
-        remainder,
-        created: s.created,
-      };
-    });
+    .map((s) => ({
+      kind: 'session' as const,
+      id: s.name,
+      session: s.name,
+      label: s.name,
+      created: s.created,
+    }));
 
   const filesTabs: WorkspaceTab[] = files.map((f) => ({
     kind: 'files' as const,
@@ -235,21 +147,15 @@ export function buildWorkspaceTabs(
 }
 
 /**
- * The full session name a tab rename commits, given what the user typed into
- * the label.
+ * The session name a tab rename commits, given what the user typed into the
+ * field.
  *
- * The field edits the LABEL and commits the NAME, and re-applying the prefix
- * here is what stops a rename detaching a session from its folder. Editing
- * `import` to `staging` in `~/git/dtc-website` renames
- * `git-dtc-website-import` to `git-dtc-website-staging`, so the session stays
- * grouped where it was and its tab keeps stripping.
- *
- * Two escapes:
- *   - a tab whose label IS the session name (`remainder === null`) commits the
- *     raw typed name, because there is no prefix to re-apply;
- *   - clearing the field renames the session TO the bare prefix, which is the
- *     bare `main` tab — the one way to promote a session to its folder's
- *     default.
+ * The field edits the NAME and commits the NAME: the label is the session's
+ * real name, so what the user sees selected is what gets renamed, and what
+ * they type is what the host stores. No prefix is re-applied and no remainder
+ * is rebuilt — a rename may move a tmux session off its folder-derived name,
+ * and that is accepted: grouping is carried by the reported working directory
+ * (and the tree registry), not by the spelling of the name.
  *
  * Returns null when the input cannot become a legal session name at all, which
  * the caller must treat as "refuse", not as "use the fallback". The predicate
@@ -259,15 +165,10 @@ export function buildWorkspaceTabs(
  */
 export function renamedSessionName(
   typed: string,
-  prefix: string,
-  remainder: string | null,
   sanitise: (part: string) => string,
 ): string | null {
   const clean = sanitise(typed.trim());
-  if (remainder === null) return /[A-Za-z0-9]/.test(clean) ? clean : null;
-  if (clean === '') return /[A-Za-z0-9]/.test(prefix) ? prefix : null;
-  const full = `${prefix}-${clean}`;
-  return /[A-Za-z0-9]/.test(full) ? full : null;
+  return /[A-Za-z0-9]/.test(clean) ? clean : null;
 }
 
 // `nextWorkspaceTabId` — the wrap-around traversal for the `Ctrl+Tab` /

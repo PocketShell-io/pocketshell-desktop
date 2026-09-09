@@ -157,3 +157,34 @@ export function resolveSessionName(
   }
   return sessionBaseName(startDirectory, homeDirectory) || 'shell';
 }
+
+// ---------------------------------------------------------------------------
+// aplexer tags
+// ---------------------------------------------------------------------------
+
+/**
+ * The tag a workspace's first aplexer session gets, and the stem the numbered
+ * ones continue (`main`, `main-2`, `main-3`… via the free-tag walk).
+ *
+ * An aplexer tag is namespaced PER WORKSPACE (`workspace:tag`), so `main` in
+ * one folder cannot collide with `main` in another — the constraint that keeps
+ * the tmux name folder-derived (host-global namespace) does not exist here.
+ * The tag is also the app's only name for the session — there is no display
+ * relabel on top — so it is named for humans, not for grouping.
+ */
+export const APLEXER_DEFAULT_TAG = 'main';
+
+/**
+ * The BASE tag for a new aplexer session: the user's label when it survives
+ * sanitising, else {@link APLEXER_DEFAULT_TAG}. Same custom-name rule as
+ * {@link resolveSessionName}; only the fallback differs. No `-2` suffix here —
+ * uniqueness is the live-tag walk at create time (`freeAplexerTag`), exactly
+ * as `resolveSessionName` never decides it.
+ */
+export function resolveAplexerTag(customName: string | null | undefined): string {
+  if (customName != null) {
+    const custom = sanitiseName(customName);
+    if (/[A-Za-z0-9]/.test(custom)) return custom;
+  }
+  return APLEXER_DEFAULT_TAG;
+}

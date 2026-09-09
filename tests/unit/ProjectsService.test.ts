@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { ExecResult } from '../../src/shared/types.js';
 import type { SshService } from '@main/ssh/SshService';
 import { PocketshellClient } from '@main/helper/PocketshellClient';
+import { AplexerClient } from '@main/helper/AplexerClient';
 import { ProjectsService, type CloneProgress } from '@main/projects/ProjectsService';
 
 const FIXTURES = resolve(__dirname, 'fixtures');
@@ -71,6 +72,19 @@ function service(responders: Responder[]): {
 } {
   const { ssh, commands } = fakeSsh(responders);
   return { projects: new ProjectsService(ssh, new PocketshellClient(ssh)), commands };
+}
+
+/** The same harness, with the aplexer client wired — the main-session path. */
+function serviceWithAplexer(responders: Responder[]): {
+  projects: ProjectsService;
+  commands: string[];
+} {
+  const { ssh, commands } = fakeSsh(responders);
+  const aplexer = new AplexerClient(ssh);
+  return {
+    projects: new ProjectsService(ssh, new PocketshellClient(ssh, aplexer), aplexer),
+    commands,
+  };
 }
 
 describe('ProjectsService.home', () => {
@@ -302,6 +316,105 @@ describe('ProjectsService.startSession', () => {
       (c) => (c.includes('sessions create') ? ok('git-x-7\n') : null),
     ]);
     expect((await projects.startSession(CONN, { folder: '~/git/x' })).sessionName).toBe('git-x-7');
+  });
+});
+
+describe('ProjectsService.startSession on an aplexer host', () => {
+  const WS = `${HOME}/git/x`;
+
+  /** `a` is present, the canonicalise answers, and the snapshot is [records]. */
+  function aplexerResponders(records: unknown[]): Responder[] {
+    return [
+      homeResponder,
+      pwdResponder,
+      (c) => (c.includes('command -v a') ? ok('/usr/local/bin/a') : null),
+      (c) => (c.includes('a snapshot --json') ? ok(JSON.stringify(records)) : null),
+    ];
+  }
+
+  /** The JSON record `a start --json` prints for a created session. */
+  const startRecord = (id: string, tag: string): string =>
+    JSON.stringify({ id, workspace: WS, tag, phase: 'running', worker_alive: true });
+
+  it('names the FIRST session in a workspace `main`, not the folder-derived name', async () => {
+    const { projects, commands } = serviceWithAplexer(
+      aplexerResponders([]).concat([
+        (c) => (c.includes('a start') ? ok(startRecord('apx-1', 'main')) : null),
+      ]),
+    );
+    const out = await projects.startSession(CONN, { folder: '~/git/x', namePolicy: 'unique' });
+    expect(out).toMatchObject({
+      ok: true,
+      sessionName: 'main',
+      folder: WS,
+      reused: false,
+      via: 'aplexer',
+      aplexerId: 'apx-1',
+    });
+    // The tag the host was asked for is the tag the user will see on `a ls`.
+    expect(commands.map(inner).some((c) => c.includes(`--tag 'main'`))).toBe(true);
+    expect(commands.map(inner).some((c) => c.includes('git-x'))).toBe(false);
+  });
+
+  it('walks `main-2`, `main-3`… PER WORKSPACE for the ones after it', async () => {
+    const { projects, commands } = serviceWithAplexer(
+      aplexerResponders([
+        { id: 'apx-1', workspace: WS, tag: 'main', phase: 'running', worker_alive: true },
+      ]).concat([(c) => (c.includes('a start') ? ok(startRecord('apx-2', 'main-2')) : null)]),
+    );
+    const out = await projects.startSession(CONN, { folder: '~/git/x', namePolicy: 'unique' });
+    expect(out.sessionName).toBe('main-2');
+    expect(commands.map(inner).some((c) => c.includes(`--tag 'main-2'`))).toBe(true);
+  });
+
+  it('does not let ANOTHER workspace’s `main` block the walk', async () => {
+    const { projects } = serviceWithAplexer(
+      aplexerResponders([
+        { id: 'apx-9', workspace: '/home/testuser/other', tag: 'main', phase: 'running', worker_alive: true },
+      ]).concat([(c) => (c.includes('a start') ? ok(startRecord('apx-1', 'main')) : null)]),
+    );
+    const out = await projects.startSession(CONN, { folder: '~/git/x', namePolicy: 'unique' });
+    expect(out.sessionName).toBe('main');
+  });
+
+  it('reuses the live `main` under the reuse policy, and honours a custom label', async () => {
+    const { projects, commands } = serviceWithAplexer(
+      aplexerResponders([
+        { id: 'apx-1', workspace: WS, tag: 'main', phase: 'running', worker_alive: true },
+      ]),
+    );
+    const reused = await projects.startSession(CONN, { folder: '~/git/x' });
+    expect(reused).toMatchObject({ ok: true, sessionName: 'main', reused: true, via: 'aplexer' });
+    expect(commands.some((c) => c.includes('a start'))).toBe(false);
+
+    const custom = await serviceWithAplexer(
+      aplexerResponders([]).concat([
+        (c) => (c.includes('a start') ? ok(startRecord('apx-3', 'Staging')) : null),
+      ]),
+    ).projects.startSession(CONN, { folder: '~/git/x', customName: 'Staging!' });
+    expect(custom.sessionName).toBe('Staging');
+  });
+});
+
+describe('ProjectsService.deriveSessionName on an aplexer host', () => {
+  it('previews `main`, because that is what the create will tag', async () => {
+    const { projects } = serviceWithAplexer([
+      homeResponder,
+      pwdResponder,
+      (c) => (c.includes('command -v a') ? ok('/usr/local/bin/a') : null),
+    ]);
+    expect(await projects.deriveSessionName(CONN, '~/git/pocketshell')).toBe('main');
+    expect(await projects.deriveSessionName(CONN, '~/git/pocketshell', 'My Label')).toBe(
+      'My-Label',
+    );
+  });
+
+  it('keeps the folder derivation on a host without aplexer', async () => {
+    const { projects } = serviceWithAplexer([
+      homeResponder,
+      (c) => (c.includes('command -v a') ? fail(1) : null),
+    ]);
+    expect(await projects.deriveSessionName(CONN, '~/git/pocketshell')).toBe('git-pocketshell');
   });
 });
 
