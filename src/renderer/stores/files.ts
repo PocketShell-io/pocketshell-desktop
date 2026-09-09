@@ -822,19 +822,11 @@ export const useFilesStore = defineStore('files', () => {
     openPath.value = abs;
     opening.value = true;
     try {
-      let size = 0;
-      try {
-        size = (await api.sftp.stat(connectionId, abs)).size;
-      } catch {
-        // A stat failure is not fatal on its own — the read below will
-        // produce the real error — but it does mean the ceilings have to be
-        // enforced by the read's own cap rather than up front.
-        size = -1;
-      }
+      const size = await statSize(connectionId, abs);
+      openSize.value = Math.max(size, 0);
       // A second click opened another file while this stat was in flight;
       // every commit below belongs to the newer file now.
       if (superseded()) return;
-      openSize.value = Math.max(size, 0);
 
       const named = classifyByName(abs);
       openMime.value = named.mime;
@@ -868,58 +860,87 @@ export const useFilesStore = defineStore('files', () => {
 
       const cls = classifyBytes(named, bytes);
       openMime.value = cls.mime;
-      if (hasPreview(cls.kind)) {
-        // Decoded here for the SAME reason plain text is, and from the same
-        // bytes: the editor half of the view has to work without a second
-        // read, and the preview half is not fed from this buffer at all — main
-        // re-reads the file over the preview scheme, because that is the only
-        // way the document's relative references can resolve. So this is one
-        // read for the source and one for the render, and they can briefly
-        // disagree only if the file changes on the host between them.
-        if (bytes.length > MAX_TEXT_BYTES) {
-          const label = cls.kind === 'html' ? 'HTML' : cls.kind === 'svg' ? 'SVG' : 'Markdown';
-          showBinary(
-            cls,
-            `${label} file is ${formatBytes(bytes.length)}, too large to open here.`,
-          );
-          return;
-        }
-        openContent.value = new TextDecoder('utf-8').decode(bytes);
-        // Both notes apply to markdown as much as to HTML: raw `<script>` in a
-        // README does not run either (markdownDocument.ts explains why raw HTML
-        // is passed through at all), and a badge row is remote images.
-        openHasScripts.value = /<script[\s>]/i.test(openContent.value);
-        openHasRemoteRefs.value = referencesRemote(openContent.value);
-        openMode.value = cls.kind;
-        docView.value = 'preview';
-        dirty.value = false;
-        await mintPreview(connectionId, abs, superseded);
-        return;
-      }
-      if (cls.kind === 'text') {
-        if (bytes.length > MAX_TEXT_BYTES) {
-          showBinary(cls, `Text file is ${formatBytes(bytes.length)}, too large to edit here.`);
-          return;
-        }
-        openContent.value = new TextDecoder('utf-8').decode(bytes);
-        openMode.value = 'text';
-        dirty.value = false;
-        return;
-      }
-      if (cls.kind === 'image' || cls.kind === 'audio' || cls.kind === 'pdf') {
-        // `slice()` because the Uint8Array came across the IPC bridge and a
-        // Blob must own bytes that outlive this call.
-        openUrl.value = URL.createObjectURL(
-          new Blob([bytes.slice()], { type: cls.mime ?? 'application/octet-stream' }),
-        );
-        openMode.value = cls.kind;
-        return;
-      }
-      showBinary(cls, 'This is a binary file.');
+      await presentDoc(connectionId, abs, cls, bytes, superseded);
     } finally {
       // A superseded open must not clear the spinner its successor set.
       if (!superseded()) opening.value = false;
     }
+  }
+
+  /**
+   * The one read whose ceiling is not fatal: `stat` failing means the size
+   * ceilings have to be enforced by the read's own cap rather than up front —
+   * the read below will produce the real error when there is one.
+   */
+  async function statSize(connectionId: ConnectionId, abs: string): Promise<number> {
+    try {
+      return (await api.sftp.stat(connectionId, abs)).size;
+    } catch {
+      return -1;
+    }
+  }
+
+  /**
+   * Commit the presentation for bytes already fetched, classified and sized:
+   * previewable documents get decoded and minted a preview, text gets decoded
+   * for the editor, media gets a blob URL, everything else lands on the
+   * binary terminus.
+   */
+  async function presentDoc(
+    connectionId: ConnectionId,
+    abs: string,
+    cls: FileClass,
+    bytes: Uint8Array,
+    superseded: () => boolean,
+  ): Promise<void> {
+    if (hasPreview(cls.kind)) {
+      // Decoded here for the SAME reason plain text is, and from the same
+      // bytes: the editor half of the view has to work without a second
+      // read, and the preview half is not fed from this buffer at all — main
+      // re-reads the file over the preview scheme, because that is the only
+      // way the document's relative references can resolve. So this is one
+      // read for the source and one for the render, and they can briefly
+      // disagree only if the file changes on the host between them.
+      if (bytes.length > MAX_TEXT_BYTES) {
+        const label = cls.kind === 'html' ? 'HTML' : cls.kind === 'svg' ? 'SVG' : 'Markdown';
+        showBinary(
+          cls,
+          `${label} file is ${formatBytes(bytes.length)}, too large to open here.`,
+        );
+        return;
+      }
+      openContent.value = new TextDecoder('utf-8').decode(bytes);
+      // Both notes apply to markdown as much as to HTML: raw `<script>` in a
+      // README does not run either (markdownDocument.ts explains why raw HTML
+      // is passed through at all), and a badge row is remote images.
+      openHasScripts.value = /<script[\s>]/i.test(openContent.value);
+      openHasRemoteRefs.value = referencesRemote(openContent.value);
+      openMode.value = cls.kind;
+      docView.value = 'preview';
+      dirty.value = false;
+      await mintPreview(connectionId, abs, superseded);
+      return;
+    }
+    if (cls.kind === 'text') {
+      if (bytes.length > MAX_TEXT_BYTES) {
+        showBinary(cls, `Text file is ${formatBytes(bytes.length)}, too large to edit here.`);
+        return;
+      }
+      openContent.value = new TextDecoder('utf-8').decode(bytes);
+      openMode.value = 'text';
+      dirty.value = false;
+      return;
+    }
+    if (cls.kind === 'image' || cls.kind === 'audio' || cls.kind === 'pdf') {
+      // `slice()` because the Uint8Array came across the IPC bridge and a
+      // Blob must own bytes that outlive this call.
+      openUrl.value = URL.createObjectURL(
+        new Blob([bytes.slice()], { type: cls.mime ?? 'application/octet-stream' }),
+      );
+      openMode.value = cls.kind;
+      return;
+    }
+    showBinary(cls, 'This is a binary file.');
   }
 
   /** The one terminus for everything that cannot be shown. Never text. */
