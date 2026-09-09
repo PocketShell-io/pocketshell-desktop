@@ -464,73 +464,11 @@ export class HtmlPreviewService {
 
   /** Handle one `psview:` request. Never throws; every failure is a status. */
   private async respond(request: GlobalRequest): Promise<GlobalResponse> {
-    const token = tokenOfUrl(request.url);
-    const preview = token ? this.previews.get(token) : undefined;
-    // An unknown or released token says nothing about whether the path
-    // exists, deliberately — the same reticence LocalFileReader shows when
-    // refusing a path that was never picked.
-    if (!preview) return refuse(404, 'No such preview');
+    const authed = this.authorise(request);
+    if (authed.kind === 'refusal') return authed.response;
 
-    // Only GET (and HEAD, which Chromium does not send here). A preview is a
-    // read of a file; anything else is a document trying to do something the
-    // feature does not have.
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      return refuse(405, 'Method not allowed');
-    }
-
-    preview.requests++;
-    if (preview.requests > MAX_REQUESTS || preview.bytes > MAX_TOTAL_BYTES) {
-      preview.stats.capped = true;
-      this.emitStats(preview);
-      return refuse(429, 'Preview asset budget exhausted');
-    }
-
-    const resolved = resolveRequestPath(request.url, preview.root);
-    if (!resolved.ok) {
-      // Both malformed and out-of-root count as "blocked" for the user-facing
-      // counter: from the reader's point of view they are the same event —
-      // the page asked for something the preview would not fetch.
-      preview.stats.blocked++;
-      this.emitStats(preview);
-      return refuse(403, 'Outside the previewed folder');
-    }
-
-    // The second half of the traversal defence. `realpath` is the host's own
-    // answer to "where does this actually point", which is the only way to
-    // see through a symlink — `assets/theme` being a link to `/etc` passes
-    // every string check there is and must still be refused. (For a markdown
-    // preview, whose root is `/`, this check passes by construction; the
-    // realpath still runs, because the canonical path is what gets read.)
-    let real: string;
-    try {
-      real = await this.sftp.realPath(preview.connectionId, resolved.path);
-    } catch {
-      preview.stats.missing++;
-      this.emitStats(preview);
-      return refuse(404, 'Not found');
-    }
-    if (!containedIn(preview.root, real)) {
-      preview.stats.blocked++;
-      this.emitStats(preview);
-      return refuse(403, 'Outside the previewed folder');
-    }
-
-    let bytes: Buffer;
-    try {
-      bytes = await this.sftp.readBinary(preview.connectionId, real, MAX_ASSET_BYTES);
-    } catch {
-      // Covers not-found, not-a-regular-file and over-the-per-asset-ceiling
-      // alike. They are different causes with the same consequence — this
-      // asset is not going to be part of the render — and the toolbar's job
-      // is to report that consequence, not to triage it.
-      preview.stats.missing++;
-      this.emitStats(preview);
-      return refuse(404, 'Not found');
-    }
-
-    preview.bytes += bytes.length;
-    if (real !== preview.entry) preview.stats.loaded++;
-    this.emitStats(preview);
+    const asset = await this.fetchAsset(request, authed.preview);
+    if (asset.kind === 'refusal') return asset.response;
 
     // Under a markdown preview, EVERY `.md` the frame navigates to is
     // rendered — not only the entry document.
@@ -547,8 +485,102 @@ export class HtmlPreviewService {
     // preview: there the user opened a real page (or a drawing), and a `.md`
     // it happens to reference is a file that document asked for, not a
     // document the user chose to read.
-    const rendered = renderIfMarkdown(preview, real, bytes);
+    const rendered = renderIfMarkdown(authed.preview, asset.real, asset.bytes);
+    return this.serve(authed.preview, rendered);
+  }
 
+  /**
+   * Identify the preview behind the request and confirm it may still read.
+   *
+   * An unknown or released token says nothing about whether the path exists,
+   * deliberately — the same reticence LocalFileReader shows when refusing a
+   * path that was never picked. Only GET (and HEAD, which Chromium does not
+   * send here): a preview is a read of a file; anything else is a document
+   * trying to do something the feature does not have. The per-preview budget
+   * is the last guard: past it the preview reports itself capped and stops
+   * serving, which bounds a runaway document.
+   */
+  private authorise(
+    request: GlobalRequest,
+  ): { kind: 'ok'; preview: Preview } | { kind: 'refusal'; response: GlobalResponse } {
+    const token = tokenOfUrl(request.url);
+    const preview = token ? this.previews.get(token) : undefined;
+    if (!preview) return refusal(404, 'No such preview');
+
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return refusal(405, 'Method not allowed');
+    }
+
+    preview.requests++;
+    if (preview.requests > MAX_REQUESTS || preview.bytes > MAX_TOTAL_BYTES) {
+      preview.stats.capped = true;
+      this.emitStats(preview);
+      return refusal(429, 'Preview asset budget exhausted');
+    }
+    return { kind: 'ok', preview };
+  }
+
+  /**
+   * Resolve, contain and read the requested asset.
+   *
+   * The string-resolution check and the `realpath` containment check are the
+   * two halves of the traversal defence. `realpath` is the host's own answer
+   * to "where does this actually point", which is the only way to see through
+   * a symlink — `assets/theme` being a link to `/etc` passes every string
+   * check there is and must still be refused. (For a markdown preview, whose
+   * root is `/`, the containment check passes by construction; the realpath
+   * still runs, because the canonical path is what gets read.)
+   *
+   * A failed read covers not-found, not-a-regular-file and
+   * over-the-per-asset-ceiling alike. They are different causes with the same
+   * consequence — this asset is not going to be part of the render — and the
+   * toolbar's job is to report that consequence, not to triage it.
+   */
+  private async fetchAsset(
+    request: GlobalRequest,
+    preview: Preview,
+  ): Promise<{ kind: 'ok'; real: string; bytes: Buffer } | { kind: 'refusal'; response: GlobalResponse }> {
+    const resolved = resolveRequestPath(request.url, preview.root);
+    if (!resolved.ok) {
+      // Both malformed and out-of-root count as "blocked" for the user-facing
+      // counter: from the reader's point of view they are the same event —
+      // the page asked for something the preview would not fetch.
+      preview.stats.blocked++;
+      this.emitStats(preview);
+      return refusal(403, 'Outside the previewed folder');
+    }
+
+    let real: string;
+    try {
+      real = await this.sftp.realPath(preview.connectionId, resolved.path);
+    } catch {
+      preview.stats.missing++;
+      this.emitStats(preview);
+      return refusal(404, 'Not found');
+    }
+    if (!containedIn(preview.root, real)) {
+      preview.stats.blocked++;
+      this.emitStats(preview);
+      return refusal(403, 'Outside the previewed folder');
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = await this.sftp.readBinary(preview.connectionId, real, MAX_ASSET_BYTES);
+    } catch {
+      preview.stats.missing++;
+      this.emitStats(preview);
+      return refusal(404, 'Not found');
+    }
+
+    preview.bytes += bytes.length;
+    if (real !== preview.entry) preview.stats.loaded++;
+    this.emitStats(preview);
+    return { kind: 'ok', real, bytes };
+  }
+
+  /** The 200 response: labelled bytes behind the frame's CSP, never cached. */
+  private serve(preview: Preview, rendered: { bytes: Uint8Array; contentType: string }): GlobalResponse {
     return new Response(rendered.bytes, {
       status: 200,
       headers: {
@@ -585,6 +617,11 @@ export class HtmlPreviewService {
  */
 function newToken(): string {
   return randomBytes(16).toString('hex');
+}
+
+/** The guard-step result that ends the pipeline with [refuse]. */
+function refusal(status: number, message: string): { kind: 'refusal'; response: GlobalResponse } {
+  return { kind: 'refusal', response: refuse(status, message) };
 }
 
 /**
