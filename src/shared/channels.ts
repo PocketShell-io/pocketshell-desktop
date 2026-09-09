@@ -209,6 +209,20 @@ export const ipc = {
     log: 'diag:log', // send: { kind, message, stack?, detail? }
   },
   /**
+   * Optional Google-login settings sync (docs/SYNC.md). The passphrase is a
+   * per-call argument and is never persisted by either process; tokens live
+   * in main behind safeStorage and are NOT part of this surface — the
+   * renderer sees only the signed-in email.
+   */
+  sync: {
+    status: 'sync:status', // SyncStatus — who is signed in, keychain state
+    login: 'sync:login', // run the PKCE browser flow; resolves to the email
+    logout: 'sync:logout', // forget tokens (and revoke the grant)
+    pull: 'sync:pull', // (slot, passphrase) -> SyncPullResult (decrypted)
+    push: 'sync:push', // (slot, plaintext, passphrase) -> SyncPushResult
+    applyHosts: 'sync:applyHosts', // HostEntry[] -> append missing to ~/.ssh/config
+  },
+  /**
    * Update check — the desktop port of the phone's ReleaseChecker: main polls
    * the repo's `releases/latest`, compares against the running version, and
    * hands the renderer a three-way answer (available / up-to-date / failed).

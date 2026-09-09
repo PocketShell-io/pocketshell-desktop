@@ -99,6 +99,8 @@ const preview = fakeService();
 const tmuxClients = fakeService();
 const attachments = fakeService();
 const localFiles = fakeService();
+const syncAuth = fakeService();
+const sync = fakeService();
 const getWindows = vi.fn(() => []);
 const broadcast = vi.fn();
 
@@ -110,6 +112,8 @@ const ctx = {
   forwards: forwards as never,
   projects: projects as never,
   preview: preview as never,
+  syncAuth: syncAuth as never,
+  sync: sync as never,
   getWindows,
   broadcast,
   tmuxClients: tmuxClients as never,

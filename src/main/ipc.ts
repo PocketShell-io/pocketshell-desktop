@@ -8,6 +8,8 @@ import { SftpService } from './sftp/SftpService.js';
 import { ForwardService } from './portfwd/ForwardService.js';
 import { ProjectsService } from './projects/ProjectsService.js';
 import { HtmlPreviewService } from './preview/HtmlPreviewService.js';
+import { GoogleAuth } from './sync/GoogleAuth.js';
+import { SyncService } from './sync/SyncService.js';
 import { AttachmentStager } from './attachments/AttachmentStager.js';
 import { LocalFileReader } from './attachments/LocalFileReader.js';
 import type { IpcContext } from './ipc/context.js';
@@ -18,6 +20,7 @@ import { registerProjectsIpc } from './ipc/projectsIpc.js';
 import { registerSftpIpc } from './ipc/sftpIpc.js';
 import { registerPortsIpc } from './ipc/portsIpc.js';
 import { registerPreviewIpc } from './ipc/previewIpc.js';
+import { registerSyncIpc } from './ipc/syncIpc.js';
 
 /**
  * Registers all ipcMain handlers. Called once from the main process entry.
@@ -39,9 +42,11 @@ export function registerIpcHandlers(deps: {
   forwards: ForwardService;
   projects: ProjectsService;
   preview: HtmlPreviewService;
+  syncAuth: GoogleAuth;
+  sync: SyncService;
   getWindows: () => BrowserWindow[];
 }): void {
-  const { ssh, helper, aplexer, sftp, forwards, projects, preview, getWindows } = deps;
+  const { ssh, helper, aplexer, sftp, forwards, projects, preview, syncAuth, sync, getWindows } = deps;
 
   // Prompt attachments ride the SSH/SFTP services that are already here —
   // no second connection, no shelling out to scp.
@@ -94,6 +99,8 @@ export function registerIpcHandlers(deps: {
     forwards,
     projects,
     preview,
+    syncAuth,
+    sync,
     getWindows,
     broadcast,
     tmuxClients,
@@ -108,4 +115,5 @@ export function registerIpcHandlers(deps: {
   registerSftpIpc(ctx);
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
+  registerSyncIpc(ctx);
 }

@@ -7,6 +7,8 @@ import type { SftpService } from '../sftp/SftpService.js';
 import type { ForwardService } from '../portfwd/ForwardService.js';
 import type { ProjectsService } from '../projects/ProjectsService.js';
 import type { HtmlPreviewService } from '../preview/HtmlPreviewService.js';
+import type { GoogleAuth } from '../sync/GoogleAuth.js';
+import type { SyncService } from '../sync/SyncService.js';
 import type { AttachmentStager } from '../attachments/AttachmentStager.js';
 import type { LocalFileReader } from '../attachments/LocalFileReader.js';
 
@@ -28,6 +30,10 @@ export interface IpcContext {
   forwards: ForwardService;
   projects: ProjectsService;
   preview: HtmlPreviewService;
+  /** Google sign-in state for settings sync (docs/SYNC.md). */
+  syncAuth: GoogleAuth;
+  /** The sync API client, speaking encrypted envelopes. */
+  sync: SyncService;
   getWindows: () => BrowserWindow[];
   broadcast: (channel: string, payload: unknown) => void;
   tmuxClients: TmuxClientPool;

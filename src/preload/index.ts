@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron';
 import { ipc } from '../shared/channels.js';
 import type { GeometryProbe, UpdateCheckResult } from '../shared/types';
+import type { SyncApplyResult, SyncPullResult, SyncPushResult, SyncStatus } from '../shared/sync.js';
 import type { ZoomCommand } from '../shared/zoomKeys.js';
 import type {
   AttachmentSource,
@@ -730,6 +731,28 @@ const api = {
      * anything that is not this repo, see ipc.ts.
      */
     open: (url: string): Promise<void> => ipcRenderer.invoke(ipc.update.open, url),
+  },
+  sync: {
+    /** Who is signed in (and keychain availability); no network, no tokens. */
+    status: (): Promise<SyncStatus> => ipcRenderer.invoke(ipc.sync.status),
+    /**
+     * The PKCE browser round-trip; resolves to the signed-in email, rejects
+     * with the reason (denied, timed out, no keychain). Tokens stay in main.
+     */
+    login: (): Promise<string | null> => ipcRenderer.invoke(ipc.sync.login),
+    logout: (): Promise<void> => ipcRenderer.invoke(ipc.sync.logout),
+    /**
+     * Fetch a slot's blob, DECRYPTED with [passphrase] — the renderer's
+     * session-memory passphrase, never persisted on either side.
+     */
+    pull: (slot: string, passphrase: string): Promise<SyncPullResult> =>
+      ipcRenderer.invoke(ipc.sync.pull, slot, passphrase),
+    /** Encrypt [plaintext] with [passphrase] and store it (version-checked). */
+    push: (slot: string, plaintext: string, passphrase: string): Promise<SyncPushResult> =>
+      ipcRenderer.invoke(ipc.sync.push, slot, plaintext, passphrase),
+    /** Append hosts missing from ~/.ssh/config; returns the aliases added. */
+    applyHosts: (hosts: HostEntry[]): Promise<SyncApplyResult> =>
+      ipcRenderer.invoke(ipc.sync.applyHosts, hosts),
   },
 } as const;
 

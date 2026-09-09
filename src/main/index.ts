@@ -1,5 +1,8 @@
-import { app, BrowserWindow, Menu, powerMonitor } from 'electron';
+import { app, BrowserWindow, Menu, powerMonitor, shell } from 'electron';
 import { HtmlPreviewService, registerPreviewScheme } from './preview/HtmlPreviewService.js';
+import { GoogleAuth } from './sync/GoogleAuth.js';
+import { SyncService } from './sync/SyncService.js';
+import { SYNC_API_URL } from '../shared/syncConfig.js';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +33,14 @@ const sftp = new SftpService(registry);
 const forwards = new ForwardService(ssh, registry);
 const projects = new ProjectsService(ssh, helper, aplexer);
 const preview = new HtmlPreviewService(sftp);
+// Settings sync: sign-in state lives behind the OS keychain in userData; the
+// renderer only ever sees the signed-in email. Constructed eagerly but inert
+// until the user opts in — sync is optional and default-off by omission.
+const syncAuth = new GoogleAuth({
+  userDataDir: app.getPath('userData'),
+  openExternal: (url) => shell.openExternal(url),
+});
+const sync = new SyncService({ auth: syncAuth, baseUrl: SYNC_API_URL });
 // Evict cached per-connection state owned by the application entrypoint (SFTP
 // wrapper, remote $HOME, aplexer availability, live HTML previews) on close.
 // ForwardService owns its own close subscription: forwarding needs to
@@ -230,6 +241,8 @@ if (!gotLock) {
         forwards,
         projects,
         preview,
+        syncAuth,
+        sync,
         getWindows: () => BrowserWindow.getAllWindows(),
       });
       createWindow();
