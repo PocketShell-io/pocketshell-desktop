@@ -6,7 +6,7 @@
  * a command that an engine does not have is simply absent from its list, so an
  * unavailable command is never offered. Do not build editing UI for it, and do
  * not invent a desktop-only fallback catalog for "no agent detected" — the
- * dropdown stays closed instead (docs/COMPOSER.md §18).
+ * dropdown stays closed instead.
  *
  * Each agent's list is ordered curated-first (new/clear, compact, goal where it
  * exists, plus one agent-appropriate extra) followed by the searchable long

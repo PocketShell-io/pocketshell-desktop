@@ -12,8 +12,7 @@ import {
 
 /**
  * Every assertion here runs against output CAPTURED from a real host, not
- * against text written from memory — see docs/PORTFWD.md §10, which documents
- * how the Python's own `ss` parser silently produces nothing because it reads
+ * against text written from memory — the fixtures are captured output, not formats assumed. The cautionary example is how the Python's own `ss` parser silently produces nothing because it reads
  * column 7 of a six-column output, and how the project's Docker fixture (root,
  * both iproute2 AND net-tools installed) cannot catch that class of bug.
  *
@@ -82,7 +81,7 @@ describe('parseSsTlnp (captured output)', () => {
   });
 
   it('BLANKS rather than hides unattributable rows as non-root', () => {
-    // docs/PORTFWD.md (and the old scanRemotePorts comment) assert that
+    //  assert that
     // `ss -tlnp` FILTERS OUT rows it cannot attribute when run as non-root.
     // On iproute2 6.x that is not what happens: every row is present and only
     // the process column is empty. The merge policy is correct either way,

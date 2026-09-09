@@ -56,7 +56,7 @@ vi.mock('../../src/renderer/ipc', () => ({
     agent: { profiles: vi.fn().mockResolvedValue([]) },
     win: { setTitle: vi.fn() },
     // Asked once on mount by the Ports button's auto-forward indicator; the
-    // count pill (§16) has the view also read `list` and `onStates`.
+    // count pill has the view also read `list` and `onStates`.
     forwards: {
       isAutoEnabled: vi.fn().mockResolvedValue(false),
       list: vi.fn().mockResolvedValue([]),
@@ -93,7 +93,7 @@ function session(name: string, path: string | null, activity = 100): SessionSumm
  * an order to respect AND a root boundary to cross without stopping.
  *
  * In list order because the panel renders the host's order now
- * (docs/SESSIONLIST.md §6). The chord reads `useFolderTree().folders`, which is
+ * The chord reads `useFolderTree().folders`, which is
  * the panel's own list — that is the whole point of the shared derivation — so
  * a fixture written against any other order would silently be asserting that
  * the two disagree.

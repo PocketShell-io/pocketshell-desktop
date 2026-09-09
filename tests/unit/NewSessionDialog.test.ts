@@ -199,9 +199,9 @@ describe('NewSessionDialog startIn', () => {
 });
 
 /**
- * The folder -> agent chain (docs/SESSIONLIST.md §13, superseded).
+ * The folder -> agent chain.
  *
- * §13 refused this chain on ONE load-bearing ground: `NewSessionDialog` used
+ * The old design refused this chain on ONE load-bearing ground: `NewSessionDialog` used
  * to create at Start, while `LaunchSessionDialog` was built so that cancelling
  * costs nothing — so chaining agent AFTER the create would strand a session on
  * the host. The chain now exists, and these are the tests that say the

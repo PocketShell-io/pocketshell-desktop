@@ -3,7 +3,7 @@
 //
 // These are STRUCTURED STATE, never folded into the draft while composing —
 // their remote paths are appended to the text at send time and only then
-// (docs/COMPOSER.md §5.1, §6). That is why attaching a file does not make the
+//. That is why attaching a file does not make the
 // textarea jump, and why removing a tile leaves the draft untouched.
 //
 // Each tile shows the file NAME only, never the full remote path

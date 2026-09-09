@@ -6,7 +6,7 @@
  * open/closed state lives in a third place, `HostWorkspaceView`'s `panel` ref.
  * Three files, one vocabulary.
  *
- * How they are reached changed with §5.3e, and by direct order: the overflow
+ * How they are reached changed by direct order: the overflow
  * menu (components/HostActionsMenu.vue) is gone, and each of Ports and Usage
  * is its own icon button in both surfaces. That overturns ca79ae2's "unlabelled
  * glyphs are a memory test" ruling at the user's say-so; the words did not
@@ -22,8 +22,7 @@
  *
  * NOTE for whoever adds the next host overlay: an entry here needs a GLYPH,
  * because there is no menu row left to hide behind — and the header strip this
- * renders into was already re-floored once (200 → 232px, docs/DESIGN.md
- * §5.3e) to fit seven controls. A fourth button means moving the floor again or
+ * renders into was already re-floored once (200 → 232px) to fit seven controls. A fourth button means moving the floor again or
  * displacing a control; check the arithmetic in SessionTree's template before
  * adding the row. Both surfaces pick new items up for free.
  */

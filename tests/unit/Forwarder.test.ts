@@ -6,7 +6,7 @@ import { Forwarder, forwardKey } from '@main/portfwd/Forwarder';
 
 /**
  * Byte-direction accounting and the shared `'tcp'` dispatcher — the two
- * Forwarder-level defects docs/PORTFWD.md §15 records:
+ * Forwarder-level defects fixed along the way:
  *
  *  - `bytesIn`/`bytesOut` were swapped relative to the panel's In/Out headers
  *    (`Forwarder.ts:210-216` vs `PortPanelView.vue:98`);

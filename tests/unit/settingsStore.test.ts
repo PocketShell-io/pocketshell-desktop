@@ -538,7 +538,7 @@ describe('shortcut overrides', () => {
 });
 
 /**
- * The session panel's hand-arranged folder order (docs/SESSIONLIST.md §14).
+ * The session panel's hand-arranged folder order.
  *
  * The RULES live in `renderer/folderOrder.ts` and are tested there; what this
  * store owns is the three things a store owns — the default, the round trip,

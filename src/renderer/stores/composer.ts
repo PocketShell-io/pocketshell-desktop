@@ -19,7 +19,7 @@ import { defaultGeometry, type ComposerGeometry } from '../../shared/composerGeo
  * The Android original keeps a SINGLE activity-scoped ViewModel shared by every
  * session on a host (PromptComposerViewModel.kt:813-820), which is why it needs
  * the #746 "owner stamp" that DISCARDS a draft when you switch sessions. That
- * mechanism is deliberately NOT ported (docs/COMPOSER.md §12.4): a keyed map
+ * mechanism is deliberately NOT ported: a keyed map
  * satisfies the same user-visible invariant — a draft never appears in a session
  * it was not authored in — while being strictly better, because switching away
  * and back restores your prompt instead of destroying it.
@@ -49,7 +49,7 @@ import { defaultGeometry, type ComposerGeometry } from '../../shared/composerGeo
  * auditable; the citations are in the doc comments.
  */
 
-/** Three modes, app-wide, persisted (docs/COMPOSER.md §12). */
+/** Three modes, app-wide, persisted. */
 export type ComposerMode = 'hidden' | 'docked' | 'expanded';
 
 export interface StagedAttachment {
@@ -92,7 +92,7 @@ export interface ComposerSessionState {
 /** How many sent prompts a session remembers. Oldest fall off. */
 export const COMPOSER_HISTORY_LIMIT = 100;
 
-/** Per-session fields worth surviving an app restart (§23.6). */
+/** Per-session fields worth surviving an app restart. */
 interface PersistedState {
   draft: string;
   attachments: Omit<StagedAttachment, 'previewDataUrl'>[];
@@ -202,8 +202,8 @@ export const useComposerStore = defineStore('composer', () => {
    */
   const geometry = ref<ComposerGeometry>(restoredLayout.geometry);
   /**
-   * Whether the typing intercept (docs/COMPOSER.md §26.1) is standing down
-   * because the composer just handed a short draft to the pane (§12.2): the
+   * Whether the typing intercept is standing down
+   * because the composer just handed a short draft to the pane: the
    * shell is where the user's typing belongs until they summon the composer
    * again. App-level like `mode` — it describes the keyboard, not a session —
    * and deliberately NOT persisted: it is a gesture, like the recall cursor,
@@ -244,7 +244,7 @@ export const useComposerStore = defineStore('composer', () => {
     }
   }
 
-  /** Defaults to `docked`: the composer is the app's primary surface (§11). */
+  /** Defaults to `docked`: the composer is the app's primary surface. */
   function loadLayout(): PersistedLayout {
     const fallback: PersistedLayout = {
       mode: 'docked',
@@ -678,7 +678,7 @@ function persistNow(): void {
     deliver: (payload: string) => Promise<boolean>,
     opts: {
       /**
-       * The `closeComposerOnSend` setting (docs/COMPOSER.md §26). Passed in
+       * The `closeComposerOnSend` setting. Passed in
        * rather than read here: this store has no business importing the
        * settings store, and a parameter is what lets the failure case be
        * tested without a settings fixture.
@@ -750,7 +750,7 @@ function persistNow(): void {
   /**
    * Android: `markSendDelivered` (:725-737), minus the dismissal.
    *
-   * DELIBERATE DIVERGENCE (docs/COMPOSER.md §12.3): the phone closes the sheet
+   * DELIBERATE DIVERGENCE: the phone closes the sheet
    * on delivery because a modal sheet occludes the terminal on a phone screen.
    * The desktop composer is docked and is the primary interaction surface, so it
    * stays open and focused, ready for the next prompt.
@@ -894,7 +894,7 @@ function persistNow(): void {
   }
 
   // -------------------------------------------------------------------------
-  // Visibility state machine (desktop only — docs/COMPOSER.md §12.1)
+  // Visibility state machine
   //
   // NO `key` parameter, and that is the point: whether the composer is showing
   // is one answer for the whole app. Closing it on one session and finding it
@@ -902,8 +902,7 @@ function persistNow(): void {
   // -------------------------------------------------------------------------
 
   /**
-   * Hand a SHORT draft to the pane, raw and unsubmitted, on a user close
-   * (docs/COMPOSER.md §12.2). Returns whether it flushed.
+   * Hand a SHORT draft to the pane, raw and unsubmitted, on a user close. Returns whether it flushed.
    *
    * The user's flow: a keystroke at a closed composer is caught by the typing
    * intercept, they type a few more, then decide this was a shell command
@@ -916,7 +915,7 @@ function persistNow(): void {
    * `write === null` means there is nowhere to put the text — no registered
    * shell, or the connection is down. Nothing is cleared and the dismissal is
    * an ordinary one, because moving text to NOWHERE is losing it, and Escape
-   * never destroys work (§4.3).
+   * never destroys work.
    */
   function flushToTerminal(key: string, write: ((text: string) => void) | null): boolean {
     const s = states.value[key];
@@ -949,7 +948,7 @@ function persistNow(): void {
     if (next !== 'hidden') {
       lastOpenMode.value = next;
       // Summoning the composer takes the keyboard back: whatever a hand-off
-      // (§12.2) stood down is re-armed by simply opening the panel again.
+      // stood down is re-armed by simply opening the panel again.
       terminalOwnsTyping.value = false;
     }
     mode.value = next;
@@ -961,7 +960,7 @@ function persistNow(): void {
    * card's close.
    *
    * Typing brings it back carrying the character — unless `flushToTerminal`
-   * just put a short draft at the prompt on the way out (§12.2), in which case
+   * just put a short draft at the prompt on the way out, in which case
    * the shell keeps the keyboard until the panel is summoned again. **The
    * action is kept as its own rather than a bare `setMode('hidden')`** so the
    * user-close path can be given behaviour again without hunting down four

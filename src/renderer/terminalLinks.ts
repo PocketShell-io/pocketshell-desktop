@@ -99,7 +99,7 @@
  * touches — the rescan is what answers the marker-staleness objection that
  * once kept this hover-only. The tint is the theme's own selection colour
  * solidified over the terminal ground (themes.ts terminalLinkTint): no new
- * palette values, per docs/DESIGN.md §3.
+ * palette values, per 
  *
  * ## Clicking while the remote app owns the mouse
  *

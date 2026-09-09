@@ -180,7 +180,7 @@ onBeforeUnmount(() => {
 
 <style>
 /* ---------------------------------------------------------------------------
- * Design tokens — see docs/DESIGN.md §4.3, and §8 for the theme system.
+ * Design tokens; themes.ts holds the theme records.
  *
  * Palette is the Android client's (GitHub-dark-derived): #0D1117 ground,
  * #E6EDF3 text, cyan #22D3EE accent. Contrast ratios in the comments are
@@ -255,30 +255,30 @@ onBeforeUnmount(() => {
   --focus-ring-offset: 2px;
   --disabled-opacity: 0.45;
 
-  /* ---- Terminal (see docs/DESIGN.md §3 — Windows Terminal / Campbell) -- */
+  /* ---- Terminal (— Windows Terminal / Campbell) -- */
   --term-bg: #0c0c0c;
   --term-fg: #cccccc;
   --term-font-size: 16px;
   --term-padding: 8px;
 
   /* ---- Code (file editor syntax colours) ------------------------------
-   * Derived from Campbell (§3), because the Files tab's editor sits on
+   * Derived from Campbell, because the Files tab's editor sits on
    * `--term-bg` for the reason FilesView already states: an open file and the
    * shell it came from should read as the same surface. A stock editor theme
    * dropped onto that ground would be the only thing in the app not speaking
    * the terminal's palette.
    *
-   * Ratios are against `--term-bg` #0C0C0C, computed the same way as §3.3's
+   * Ratios are against `--term-bg` #0C0C0C, computed the same way as the terminal contrast rule's
    * audit. Two roles deliberately step OUTSIDE Campbell, both for the reason
-   * §3.3 already identified — the scheme's dim pairs are unreadable on its own
+   * identified above — the scheme's dim pairs are unreadable on its own
    * background — and both handled here the way `minimumContrastRatio: 3`
    * handles them in the terminal: lift only the failing pair, leave the rest
    * pixel-identical.
-   *   - comment: Campbell brightBlack #767676 is 4.31:1, and §4.3 reserves
+   *   - comment: Campbell brightBlack #767676 is 4.31:1, and the token set reserves
    *     that band for >=15px or decorative text. Comments are 13px prose and
    *     are read, so they take `--fg-secondary`'s value (6.36:1) instead.
    *   - meta: Campbell magenta/brightMagenta are 2.44:1 / 3.20:1 — the exact
-   *     pair §3.3 calls "genuinely unreadable". Decorators, preprocessor lines
+   *     pair called out above as "genuinely unreadable". Decorators, preprocessor lines
    *     and doctypes take the app's own `--agent` violet (7.19:1).
    */
   --code-comment: #8b949e; /*  6.36:1 — lifted, see above */
@@ -444,7 +444,7 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
- * Shared primitives — see docs/DESIGN.md §5.1.
+ * Shared primitives, defined once in this file. 
  *
  * These were previously copy-pasted per component (.icon-btn in 7 files,
  * .muted in 10, .error in 5, .empty in 5), each drifting a little. They live

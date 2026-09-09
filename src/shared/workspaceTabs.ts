@@ -50,7 +50,7 @@ export type WorkspaceTab =
     }
   | { kind: 'files'; id: string; label: string; path: string | null };
 
-/** Files tabs all read `Files`; a second one becomes `Files 2` by §3.4. */
+/** Files tabs all read `Files`; a second one becomes `Files 2`. */
 export const FILES_LABEL = 'Files';
 
 /**
@@ -104,8 +104,7 @@ export function numberCollisions<T extends { label: string }>(tabs: T[]): T[] {
  * Both are now out of date, and the panel is what changed rather than this:
  * once its rows became one per FOLDER and `Ctrl+↑`/`Ctrl+↓` began walking them,
  * they were targets too, and the user reported the reordering as confusing.
- * The session panel therefore sorts by creation as well (docs/SESSIONLIST.md
- * §6.0). The reasoning here did not move — it turned out to apply more widely
+ * The session panel therefore sorts by creation as well. The reasoning here did not move — it turned out to apply more widely
  * than it claimed.
  *
  * Creation order is also what makes "session one is
@@ -191,7 +190,7 @@ export function renamedSessionName(
 // cannot both be obeyed in full — and the resolution taken here is:
 //
 //   - **the derived order becomes the DEFAULT.** A tab the user has never
-//     dragged sits where §3.2 puts it: sessions by creation time, oldest first,
+//     dragged sits where the rule below puts it: sessions by creation time, oldest first,
 //     then Files tabs in the order they were opened. Nothing changes for a user
 //     who never drags anything.
 //   - **a manual position wins once set**, for the tabs that have one.

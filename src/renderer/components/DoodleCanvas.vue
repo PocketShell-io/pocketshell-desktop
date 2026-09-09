@@ -32,7 +32,7 @@
  * A canvas context needs a resolved colour string and a resolved font string;
  * `var(--accent)` means nothing to it. Rather than hard-code the palette (which
  * the design gate in tests/unit/designGates.test.ts rightly forbids in a .vue
- * file, and which would silently drift from DESIGN.md), the pens name tokens
+ * file, and which would silently drift from ), the pens name tokens
  * and resolve them from computed style at paint time. Change the token, the pen
  * follows. Text does the same for `--font-ui`, `--fw-semibold` and `--lh-300`.
  *
@@ -102,7 +102,7 @@ const props = withDefaults(
      * PNG bytes. It exists so the sheet can stay OPEN across the round trip
      * when replacing an attachment, rather than closing optimistically and
      * having nowhere to put the drawing if the upload fails — the same rule
-     * the composer's own send path follows (§16.1, #745).
+     * the composer's own send path follows (#745).
      */
     saving?: boolean;
   }>(),
@@ -760,7 +760,7 @@ function onEditorInput(e: Event): void {
  * ENTER INSERTS A NEWLINE. It is the default, and it is left alone on purpose:
  * an annotation on a screenshot wraps and is routinely two or three lines, so
  * binding Enter to commit would make the multi-line case unreachable. Note this
- * is the OPPOSITE of the composer's own draft (§12 — bare Enter sends), and the
+ * is the OPPOSITE of the composer's own draft (bare Enter sends there), and the
  * divergence is fine because they are answering different questions: the draft
  * is a message you are finishing, this is a caption you are laying out.
  *
@@ -768,7 +768,7 @@ function onEditorInput(e: Event): void {
  *
  * The propagation half is the important half. This canvas is mounted inside an
  * OverlayPanel (Escape -> close the overlay) which is mounted inside the
- * composer's `.composer-root` (Escape -> the §12.2 ladder -> hide the whole
+ * composer's `.composer-root` (Escape -> the close ladder -> hide the whole
  * composer). Both listen for a bubbling Escape, so without `stopPropagation`
  * one keypress while typing a caption would throw away the caption, the
  * drawing, and the composer, in that order. `stopPropagation` here makes the
@@ -777,7 +777,7 @@ function onEditorInput(e: Event): void {
  * exists.
  *
  * COMMITS, rather than cancels, because this app's Escape never destroys work:
- * §12.2 says so of the draft in as many words, and Discard is the only control
+ * Escape never destroys work — the draft's own rule says so in as many words — and Discard is the only control
  * that throws anything away. The way to take back an annotation you did not
  * want is Ctrl+Z, which covers it — see `mutate`.
  *
@@ -903,7 +903,7 @@ function clear(): void {
  * the sheet's own footer, which also keeps the drawing visible behind the
  * question being asked about it.
  *
- * The rule is the app's usual one (§12.2): Escape never destroys work. So
+ * The rule is the app's usual one: Escape never destroys work. So
  * Escape ARMS the guard, and a second Escape dismisses the guard rather than
  * confirming it — the safe direction on the key people press without reading.
  * Discarding takes a deliberate click on a button that says Discard.

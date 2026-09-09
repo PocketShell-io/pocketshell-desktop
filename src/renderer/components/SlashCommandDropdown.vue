@@ -9,7 +9,7 @@
 //
 // The catalog is app-shipped and per-agent, so a command an engine does not
 // have is never offered. With no agent detected the parent never renders this.
-// See docs/COMPOSER.md §18.
+// 
 import type { AgentCommand } from '../../shared/agentCommands';
 
 defineProps<{

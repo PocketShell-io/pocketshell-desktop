@@ -268,7 +268,7 @@ const folderPath = computed(() => {
 
 const tabs = computed<WorkspaceTab[]>(() =>
   // Derived first, then the user's own arrangement on top. The order of the two
-  // steps IS the resolution of the two instructions: §3.2's automatic order is
+  // steps IS the resolution of the two instructions: the automatic order is
   // what a tab gets until the user moves it, and a manual position wins once
   // there is one.
   applyTabOrder(
@@ -481,7 +481,7 @@ function identityFor(name: string, like?: string): string {
 /**
  * The engine recorded host-side for the active session, narrowed to what the
  * composer can route to. An agent session gets the slash-command catalog, a
- * shell never does (docs/COMPOSER.md §18).
+ * shell never does.
  */
 const agentKind = computed(() => composerAgentKind(summary.value?.agentKind));
 
@@ -724,7 +724,7 @@ watch(
  * Nothing ever stopped it OPENING. The files store browses by absolute path
  * over SFTP and has no notion of a root — `revealPath` realpaths, stats and
  * `goTo`s anywhere on the host. What it did was open it in the FOLDER's own
- * Files tab, and because §3.5 gives every Files tab its own remembered
+ * Files tab, and because every Files tab its own remembered
  * directory, that tab then stayed re-rooted in `~/.codex/generated_images/…`
  * the next time it was opened. Which is the complaint underneath the request.
  *
@@ -1391,7 +1391,7 @@ onBeforeUnmount(clearLaunchTimer);
  *
  * The panel can create a session but has no terminal to type into, so
  * NewSessionDialog parks the agent choice and the navigation it was already
- * making delivers it (docs/SESSIONLIST.md §13a). This is the other end. The
+ * making delivers it. This is the other end. The
  * launch machinery below is NOT duplicated — the slot hands over a
  * `LaunchChoice` and `armLaunch` does exactly what it does for the `+`.
  *
@@ -1771,7 +1771,7 @@ function askStop(): void {
  * directly instead of one they right-clicked.
  *
  * It arms the same {@link stopping} ref, so the same named and confirmed
- * dialog opens (§14.1) and the kill itself stays in `confirmStop` — the `×`
+ * dialog opens and the kill itself stays in `confirmStop` — the `×`
  * is a handle on the destructive action, never the action. The `+` menu is
  * dismissed here for the reason `openTabMenu` dismisses it: the strip's
  * `click.stop` keeps the event from reaching the menu's own outside-click
@@ -1908,11 +1908,11 @@ const filesRef = ref<{ focus?: () => void } | null>(null);
 
 /**
  * Whether the terminal should withhold printable keystrokes instead of sending
- * them to the shell (docs/COMPOSER.md §26). The halves of the condition live
+ * them to the shell. The halves of the condition live
  * here rather than in either component: the SETTING is app-level, and "only
  * while the composer is closed" is a fact about the composer.
  *
- * `terminalOwnsTyping` is the short-draft hand-off (§12.2): the composer just
+ * `terminalOwnsTyping` is the short-draft hand-off: the composer just
  * put its draft at the shell prompt, so typing belongs to the pane until the
  * composer is summoned again — re-catching the next keystroke would fight the
  * text it just put there. Opening the panel clears the flag in the store, so
@@ -2058,7 +2058,7 @@ function onFocusTerminal(): void {
             <!-- Every tab wears an `×`, but the two kinds do not mean the same
                  thing by it, and neither one kills directly.
 
-                 A FILES tab's `×` closes the view and nothing else (§12), and
+                 A FILES tab's `×` closes the view and nothing else, and
                  every one of them has it — the first included. The old rule
                  spared the first tab because closing it would leave the
                  workspace no way to look at the folder, and that reason is
@@ -2068,11 +2068,11 @@ function onFocusTerminal(): void {
 
                  A SESSION tab's `×` is the context menu's Stop, one click
                  closer. It opens the SAME named, confirmed dialog the menu
-                 does rather than killing on the click, because §14's argument
+                 does rather than killing on the click, because the tab bar's argument
                  survives the affordance: the thing behind the tab is a live
                  process on another machine, and the control that can destroy
                  it must say so and ask. The tooltip says Stop, never Close —
-                 the one word this app reserves for the kill (§14.4) — and the
+                 the one word this app reserves for the kill — and the
                  click stops here, so a background tab's `×` does not also
                  move the user to it, the same rule the right-click obeys. -->
             <span
@@ -2343,7 +2343,7 @@ function onFocusTerminal(): void {
  *
  * The row has no vertical padding on purpose. The tabs are full-height children
  * of it, which is what lets the active tab's 2px underline sit exactly on the
- * row's own bottom border — the treatment DESIGN.md §5.4 specifies.
+ * row's own bottom border — the treatment the session bar uses.
  */
 .folder-bar {
   display: flex;
@@ -2356,7 +2356,7 @@ function onFocusTerminal(): void {
   background: var(--surface);
 }
 /* Underline tabs, not Android's filled segmented control: a solid cyan
-   segment at 13px is heavy for a mouse UI. See DESIGN.md §5.4.
+   segment at 13px is heavy for a mouse UI. 
    The bar scrolls rather than wrapping: a second row of tabs would change the
    terminal's height, which is a remote tmux reflow (see .tab-body). */
 .tabs {

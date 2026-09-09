@@ -12,7 +12,7 @@ import { resetWorkspaceState, ensureHelperUp, E2E_HOST_NAME, HOST_PORT, TEST_KEY
  * per tmux session in the folder — no Files tab until something asks for one —
  * while the panel stays put -> close the folder -> back to the host list. Port
  * forwarding and Provider usage are host header icons that open overlays, one
- * click each (§5.3e).
+ * click each.
  *
  * Terminal: switching between the fixture's two sessions repeatedly used to
  * stack an extra xterm `onData`/`onResize` handler per switch, so tmux's
@@ -133,7 +133,7 @@ test.describe('session-scoped navigation + terminal wiring', () => {
   });
 
   test('Port forwarding and Provider usage are header icons that open overlays', async () => {
-    // §5.3e: each overlay answers to its OWN button — one click, no menu. The
+    // Each overlay answers to its OWN button — one click, no menu. The
     // names are the buttons' tooltips, as they were for every trigger this
     // strip has had.
     await page.getByRole('button', { name: 'Port forwarding' }).click();
@@ -261,7 +261,7 @@ test.describe('session-scoped navigation + terminal wiring', () => {
     // The right-click, not Ctrl+Shift+V. That chord pasted here until a user
     // reported reaching for it and having the clipboard go to the shell instead
     // of the composer; both paste CHORDS belong to the composer now, and the
-    // mouse is the whole of the shell's paste (docs/SHORTCUTS.md §1.1).
+    // mouse is the whole of the shell's paste.
     await app.evaluate(({ clipboard }) => clipboard.writeText('paste_probe_42'));
     await page.locator('.terminal-area > .terminal-slot:visible > .terminal').first().click({ button: 'right' });
     await expect

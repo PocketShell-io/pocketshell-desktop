@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // AppIcon: the ONLY way an icon enters this UI. No character ever stands in
-// for a graphic affordance — see docs/DESIGN.md §5.8.
+// for a graphic affordance — 
 //
 // Contract (inherited verbatim from the composer's ComposerIcon, which this
 // component replaced — the two sets were specified to be pixel-identical so

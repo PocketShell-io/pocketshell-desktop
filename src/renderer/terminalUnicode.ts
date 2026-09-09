@@ -23,7 +23,7 @@
  * Kept out of `TerminalView.vue` so the decision and its regression test
  * (against the real `@xterm/headless`, `tests/unit/terminalUnicode.test.ts`)
  * have one home. `unicode` is proposed API — the pane already constructs with
- * `allowProposedApi` (DESIGN.md §3.4). Recorded in docs/DESIGN.md §3.5.
+ * `allowProposedApi`.
  */
 
 import { Unicode11Addon } from '@xterm/addon-unicode11';

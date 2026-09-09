@@ -23,7 +23,7 @@
  *
  * ## The user's manual arrangement is applied HERE, for the same reason
  *
- * A dragged folder row (docs/SESSIONLIST.md §14) changes the order the panel
+ * A dragged folder row changes the order the panel
  * draws, and `Ctrl+↑`/`Ctrl+↓` must walk the order the panel draws — the chord
  * exists to move between the rows the user can see, and a chord that skipped a
  * row or visited them in a second order would be a different feature wearing

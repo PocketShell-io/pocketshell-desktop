@@ -10,14 +10,14 @@
  * that for us — the renderer must do it itself.
  *
  * It matters because `appendAttachmentPaths` ALWAYS introduces newlines when
- * attachments are staged (docs/COMPOSER.md §5.1). Without the framing an agent
+ * attachments are staged. Without the framing an agent
  * REPL treats every line of the `Attached files:` block as a separate prompt —
  * a bug that actually shipped on the phone (found in daily use 2026-05-27).
  *
  * Programs that do not enable bracketed paste render the markers literally.
  * The Kotlin accepts that degradation explicitly (:9793-9795); so do we.
  *
- * See docs/COMPOSER.md §16.2.
+ * 
  */
 
 /** `ESC [ 2 0 0 ~` — "a paste starts here". */
@@ -140,7 +140,7 @@ export interface SendRouteInput {
   liveAgent: ComposerAgentKind | null;
   /** The engine we believe the pane runs, from history rather than detection. */
   presumedAgent: ComposerAgentKind | null;
-  /** Always true inside the composer — there is exactly one Send verb (§5.3). */
+  /** Always true inside the composer — there is exactly one Send verb. */
   withEnter: boolean;
 }
 

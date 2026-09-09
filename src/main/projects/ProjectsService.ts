@@ -557,7 +557,7 @@ export class ProjectsService {
         { folder: canonical, via: created.via },
       );
     }
-    // The durable tree registry (SESSIONLIST.md §11): record the new session's
+    // The durable tree registry: record the new session's
     // folder so a future refresh whose cwd probe has gone quiet can place it
     // from the RECORD instead of the name heuristic. Best-effort and
     // fire-and-forget — the session exists either way, and a slow or absent

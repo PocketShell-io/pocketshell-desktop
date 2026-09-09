@@ -24,7 +24,7 @@
 // the root, `sftp.list()` filtered to directories) rather than a folder
 // channel of its own — see src/renderer/stores/projects.ts.
 //
-// ## The second question: which agent (docs/SESSIONLIST.md §13)
+// ## The second question: which agent
 //
 // This dialog used to answer only "which folder" and stop, on the reasoning
 // that the folder's workspace asks "which agent" one click later. The user
@@ -36,7 +36,7 @@
 //
 // **Nothing is created until BOTH questions are answered.** That is the
 // property `LaunchSessionDialog` was built around (cancel costs nothing) and
-// §13's real objection to chaining, so the chain is ordered to preserve it
+// The old single-dialog objection to chaining, so the chain is ordered to preserve it
 // rather than to work around it: the agent step runs on the PREDICTED folder —
 // `targetFolder`, which every route can name before it exists — and the whole
 // commit path (mkdir, clone, `start`) runs on confirm. Cancelling at the agent
@@ -160,7 +160,7 @@ const repoFilter = ref('');
 // picking a folder out of that list — there is no competing content to crowd,
 // and between `sessions.new` (Ctrl+Shift+N) and the caret this filter starts
 // with, a search you cannot see would still be a search nobody uses.
-// docs/SHORTCUTS.md §1.8 carries the chord's reasoning.
+// The chord's reasoning lives with the reserved-chord table in shared/shortcuts.ts.
 /** Filter over the browsed directory. Blank means "no filter". */
 const folderQuery = ref('');
 /** The filter input — where this dialog points the keyboard on open. */
@@ -428,7 +428,7 @@ function showMoreFolders(): void {
  * the filter was empty: the user presses it, the dialog stays, they press it
  * again, the dialog stays. Conditional swallowing gives the two meanings a
  * natural order — undo the filter, then leave — which is the same ladder the
- * composer's Escape uses (docs/COMPOSER.md §12).
+ * composer's Escape uses.
  *
  * This is field-local and therefore NOT a registry chord: `shared/shortcuts.ts`
  * arbitrates keys that several surfaces could claim, and Escape inside a text
@@ -582,7 +582,7 @@ async function onRoot(path: string): Promise<void> {
 /**
  * Raise the agent step, having created NOTHING.
  *
- * The ordering is the whole point (docs/SESSIONLIST.md §13): every route can
+ * The ordering is the whole point: every route can
  * NAME its folder before that folder exists — `targetFolder` predicts the
  * mkdir's path and the clone's leaf — so the agent question can be asked on a
  * prediction and the mkdir, the clone and the session can all wait behind the
@@ -1235,7 +1235,7 @@ function onStartAnother(): void {
   font-size: var(--fs-200);
 }
 /* Wayfinding, not selection: accent stays reserved for the selected row
-   (DESIGN.md §5.2), same call as FilesView's breadcrumb. */
+  same call as FilesView's breadcrumb. */
 .crumb {
   background: transparent;
   border: none;

@@ -143,7 +143,7 @@ function activeTab(wrapper: VueWrapper): string {
  * Select a tab by its label, the way a user does.
  *
  * A click on the tab that is ALREADY active is deliberately skipped, because in
- * this app that gesture is not a selection — it opens the inline rename (§4.3),
+ * this app that gesture is not a selection — it opens the inline rename,
  * which swaps the button for a field and makes the chord handler stand down
  * (`renaming !== null`). Clicking it "just to be sure" would silently put every
  * test that did so into a state where nothing responds to the keyboard.

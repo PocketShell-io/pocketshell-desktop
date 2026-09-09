@@ -2,7 +2,7 @@
  * The prompt composer's box: where the card sits in the session pane and how
  * big it is. Pure arithmetic, no DOM — the component measures the pane and
  * feeds the numbers in, which is what makes every rule here unit-testable
- * (docs/COMPOSER.md §21.1).
+ *.
  *
  * COORDINATE SPACE. Everything is measured against `.composer-dock`, which is
  * the session body inset by `--composer-inset` on all four sides. The card can
@@ -40,7 +40,7 @@ export interface PaneBox {
   height: number;
   /**
    * A box in the pane's BOTTOM-RIGHT corner the card may not cover: the fixed
-   * toggle (docs/COMPOSER.md §21.4). Measured from the live element rather
+   * toggle. Measured from the live element rather
    * than declared here, so the toggle's size stays a CSS decision and this is
    * simply told the answer.
    *
@@ -88,7 +88,7 @@ function clamp(value: number, lo: number, hi: number): number {
  * The 80% cap, but never below the floor — a card shorter than its own control
  * row is not a smaller composer, it is a broken one. On a pane shorter than the
  * floor the PANE wins anyway: a card taller than the space it lives in would
- * push Send off the bottom, which is the one thing §22's durable lesson says
+ * push Send off the bottom, which is the one durable lesson of the not-ported list says
  * must never happen.
  */
 export function maxHeightIn(pane: PaneBox): number {
@@ -217,7 +217,7 @@ export function resizeGeometry(
 /**
  * Pull a nearly-flush card the rest of the way to the edge it is near.
  *
- * Applied on mouse-UP only, never during the drag: DESIGN.md §5.9 requires
+ * Applied on mouse-UP only, never during the drag:  requires
  * panel drag geometry to follow the pointer 1:1, and a card that jumps under a
  * moving cursor reads as a bug rather than as help. Each axis snaps
  * independently, so the corners come out of the two edge rules rather than

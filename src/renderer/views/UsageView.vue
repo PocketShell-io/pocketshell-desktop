@@ -36,7 +36,7 @@ const props = defineProps<{
    * True when hosted inside OverlayPanel, which supplies the title itself —
    * and, since the polish pass, the refresh control too (it belongs beside the
    * close button, not floating at the top of the body). Without this the name
-   * renders twice; see docs/DESIGN.md §5.5.
+   * renders twice.
    */
   embedded?: boolean;
 }>();

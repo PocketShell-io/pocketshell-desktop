@@ -20,7 +20,7 @@
 //     was already paying for its --topbar-h;
 //   - PORTS / USAGE / SETTINGS were a panel-FOOT row, and now sit as controls
 //     in that same header — the user asked for them
-//     at the top, and since §5.3e each of Ports and Usage is its OWN icon
+//     at the top, and each of Ports and Usage is its OWN icon
 //     there rather than a row of an overflow menu. The overlays did not move;
 //     only their triggers did;
 //   - DISCONNECT moved to the host picker's row for the connected host —
@@ -180,7 +180,7 @@ const panelCollapsed = ref(false);
 /**
  * Seven controls in the header strip pin this floor: 7×28px squares + 6×4px
  * gaps = 220, plus the header's asymmetric padding of 12 — the arithmetic is
- * written out in SessionTree's template. It was 200 until §5.3e expanded the
+ * written out in SessionTree's template. It was 200 until the seven-control header forced
  * overflow menu into its two icons; dragging below 232 would clip the strip.
  */
 const MIN_PANEL_WIDTH = 232;
@@ -563,7 +563,7 @@ async function onRefreshUsage(): Promise<void> {
         </button>
         <!-- The rail exists so host controls are not stranded when the panel is
              hidden (ca79ae2). The header holds Ports and Usage as their own
-             icon buttons since §5.3e, so the rail carries the same pair
+             icon buttons, so the rail carries the same pair
              (components/HostPanelButtons.vue) plus the gear — mirroring the
              header's arrangement rather than inventing its own. Not fewer
              icons than the header, and no menu row between them and their

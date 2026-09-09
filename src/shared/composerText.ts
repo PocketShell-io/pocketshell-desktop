@@ -6,7 +6,7 @@
  * composer with unit-test-grade contracts, so they live outside the component
  * and outside the store and are tested directly (tests/unit/composerText.test.ts).
  *
- * See docs/COMPOSER.md §14.
+ * 
  */
 
 /**
@@ -83,7 +83,7 @@ export function appendSeededPrompt(draft: string, prompt: string): string {
   return draft + '\n' + prompt;
 }
 
-/** User-facing strings, copied verbatim from the Android client (§15). */
+/** User-facing strings, copied verbatim from the Android client. */
 export const COMPOSER_STRINGS = {
   placeholder: 'Compose prompt…',
   notSent: 'Not sent. Reconnect, then send again or discard the draft.',
@@ -97,7 +97,7 @@ export const COMPOSER_STRINGS = {
 
 /**
  * The fixed open/close toggle, which is ONE control in two states rather than
- * two controls in two places (docs/COMPOSER.md §21.4).
+ * two controls in two places.
  *
  * The chevron points the way the panel will travel — down to put it away, up
  * to bring it back — which is the whole of the affordance: the user aims at
@@ -141,7 +141,7 @@ export function railToggle(
 /**
  * Is this keystroke the user starting to TYPE, or driving the terminal?
  *
- * Used by `typingOpensComposer` (docs/COMPOSER.md §26): with that setting on, a
+ * Used by `typingOpensComposer`: with that setting on, a
  * printable key pressed at a CLOSED composer opens it and lands in the draft
  * instead of reaching the shell. Everything this returns false for still goes
  * straight through, and the list of those is the load-bearing part — a terminal
@@ -193,7 +193,7 @@ export function insertAtCaret(text: string, caret: number, insert: string): [str
 
 /**
  * A draft of FEWER than this many characters is handed to the terminal by a
- * dismissal (docs/COMPOSER.md §12.2). The limit is "less than five", as the
+ * dismissal. The limit is "less than five", as the
  * user asked for it: two or three characters read as keystrokes, five read as
  * a prompt.
  */
@@ -210,7 +210,7 @@ export interface FlushCandidate {
 
 /**
  * Whether dismissing the composer should hand its draft to the terminal
- * (docs/COMPOSER.md §12.2).
+ *.
  *
  * The user's rule, in as many words: start typing, press Esc, and what was
  * typed should go to the terminal to continue typing there — but only while

@@ -6,7 +6,7 @@ import { nextTick } from 'vue';
 
 /**
  * Click outside an EMPTY composer and it gets out of the way
- * (docs/COMPOSER.md §12.2).
+ *.
  *
  * Every test here is really about the guard rather than the dismissal: the
  * dismissal is one line, and all the risk is in the cases that must NOT

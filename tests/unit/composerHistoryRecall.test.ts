@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { nextTick } from 'vue';
 
 /**
- * The chord half of sent-prompt history (docs/COMPOSER.md §28): Ctrl+↑ walks
+ * The chord half of sent-prompt history: Ctrl+↑ walks
  * back through what THIS session delivered, Ctrl+↓ walks forward, and one ↓
  * past the newest hands back the draft the walk started from.
  *

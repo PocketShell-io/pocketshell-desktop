@@ -1,5 +1,5 @@
 /**
- * The session panel's MANUAL folder order (docs/SESSIONLIST.md §14).
+ * The session panel's MANUAL folder order.
  *
  * > "let's not rearrange workspaces/sessions in here because it's confusing.
  * > let's use wheveer order we had when creating. but I can also pull them up
@@ -17,14 +17,14 @@
  * The workspace's tab bar already solved exactly this problem
  *, and the shape is reused rather than reinvented:
  * `applyFolderOrder` is `applyTabOrder`, `canDropFolderAt` is `canDropTabAt`,
- * `reorderFolders` is `reorderTabs`. Everything §15 argues for holds here for
+ * `reorderFolders` is `reorderTabs`. Everything the drag rules argue for holds here for
  * the same reasons, so the arguments are cited rather than restated — except
  * the two places where the panel genuinely differs, which are written out in
  * full below (the group rule, and what happens to a key that leaves the list).
  *
  * ## The stored value is a RANKING, not a list of folders
  *
- * §15.2 is the load-bearing part and it applies here with MORE force, not less.
+ * The ranking-not-a-list rule is the load-bearing part, and it applies here with MORE force, not less.
  * A tab set changes when a session is created or killed; the panel's folder set
  * changes for those reasons AND because the panel re-reads the host every five
  * seconds (SessionTree's `POLL_MS`), on a list that spans every root on the
@@ -120,10 +120,10 @@ export function normaliseFolderOrder(raw: unknown): FolderOrder | undefined {
  *
  * ## The ROOTS themselves are never reordered, and a row never leaves its root
  *
- * This is the panel's version of §15.1's group rule, and it is the one place
+ * This is the panel's version of the tab bar's group rule, and it is the one place
  * the two features reach a different answer for a different reason. The tab
  * bar's groups (sessions / files) are a presentational grouping, so keeping
- * them separate is a judgement call that §15.1 admits is "cheap to relax". A
+ * them separate is a judgement call the tab bar's version of the rule admits is "cheap to relax". A
  * root is not presentational: it is a real directory on the host, or a root the
  * user registered in Settings, and a folder row sits under it because its
  * working directory is genuinely inside it (`bestRootForPath` /`rootForPath`).
@@ -160,7 +160,7 @@ export function applyFolderOrder(
  * Exists so the panel can say NO while the drag is still in the air — no drop
  * indicator, no `preventDefault`, so the pointer keeps its `no-drop` cursor —
  * rather than accepting the drop and snapping the row back, which reads as a
- * bug rather than as a rule (§15.1's argument, unchanged).
+ * bug rather than as a rule (the tab bar's argument, unchanged).
  *
  * [toIndex] is a GAP index in `0..root.directories.length`: `0` is "above the
  * first row", `length` is "below the last".
@@ -188,7 +188,7 @@ export function canDropFolderAt(
  *
  * ## Why the whole panel and not the one root
  *
- * §15's reason first: a total ranking is what makes `applyFolderOrder`'s
+ * The reason: a total ranking is what makes `applyFolderOrder`'s
  * "unranked sorts last" mean "folders I have never touched go at the bottom".
  * If only the moved row were ranked, every other row would be unranked and the
  * one drag would have moved everything.
@@ -209,11 +209,11 @@ export function canDropFolderAt(
  * have been ranked after every currently-visible row anyway. Retaining stale
  * keys would buy the same position at the price of a list that only ever grows.
  * (The tab bar reaches the same place from the other side, by pruning against
- * the live bar — `pruneTabIds`, §15.2.)
+ * the live bar — `pruneTabIds`.)
  *
  * ## The index is clamped, not rejected
  *
- * §15's reason exactly: the interaction being performed is "put this as far up
+ * The tab bar's reason, exactly: the interaction being performed is "put this as far up
  * as it goes", and refusing an overshoot outright would make the first and last
  * positions reachable only by a pixel-accurate drop. {@link canDropFolderAt} is
  * what stops an overshoot being invited; this is what makes it harmless.

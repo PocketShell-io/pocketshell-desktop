@@ -243,7 +243,7 @@ describe('CodeEditor — large files', () => {
  * What could not follow a theme switch was CodeMirror's own `dark` boolean —
  * `{ dark: true }` was baked into the theme extension at definition time — so
  * its base themes kept picking dark-flavoured panel chrome, placeholder tint
- * and selection fallbacks under a light theme (docs/DESIGN.md §8.5).
+ * and selection fallbacks under a light theme.
  *
  * The fix is a Compartment reconfigure, and the RISK in that fix is the whole
  * subject of the cases below. A theme switch must not cost the user anything:

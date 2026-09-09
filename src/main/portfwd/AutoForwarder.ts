@@ -16,7 +16,7 @@ export type { ForwardState };
 /**
  * Auto-forward engine: periodically scans the remote host for listening TCP
  * ports and mirrors each one to localhost. Ported from the behaviour of
- * `ssh-auto-forward` (see docs/PORTFWD.md), onto the single authenticated
+ * `ssh-auto-forward`, onto the single authenticated
  * connection this app already owns.
  *
  * Local port resolution, in order (`forwarder.py:879-898`):

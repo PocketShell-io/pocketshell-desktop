@@ -232,8 +232,7 @@ export class PocketshellClient {
   /**
    * The recorded folder for session names, asked once per connection.
    *
-   * This is the READ half of the durable registry (SESSIONLIST.md §11's
-   * "recorded folder for a session whose cwd probe has gone quiet"): a hit
+   * This is the READ half of the durable registry ("recorded folder for a session whose cwd probe has gone quiet"): a hit
    * here beats every guess downstream, because the phone or a previous
    * session of this app RECORDED it rather than inferred it. Fails closed —
    * null on any failure, and the name-and-`test -d` heuristic runs exactly as
@@ -540,7 +539,7 @@ export class PocketshellClient {
       this.sessionDirs.set(connectionId, known);
     }
 
-    // The durable registry first (SESSIONLIST.md §11): a folder the phone or
+    // The durable registry first: a folder the phone or
     // a previous create RECORDED is not a guess at all, so a registry hit is
     // adopted verbatim and spares both the host and the name heuristic its
     // probing. Cached per connection and fails closed — no registry, no

@@ -33,7 +33,7 @@ export const OTHER_LABEL = 'other';
  *   - anything matching no root goes to `other`, pinned last (:276);
  *   - a registered root with no sessions still renders (:179-241).
  *
- * Three deliberate divergences, all recorded in docs/SESSIONLIST.md §12:
+ * Three deliberate divergences:
  *   - the phone's no-roots fallback dumps EVERYTHING into `Other folders`
  *     (:253-274). We keep deriving roots from `$HOME` instead, so a user who
  *     has configured nothing sees exactly what they saw before.
@@ -42,7 +42,7 @@ export const OTHER_LABEL = 'other';
  *     resolved key, so they cannot.
  *   - the phone collapses a session's directory to the FIRST segment under its
  *     root (`projectPathUnderRoot`, :538). We keep the full directory the
- *     session actually runs in; see §12 for the argument, which is close.
+ *     session actually runs in; the argument for keeping it is close.
  * ------------------------------------------------------------------------- */
 
 /**

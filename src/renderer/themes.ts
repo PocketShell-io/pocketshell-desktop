@@ -21,8 +21,7 @@
  *   1. token parity: a record must define exactly the tokens the dark theme
  *      defines (which are welded to App.vue's `:root` by the same test), so a
  *      new theme cannot silently leave a surface unthemed;
- *   2. contrast: the text roles must meet the WCAG floors of docs/DESIGN.md
- *      §8.2 — the audit is executed, not remembered.
+ *   2. contrast: the text roles must meet the WCAG floors — the audit is executed, not remembered.
  *
  * A record that fails either gate fails `npm run test:unit`; there is no way
  * to ship a half-audited palette by accident.
@@ -32,7 +31,7 @@
  * ---------------------------------------------------------------------------
  * Terminal ANSI sets are TRANSCRIBED from their published sources, verbatim,
  * cited on each record — the same discipline the dark theme's Campbell block
- * has always followed (docs/DESIGN.md §3: read out of Windows Terminal's own
+ * has always followed (: read out of Windows Terminal's own
  * defaults.json, not reconstructed). Transcription is verifiable; invention is
  * not. Render-time legibility of a scheme's own weak pairs is xterm's
  * `minimumContrastRatio: 3`, exactly as it is for Campbell's dim blue.
@@ -75,8 +74,8 @@ export interface ThemeSpec {
 }
 
 /* ---------------------------------------------------------------------------
- * Dark — what ships, untouched. GitHub-dark-derived UI (docs/DESIGN.md §4),
- * Campbell terminal (§3, transcribed from Windows Terminal 1.24 defaults.json).
+ * Dark — what ships, untouched. GitHub-dark-derived UI,
+ * Campbell terminal (transcribed from Windows Terminal 1.24 defaults.json).
  * These values are duplicated from App.vue's `:root` block ON PURPOSE: `:root`
  * stays readable as "what ships" and works with no JavaScript at all, and the
  * parity test asserts this record and that block never drift.
@@ -140,7 +139,7 @@ const DARK: ThemeSpec = {
     '--code-bracket-match': 'rgba(34, 211, 238, 0.25)',
   },
   // Windows Terminal's built-in "Campbell", verbatim — the same block that
-  // lived inline in TerminalView.vue since docs/DESIGN.md §3.4, moved here so
+  // lived inline in TerminalView.vue since , moved here so
   // a theme switch is a lookup rather than an edit. Provenance: WT 1.24
   // defaults.json (the user's settings.json has "schemes": [] and no
   // colorScheme key, so Campbell is what they actually see).

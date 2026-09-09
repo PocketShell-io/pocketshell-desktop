@@ -15,7 +15,7 @@
  * has no entries — `groupSessionsIntoFolders` — where folder groups are the
  * top level. The sort rules below are the same functions that path uses.
  *
- * ## Three projections over one set of rules (docs/SESSIONLIST.md)
+ * ## Three projections over one set of rules
  *
  * The panel renders {@link groupSessionsIntoRoots}: a tree whose top level is
  * a ROOT plus an `other` catch-all, and whose second level is the DIRECTORY
@@ -33,20 +33,20 @@
  * that it is scoped to a root and keyed home-relative.
  *
  * Every directory is a node with its sessions as children, whatever it holds.
- * §1 of the spec measured a 1:1 folder:session distribution (11 folders, 11
+ * The original measurement: a 1:1 folder:session distribution (11 folders, 11
  * sessions) and two revisions concluded from it that a directory holding one
  * session should collapse into that session's row. The measurement was real;
  * the conclusion was wrong in practice, because at that distribution the
  * collapse fires on nearly every node and what renders is a flat list under
  * one header — not the `git -> folder -> session` tree the user asked for
- * three times (docs/SESSIONLIST.md, revision 3). The projection below is
+ * three times. The projection below is
  * therefore uniform, and the renderer no longer branches on `rows.length`.
  *
  * `groupSessionsByFolder` stays exported as the phone-parity anchor for the
  * leaf level, and `canonicalisePath` / `defaultLabelForPath` remain the shared
  * label rules the folder-first creation flow also speaks.
  *
- * ## The panel's order is the HOST's order (docs/SESSIONLIST.md §6)
+ * ## The panel's order is the HOST's order
  *
  * The panel no longer sorts anything. The listing that reaches the sessions
  * store is already in the order the host was asked for — `a` sorts it
@@ -282,7 +282,7 @@ interface PathLabelled {
  * Generic over the item because both levels that carry a path-derived label
  * need it: the flat list's rows, and the tree's directory nodes. `pathOf`
  * exists because those two spell the path field differently and because the
- * directory node's path is the home-relative KEY (§8), which is the spelling
+ * directory node's path is the home-relative KEY, which is the spelling
  * that has already had tmux's two forms of one directory folded into it.
  */
 export function disambiguateLabels<T extends PathLabelled>(items: T[], pathOf: (item: T) => string): void {

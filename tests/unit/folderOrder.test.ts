@@ -11,7 +11,7 @@ import { groupSessionsIntoRoots, type SessionRootFolder } from '../../src/render
 import type { SessionSummary } from '../../src/shared/types';
 
 /**
- * The pure half of docs/SESSIONLIST.md §14 — the panel's manual folder order.
+ * The pure half of  — the panel's manual folder order.
  *
  * Modelled on workspaceTabs.test.ts, which pins the same rules one level down
  *: the ranking, the group clamp, and the shape of what

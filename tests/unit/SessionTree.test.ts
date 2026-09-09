@@ -353,7 +353,7 @@ describe('SessionTree — the header strip', () => {
   it('reads back, +, ports, usage, refresh, settings, hide', async () => {
     // The user's own order for the last four ("here have ... then refresh then
     // settings then hide"), with the `+` leading the actions group because it
-    // is the panel's primary action and the rest is chrome. §5.3e expanded
+    // is the panel's primary action and the rest is chrome. The header expansion made
     // their `⋯` into its two overlays at the same user's ask, so Ports and
     // Usage are now two buttons between `+` and Refresh — the words in the
     // test are their tooltips/accessible names, as they were for the kebab.
@@ -376,7 +376,7 @@ describe('SessionTree — the header strip', () => {
   });
 
   it('opens each overlay straight from its icon — no intermediate menu', async () => {
-    // §5.3e's whole point: one click, not open-the-kebab-then-pick. Each
+    // The whole point: one click, not open-the-kebab-then-pick. Each
     // button announces itself, so a regression back to an overflow trigger
     // fails here before it fails anywhere else.
     const wrapper = await open([]);
@@ -618,7 +618,7 @@ describe('SessionTree — stopping every session in a folder', () => {
   }
 
   // The rows arrive in the order the assertions expect: the panel renders
-  // the host's order (docs/SESSIONLIST.md §6), and the fixture lists its
+  // the host's order, and the fixture lists its
   // sessions the way the host would print them — `dataqna` first, its second
   // session after it, `other` last.
   const FOLDER = [
@@ -808,7 +808,7 @@ describe('SessionTree — stopping every session in a folder', () => {
  * own tests pin that — so a row that outlives its last session is not a
  * projection bug. It is the session list never being re-read: before this, the
  * only `setInterval` in the renderer was the cosmetic clock behind the relative
- * timestamps, while docs/SESSIONLIST.md argues a dozen
+ * timestamps, while the old spec argued a dozen
  * decisions against "the refresh timer" that did not exist. A session killed
  * from the phone, from a terminal, or by an agent exiting stayed on screen
  * until the user pressed Refresh.
@@ -1011,7 +1011,7 @@ describe('SessionTree — the root header row', () => {
   });
 
   it('renders the whole label in one span and hands the full name to the tooltip', async () => {
-    // SESSIONLIST §5 Revision 7: the head/tail span pair is gone — a long name
+    // The head/tail span pair is gone — a long name
     // now degrades by CSS to one end ellipsis, and the row `title` is where
     // the full name is read. Scoped CSS does not apply under jsdom, so what is
     // pinned here is the DOM contract the stylesheet works on: a single
@@ -1030,7 +1030,7 @@ describe('SessionTree — the root header row', () => {
 });
 
 /**
- * Dragging a folder row up and down (docs/SESSIONLIST.md §14).
+ * Dragging a folder row up and down.
  *
  * > "but I can also pull them up and down to rearraange"
  *

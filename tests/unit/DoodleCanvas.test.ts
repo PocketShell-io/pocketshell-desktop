@@ -428,7 +428,7 @@ describe('the text tool', () => {
   /**
    * The collision this tool could most easily cause. The canvas is inside an
    * OverlayPanel (Escape closes the overlay) inside `.composer-root` (Escape
-   * runs the §12.2 ladder and hides the composer), and both listen for a
+   * runs the close ladder and hides the composer), and both listen for a
    * bubbling Escape. One keypress while typing a caption must not throw away
    * the caption, the drawing AND the composer.
    */

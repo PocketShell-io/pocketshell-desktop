@@ -204,7 +204,7 @@ const registryKey = computed(() =>
 /**
  * Terminal look & feel, transcribed from the user's Windows Terminal config.
  * Kept as a standalone object so the font/theme can be swapped wholesale
- * without touching the wiring below. See docs/DESIGN.md §3.
+ * without touching the wiring below. 
  *
  * Source: %LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\
  *         LocalState\settings.json  (font face/size, bellStyle)
@@ -1190,7 +1190,7 @@ onMounted(async () => {
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
   // Emoji measure two columns — in the buffer as well as in the font — before
-  // the first output byte is parsed (terminalUnicode.ts, DESIGN.md §3.5).
+  // the first output byte is parsed (terminalUnicode.ts).
   applyUnicode11Widths(term);
   // An explicit activation handler, not the addon default.
   //

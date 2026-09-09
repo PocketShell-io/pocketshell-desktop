@@ -315,8 +315,7 @@ describe('paste chord — delivery', () => {
  * listener on the terminal element runs, and cancels the `mousedown` half of
  * the gesture too.
  *
- * jsdom has no middle-click default action, so — as with the chords in §4 of
- * SHORTCUTS.md — what is asserted is the thing that makes the paste
+ * jsdom has no middle-click default action, so — as with the doubled-paste chords, what is asserted is the thing that makes the paste
  * impossible: `defaultPrevented`, and the event never reaching the terminal
  * element at all. Mouse reporting rides `mousedown`/`mouseup`, which these
  * tests also pin as untouched, so a program inside tmux keeps its middle

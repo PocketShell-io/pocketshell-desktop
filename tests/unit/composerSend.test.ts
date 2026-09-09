@@ -19,7 +19,7 @@ import { appendAttachmentPaths } from '../../src/shared/composerText';
  * control-mode client to frame multi-line input for us the way there is on
  * Android. Because `appendAttachmentPaths` always introduces newlines when
  * attachments are staged, an unframed attachment send makes an agent REPL treat
- * every `- <path>` line as its own prompt. See docs/COMPOSER.md §16.2.
+ * every `- <path>` line as its own prompt. 
  */
 
 /** Records every write in order, exactly as the PTY would receive them. */

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 /**
- * The two definition-of-done greps from docs/DESIGN.md §6, executed rather
+ * The two definition-of-done greps from , executed rather
  * than remembered.
  *
  * They are the kind of rule that decays the moment it lives only in a doc: the
@@ -48,7 +48,7 @@ function codeLines(source: string): { line: number; text: string }[] {
   return stripped.split('\n').map((text, i) => ({ line: i + 1, text }));
 }
 
-describe('design gates (docs/DESIGN.md §6)', () => {
+describe('design gates', () => {
   /**
    * Gate 1 — colour tokens. Raw six-digit hex belongs to the token block in
    * App.vue and to TerminalView's Campbell theme, which is a terminal palette

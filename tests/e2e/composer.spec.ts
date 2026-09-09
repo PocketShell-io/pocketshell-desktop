@@ -28,9 +28,9 @@ import {
  *    (the whole reason the rail exists — a preserved "Not sent" draft must never
  *    become invisible);
  *  - drafts are per session, and coming back restores yours (the desktop's
- *    deliberate improvement over the phone's discard-on-switch, COMPOSER.md §12.4);
+ *    deliberate improvement over the phone's discard-on-switch);
  *  - a multi-line prompt reaches the pane as ONE submission carrying every line,
- *    which is the bracketed-paste framing working against a real PTY (§16.2);
+ *    which is the bracketed-paste framing working against a real PTY;
  *  - Escape never destroys the draft.
  *
  * SAFETY: same guarded ~/.ssh/config seeding as the other UI specs — only runs
@@ -319,7 +319,7 @@ test.describe('prompt composer panel', () => {
     // An earlier pass had only maximize here, to keep ONE closer in ONE place.
     // The user then asked for an X on the card: dismissing the surface you are
     // looking at and re-opening from a pinned icon turn out to be different
-    // acts, and only the second needs a fixed address (COMPOSER.md §21.4).
+    // acts, and only the second needs a fixed address.
     const actions = page.locator('.composer .panel-action');
     await expect(actions).toHaveCount(2);
     await expect(actions.nth(1)).toHaveAttribute('aria-label', /close/i);
@@ -619,8 +619,7 @@ test.describe('prompt composer panel', () => {
     await expect(thumb).toBeVisible();
     expect(await thumb.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
 
-    // The draft is untouched: attaching never mutates the text (COMPOSER.md
-    // §5.1) — the remote path is folded in at send time only.
+    // The draft is untouched: attaching never mutates the text — the remote path is folded in at send time only.
     await expect(page.locator('.composer .draft')).toHaveValue('');
 
     // Leave nothing staged for the next run.

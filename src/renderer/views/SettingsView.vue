@@ -1318,7 +1318,7 @@ kbd {
   color: var(--fg);
 }
 /* --fg-secondary, not --fg-muted: this is real information at 12px, and
-   --fg-muted is 4.12:1 (docs/DESIGN.md §4.2 restricts it to >=15px). */
+   --fg-muted is 4.12:1; restrict it to >=15px. */
 .row-hint {
   margin: 0;
   max-width: 46ch;

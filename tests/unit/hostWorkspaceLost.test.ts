@@ -67,7 +67,7 @@ vi.mock('../../src/renderer/ipc', () => ({
     app: { onResumed: vi.fn() },
     // The Ports button's auto-forward indicator asks this on mount; the
     // default here is the ordinary OFF, and the indicator has its own file.
-    // The count pill (§16) has the view also read `list` and `onStates`.
+    // The count pill has the view also read `list` and `onStates`.
     forwards: {
       isAutoEnabled: vi.fn().mockResolvedValue(false),
       list: vi.fn().mockResolvedValue([]),

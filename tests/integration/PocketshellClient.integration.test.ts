@@ -128,7 +128,7 @@ describeDocker('PocketshellClient integration', () => {
     expect(values[key]).toBe('second');
   });
 
-  // The durable tree registry (SESSIONLIST.md §11) against the REAL helper:
+  // The durable tree registry against the REAL helper:
   // upsert is wholesale, so the merge contract ("never lose a node the phone
   // recorded") is what these assertions protect.
   it('tree get/upsert/reconcile round-trips and merges', async () => {

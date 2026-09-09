@@ -2,8 +2,7 @@
  * Generates the application icon from geometry, not from a checked-in bitmap.
  *
  * The icon is a terminal prompt — a `>` chevron and a cursor bar — in
- * `--accent` on `--surface`, the same two tokens the app itself uses
- * (docs/DESIGN.md:444,461). It is drawn here rather than exported from a
+ * `--accent` on `--surface`, the same two tokens the app itself uses. It is drawn here rather than exported from a
  * design tool so the token values stay the single source of truth: if
  * `--accent` moves, this file moves with it and the icon is regenerated,
  * instead of drifting into a colour the design gates would reject.
@@ -24,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'build');
 
-// ---- Tokens (docs/DESIGN.md, the :root block) ------------------------------
+// ---- Tokens ------------------------------
 const SURFACE = [0x16, 0x1b, 0x22]; // --surface  #161B22
 const BORDER = [0x2d, 0x33, 0x3b]; // --border   #2D333B
 const ACCENT = [0x22, 0xd3, 0xee]; // --accent   #22D3EE

@@ -12,7 +12,7 @@
  *
  * The swap has to happen IN PLACE, and that is the whole reason for the fuss.
  * The paths are folded into the prompt in tile order at send time
- * (docs/COMPOSER.md §5.1), so a draft that says "the second screenshot" is a
+ *, so a draft that says "the second screenshot" is a
  * statement about this array's ordering. Removing the original and appending
  * the annotated version — the only thing the existing store actions can
  * express between them — silently moves the image to the end and makes that

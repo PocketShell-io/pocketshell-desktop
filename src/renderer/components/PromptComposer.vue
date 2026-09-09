@@ -31,26 +31,26 @@
 // The draft, its attachments and the dragged height live in stores/composer.ts
 // keyed by session, so switching sessions swaps records rather than destroying
 // a draft; open-vs-closed does NOT, because that is a preference about the tool
-// rather than a fact about a session (§12).
+// rather than a fact about a session.
 //
-// Three deliberate divergences from the Android original (docs/COMPOSER.md):
+// Three deliberate divergences from the Android original:
 //
-//  1. §12 — a third `hidden` mode that leaves the toggle behind, instead of
+//  1. A third `hidden` mode that leaves the toggle behind, instead of
 //     the phone's "the sheet is simply gone". A preserved "Not sent" draft must
 //     stay discoverable; the toggle wears a pip when one is waiting.
-//  2. §12.3 — a SUCCESSFUL send does NOT hide the composer. The phone dismisses
+//  2. A successful send does NOT hide the composer. The phone dismisses
 //     its sheet on delivery because a modal sheet occludes the terminal on a
 //     phone screen; here the composer is where the user works, so it stays open
 //     and focused, ready for the next prompt.
-//  3. §16.2 — the payload is bracketed-paste framed by this renderer. Android
+//  3. The payload is bracketed-paste framed by this renderer. Android
 //     gets that for free from `tmux -CC` control mode; we write into a plain PTY
 //     running `tmux attach`, and without the framing every line of an
 //     `Attached files:` block becomes a separate agent prompt.
 //
 // What it does NOT do, and must not grow: it never mutates the draft when you
-// attach something (the paths are folded in at send time only, §5.1), it never
+// attach something (the paths are folded in at send time only), it never
 // clears the draft optimistically on send (#745), and Escape never destroys
-// work — only Discard does (§4.3).
+// work — only Discard does.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api } from '../ipc';
 import { useComposerStore, type ComposerSessionState } from '../stores/composer';
@@ -115,9 +115,9 @@ const props = defineProps<{
    */
   backend?: 'tmux' | 'aplexer';
   workspace?: string | null;
-  /** The engine running in this pane. Null until agent detection exists (§25.5). */
+  /** The engine running in this pane. Null until agent detection exists. */
   agentKind?: ComposerAgentKind | null;
-  /** False while the SSH connection is down — advisory only, never a block (§9). */
+  /** False while the SSH connection is down — advisory only, never a block. */
   connected?: boolean;
 }>();
 
@@ -179,7 +179,7 @@ const hasUnsent = computed(() => state.value.draft.length > 0 || attachments.val
 
 /**
  * Nothing in here worth keeping — the gate on click-outside dismissal
- * (§12.2). Deliberately stricter than `hasUnsent`, because the question is not
+ *. Deliberately stricter than `hasUnsent`, because the question is not
  * "is there a pip to draw" but "may this vanish without telling anyone", and
  * the answer has to be no for anything the user would go looking for later.
  *
@@ -286,7 +286,7 @@ watch(
   },
 );
 
-// Advisory "connection lost" row (§9): it never gates Send — a composed prompt
+// Advisory "connection lost" row: it never gates Send — a composed prompt
 // is worth reconnecting for, which is why send is connect-on-action.
 watch(
   () => props.connected,
@@ -352,7 +352,7 @@ async function onAttachClick(): Promise<void> {
 }
 
 /**
- * Paste-to-attach (§23.4): a screenshot on the clipboard becomes a tile, plain
+ * Paste-to-attach: a screenshot on the clipboard becomes a tile, plain
  * text pastes normally. This is the single biggest desktop ergonomics win over
  * the phone, which can only attach through the system file picker.
  */
@@ -855,7 +855,7 @@ async function onDoodleCommit(result: {
  * ## Why the swap has to be in place
  *
  * The remote paths are folded into the prompt in TILE ORDER at send time
- * (§5.1). A draft that says "compare the first screenshot with the second" is
+ *. A draft that says "compare the first screenshot with the second" is
  * a statement about this list's ordering, so annotating the first must not
  * move it to the end — which is exactly what remove-then-reattach would do,
  * and is why this does not simply call `removeAttachment` and `stage`.
@@ -961,7 +961,7 @@ async function onSend(): Promise<void> {
   const route = sendRoute({
     liveAgent: props.agentKind ?? null,
     presumedAgent: null,
-    // Inside the composer there is exactly one Send verb and it submits (§5.3).
+    // Inside the composer there is exactly one Send verb and it submits.
     withEnter: true,
   });
   // Codex's TUI needs a longer gap before Enter (TmuxSessionViewModel.kt:12135).
@@ -1001,7 +1001,7 @@ function onDiscard(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Visibility state machine + keyboard (docs/COMPOSER.md §12, §20)
+// Visibility state machine + keyboard
 // ---------------------------------------------------------------------------
 
 function openComposer(): void {
@@ -1015,7 +1015,7 @@ function openComposer(): void {
  * The focus half is not a nicety: the terminal has to be usable the instant the
  * card is gone, and the toggle keeps focus otherwise.
  *
- * A SHORT draft goes with it (§12.2): a dismissal hands anything under five
+ * A SHORT draft goes with it: a dismissal hands anything under five
  * characters to the pane, raw and unsubmitted, so the keystrokes the typing
  * intercept borrowed are put back where the user was typing and continue
  * there. The store stands the intercept down for the same reason — with `ls`
@@ -1025,14 +1025,14 @@ function openComposer(): void {
  * `dismiss` rather than `setMode('hidden')` because everything routed here is
  * the USER putting the composer away — Escape, the chord, the toggle, the
  * card's close — and that is a fact worth naming even though it changes nothing
- * about the next keystroke (§12.2).
+ * about the next keystroke.
  *
  * The focus half is what keeps the terminal usable across the close. Escape
  * hands the keyboard back to the pane, so every NON-printable key (Ctrl-C, the
  * arrows, Enter, tmux's prefix) reaches the shell immediately; a printable one
  * brings the panel back, carrying the character — unless a hand-off just put
  * text at the prompt, in which case typing keeps going to the shell until the
- * composer is summoned again (§12.2, §26.1).
+ * composer is summoned again.
  */
 function hideComposer(): void {
   const shellId = shells.shellIdFor(sessionKey.value);
@@ -1069,7 +1069,7 @@ function hideComposer(): void {
  * It does NOT suppress the typing intercept, and that is the interesting call.
  * Escape and the chord are gestures aimed AT the composer and mean "leave me
  * alone"; a dismissal still only puts the card away — the ONE exception is a
- * short draft, which `hideComposer` hands to the pane (§12.2) — and this
+ * short draft, which `hideComposer` hands to the pane — and this
  * handler, which fires on an EMPTY composer only, can never be that exception.
  * A click elsewhere is incidental — the user reached for the terminal, not
  * against the composer — and the composer was empty, so nothing was lost. The
@@ -1109,7 +1109,7 @@ function onToggleRail(): void {
 
 /**
  * A keystroke the terminal withheld because the composer was shut
- * (`typingOpensComposer`, docs/COMPOSER.md §26). Open on the session's
+ * (`typingOpensComposer`). Open on the session's
  * remembered mode and plant the character where the caret was left, so the
  * letter that opened the panel is the panel's first letter and nothing has to
  * be retyped.
@@ -1130,7 +1130,7 @@ function toggleExpanded(): void {
 }
 
 /**
- * The Escape ladder (§12.2), first match wins. Escape NEVER clears the draft —
+ * The Escape ladder, first match wins. Escape NEVER clears the draft —
  * that is Discard's job and Discard's alone.
  *
  * It used to have four rungs, two of which were about NOT closing: restore from
@@ -1185,14 +1185,14 @@ function onDraftKeydown(e: KeyboardEvent): void {
   }
 
   // CJK IME composition commits with Enter; `isComposing` is the whole of the
-  // guard a DOM textarea needs (§22 — there is no TextFieldValue equivalent).
+  // guard a DOM textarea needs (there is no TextFieldValue equivalent).
   if (e.key === 'Enter' && !e.isComposing && (mod || !e.shiftKey)) {
     e.preventDefault();
     void onSend();
     return;
   }
 
-  // Sent-prompt history, shell-style (§28): Ctrl/Cmd+↑ walks back through what
+  // Sent-prompt history, shell-style: Ctrl/Cmd+↑ walks back through what
   // this session delivered, Ctrl/Cmd+↓ walks forward, and one ↓ past the newest
   // hands the draft back that the walk started from. The chord, not the bare
   // arrows — plain ↑/↓ must stay caret keys for editing a draft, which retires
@@ -1262,7 +1262,7 @@ function onGlobalKey(e: KeyboardEvent): void {
     const wasOpen = mode.value !== 'hidden';
     composer.shrink();
     // Shrinking past `docked` closes it, and a close is a close: routed through
-    // `hideComposer` so the short-draft hand-off (§12.2) and the focus move are
+    // `hideComposer` so the short-draft hand-off and the focus move are
     // the same ones Escape and the chord get. Read the store directly:
     // `mode.value` was narrowed by the line above and TS cannot see that
     // `shrink()` changed it.
@@ -1277,7 +1277,7 @@ function onGlobalKey(e: KeyboardEvent): void {
 }
 
 // ---------------------------------------------------------------------------
-// Moving and resizing the card (§21.1, §23.7)
+// Moving and resizing the card
 //
 // One drag loop serves both: a press on the header MOVES the card, a press on
 // an edge grip RESIZES it. The arithmetic for each lives in
@@ -1292,7 +1292,7 @@ function onGlobalKey(e: KeyboardEvent): void {
  * bottom, because that strip was reserved out of the terminal and the toggle
  * lived in it. The strip is gone — the composer takes no terminal space at
  * all now — so the card gets the whole pane, and the only thing it must still
- * clear is the toggle's own small box (§21.4).
+ * clear is the toggle's own small box.
  *
  * That box is MEASURED from the live element rather than declared as a
  * constant: its size is a CSS decision, and measuring is what keeps the two
@@ -1367,7 +1367,7 @@ function onDragEnd(): void {
   window.removeEventListener('mouseup', onDragEnd);
   const pane = paneBox.value;
   // Snap on release only, and only after a MOVE. During the drag the card
-  // follows the pointer 1:1 (DESIGN.md §5.9), and snapping a RESIZE would
+  // follows the pointer 1:1, and snapping a RESIZE would
   // silently change the size the user had just chosen.
   if (drag?.kind === 'move' && pane) {
     composer.setGeometry(snapGeometry(composer.geometry, pane));
@@ -1398,7 +1398,7 @@ function onHeaderDoubleClick(e: MouseEvent): void {
 /**
  * Where the card is painted. Only ever read while the card exists: `hidden`
  * removes it from the tree entirely, because the rail is now a separate element
- * that stays put rather than the same box collapsed (§21.5).
+ * that stays put rather than the same box collapsed.
  */
 const rootStyle = computed(() => {
   const g = card.value;
@@ -1426,7 +1426,7 @@ onMounted(() => {
     paneObserver.observe(rootEl.value);
   }
   caret.value = state.value.caret;
-  // The composer is the primary surface: land in it (§11).
+  // The composer is the primary surface: land in it.
   if (mode.value !== 'hidden') focusDraft();
 });
 
@@ -1475,8 +1475,8 @@ defineExpose({
            the cursor lands on by accident.
            On that close button: an earlier pass REMOVED it, on the grounds that
            a second closer riding on a draggable card was the "the control
-           moved" complaint all over again. docs/COMPOSER.md §21.4 records why
-           that no longer holds — in short, dismissing the surface you are
+           moved" complaint all over again. That reasoning
+           no longer holds — in short, dismissing the surface you are
            looking at and re-opening from a pinned icon are different acts, and
            only the second one needs a fixed address. -->
       <div class="panel-header" @mousedown="onHeaderDown" @dblclick="onHeaderDoubleClick">
@@ -1789,7 +1789,7 @@ defineExpose({
  *
  * So it is a CHIP, not a mark: an opaque `--surface-2` fill, a `--border-strong`
  * edge and the card's own elevation shadow. `--border-strong` is not a taste
- * call — DESIGN.md §4.2 requires it (4.12:1) wherever a boundary is the only
+ * call —  requires it (4.12:1) wherever a boundary is the only
  * thing identifying a control, and here it is the only thing separating a chip
  * from the terminal behind it. At 28px/16px it is on the icon default scale
  * rather than a dense one, which is right for a primary affordance.

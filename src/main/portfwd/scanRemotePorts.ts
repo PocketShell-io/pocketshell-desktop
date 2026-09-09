@@ -78,7 +78,7 @@ export function procCwdCommand(pids: readonly number[]): string {
 /**
  * Merge the sections of a {@link LISTENER_SCAN_COMMAND} run into one port list.
  *
- * Policy (deliberately NOT the Python's, see docs/PORTFWD.md §1 and §12):
+ * Policy (deliberately NOT the Python's):
  * the authoritative list comes from `ss -tln`, because `ss -tlnp` has been
  * observed to *filter out* sockets it cannot attribute on some builds instead
  * of blanking their process column. Attribution is merged in afterwards by

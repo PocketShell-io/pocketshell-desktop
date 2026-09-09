@@ -12,7 +12,7 @@ import {
 } from '../../src/shared/composerGeometry';
 
 /**
- * The composer card's geometry rules (docs/COMPOSER.md §21.1). These are the
+ * The composer card's geometry rules. These are the
  * invariants a user can feel: the card never leaves the pane, never shrinks
  * below a usable size, and the edge you are NOT dragging does not move.
  */

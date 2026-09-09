@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import type { HostEntry } from '../../src/shared/types';
 
 /**
- * The Ports button's auto-forward indicator (docs/PORTFWD.md §16).
+ * The Ports button's auto-forward indicator.
  *
  * The ask: "if auto-forward is on I want to see an indicator in the panel with
  * icons". The button is easy; the state behind it is the whole test surface,

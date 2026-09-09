@@ -6,7 +6,7 @@
  * do not. The two models are deliberately different shapes — tmux names one
  * flat global namespace, aplexer addresses `workspace + tag` with an immutable
  * UUID underneath — so this module is the one place that translates between
- * them. See docs/ARCHITECTURE.md §3.
+ * them.
  *
  * This file is renderer-safe: pure types and string builders only, no Node,
  * no ssh2. The exec-level client lives in main (`helper/AplexerClient.ts`)

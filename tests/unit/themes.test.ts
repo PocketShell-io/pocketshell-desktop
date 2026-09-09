@@ -19,7 +19,7 @@ import {
  *   1. PARITY — the `dark` record and App.vue's `:root` block are the same
  *      palette, and every other theme defines exactly the same token set, so
  *      no theme can leave a surface silently unthemed.
- *   2. CONTRAST — every theme meets the WCAG floors of docs/DESIGN.md §8.2.
+ *   2. CONTRAST — every theme meets the WCAG floors of 
  *      This is the audit that keeps "add a theme = one record" honest: a
  *      half-audited palette fails the suite instead of shipping.
  *   3. RESOLUTION — the stored choice, including `system`, always lands on a
@@ -125,7 +125,7 @@ describe('terminal palettes', () => {
 
 /* ---------------------------------------------------------------------------
  * The contrast audit — WCAG 2.1 relative luminance, the same math as the
- * tables in docs/DESIGN.md §4.2 and §8.2.
+ * floors are computed per theme.
  * ------------------------------------------------------------------------- */
 
 function lin(channel: number): number {
@@ -157,7 +157,7 @@ const CODE_TEXT_ROLES = [
   '--code-gutter-fg-active',
 ];
 
-describe('contrast floors (docs/DESIGN.md §8.2)', () => {
+describe('contrast floors', () => {
   for (const theme of THEMES) {
     describe(theme.id, () => {
       const t = theme.tokens;

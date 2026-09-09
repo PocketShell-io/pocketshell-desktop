@@ -206,7 +206,7 @@ test.describe('folder-first session creation + port panel controls', () => {
     expect(previewedName).toBe('main');
 
     // `Start shell`, not `Start session…`. The primary button chains to the
-    // AGENT step (docs/SESSIONLIST.md §13) — a second `OverlayPanel` that is
+    // AGENT step — a second `OverlayPanel` that is
     // also titled "New session" — and this test is about what a COMMIT answers
     // with, not about the chain. `Start shell` is the one-click commit, and the
     // chain's own commit lands in exactly the same `commit()` tail
@@ -238,7 +238,7 @@ test.describe('folder-first session creation + port panel controls', () => {
     // Unrelated to the create flow, and repaired only so this spec can finish:
     // the panel's foot row of labelled buttons is gone, and Ports has its own
     // header icon (renderer/hostPanels.ts) whose accessible name is its
-    // `title` — one click since §5.3e, no kebab to open first.
+    // `title` — one click, no kebab to open first.
     await page.getByRole('button', { name: 'Port forwarding' }).click();
     await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toBeVisible();
 

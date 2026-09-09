@@ -23,9 +23,9 @@
  * — and its own base themes branch on it in CSS that no custom property of ours
  * reaches. That flag used to be baked here as `{ dark: true }`, stating the
  * shipped appearance forever, and it was the single piece of this file that did
- * not follow a theme switch (docs/DESIGN.md §8.5 recorded it as a known limit).
+ * not follow a theme switch.
  *
- * It is fixed the way the limit's own note said to fix it: the chrome is built
+ * It is fixed by building the chrome
  * ONCE PER APPEARANCE, {@link codeThemeFor} hands back the right one, and
  * CodeEditor.vue holds it in a Compartment so a theme change reconfigures the
  * live EditorState instead of rebuilding it. Both variants share one spec
@@ -80,7 +80,7 @@ const chromeSpec = {
     padding: '0 var(--sp-4)',
   },
   '.cm-cursor, .cm-dropCursor': {
-    // Windows Terminal's cursorShape is "bar" (DESIGN.md §3.4); a 2px bar is
+    // Windows Terminal's cursorShape is "bar"; a 2px bar is
     // the same shape one line-height taller.
     borderLeftColor: 'var(--code-cursor)',
     borderLeftWidth: '2px',

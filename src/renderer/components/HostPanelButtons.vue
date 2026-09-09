@@ -2,7 +2,7 @@
 // HostPanelButtons: the two host overlays as DIRECT icon buttons, rendered
 // identically from the session panel's header and from the collapsed rail.
 //
-// §5.3e killed the overflow menu at the user's ask ("we can kill the kebab here
+// Killed at the user's ask ("we can kill the kebab here
 // and have two icons instead"). What makes that affordable — what answers
 // ca79ae2's "two unlabelled glyphs are a memory test" without reopening it as
 // an argument — is that each button keeps its WORD in one place a tooltip is
@@ -17,8 +17,7 @@
 // keep sharing one vocabulary.
 //
 // The Ports button additionally carries the auto-forward indicator: a tinted
-// ring + a small dot while the engine is running for this host (§16 of
-// docs/PORTFWD.md), and — once ports are actually live — the dot becomes a
+// ring + a small dot while the engine is running for this host, and — once ports are actually live — the dot becomes a
 // count pill, so the button answers "on, and how many" without the overlay.
 // The workspace owns both values and hands them down so the two surfaces stay
 // identical; the state has to live THERE because the forwards store is only
@@ -38,7 +37,7 @@ const emit = defineEmits<{ select: [panel: HostPanel] }>();
  * The button's word, extended while the indicator is up. "Port forwarding"
  * alone stops being the whole truth when the glyph also claims the engine is
  * running — and the tooltip is still the button's entire accessible name, so
- * the suffix is what keeps §5.3e's rule (the word travels with the mark)
+ * the suffix keeps the rule that the word travels with the mark
  * honest rather than merely styled. Each mark the glyph carries gets its
  * word: the engine ("auto-forward on") and, when ports are live, the count.
  */
@@ -83,7 +82,7 @@ const countLabel = computed(() =>
 </template>
 
 <style scoped>
-/* Auto-forward ON (docs/PORTFWD.md §16). The tinted ring is the same "on"
+/* Auto-forward ON. The tinted ring is the same "on"
    register the panel's own toggle words it (.toggle.on in PortPanelView:
    --accent-soft fill, --accent-dim edge, --accent glyph), so one state reads
    one way in both places. The dot is the LIVE half of the message: a ring

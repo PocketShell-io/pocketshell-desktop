@@ -4,8 +4,7 @@ import type { SshService } from '@main/ssh/SshService';
 import type { ExecResult } from '../../src/shared/types';
 
 /**
- * The durable tree registry's placement wiring (SESSIONLIST.md §11, FEATURES
- * backlog F18's successor item): `pocketshell tree get/upsert` — the record
+ * The durable tree registry's placement wiring: `pocketshell tree get/upsert` — the record
  * the phone keeps and the desktop never called.
  *
  * The flow under test is `listSessions`'s placement failure path: a session

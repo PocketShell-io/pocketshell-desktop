@@ -259,8 +259,7 @@ describeDocker('ForwardService integration', () => {
     expect(forwards.list(connectionId!).find((s) => s.key === key)?.bytesIn).toBe(0);
 
     // Deliberately ASYMMETRIC: equal counts each way would still pass if
-    // bytesIn and bytesOut were swapped, which is precisely the defect
-    // docs/PORTFWD.md §15.7 records.
+    // bytesIn and bytesOut were swapped, which is precisely the defect this asymmetry exists to catch.
     const UP = 65_536; // client -> remote service  => "Out"
     const DOWN = 262_144; // remote service -> client => "In"
     const HEADER = Buffer.byteLength(`${UP} ${DOWN} 65536 0\n`, 'ascii');

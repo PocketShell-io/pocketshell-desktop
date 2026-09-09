@@ -13,7 +13,7 @@
  * The FAMILY is a single setting for the whole app, because the app already
  * treats it as a single fact. `--font-mono` is not "the terminal's font": it is
  * the font of the terminal, the file editor, session names, ports, paths, IDs
- * and chips, and docs/DESIGN.md §2.3 says why in as many words — "use the same
+ * and chips, and the terminal says why in as many words — "use the same
  * face for the app's mono chrome … so the terminal and the UI that frames it
  * read as one surface". A per-surface family setting would let a user break
  * that on purpose, which is not a feature; it is the design being undone one
@@ -37,7 +37,7 @@
  *     are not the same decision and it is right that they are two controls.
  *   - The app's UI type scale (`--fs-100`…`--fs-600`) is deliberately NOT
  *     included in either. It is a density system — 28px rows, 40px bars, the
- *     11/12/13/15/18/20 ladder of DESIGN.md §2.4 — and driving it from a font
+ *     11/12/13/15/18/20 ladder — and driving it from a font
  *     preference would rewrite every row height in the app. "Font size" here
  *     means the size of the text the user READS, not the scale of the chrome.
  */
@@ -79,7 +79,7 @@ export const MONOSPACE_FAMILIES: readonly string[] = [
 /**
  * Size bounds, shared by both size settings.
  *
- * The UI type scale tops out at 20px (DESIGN.md §2.4) and that is deliberately
+ * The UI type scale tops out at 20px and that is deliberately
  * NOT the cap here: the scale sizes chrome, and this sizes the text a user
  * stares at all day, which is a property of their eyes and their monitor rather
  * than of the design system. The bounds exist for the case the brief names —

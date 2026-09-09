@@ -7,7 +7,7 @@ import type { StageAttachmentsResult } from '../../src/shared/types';
  * instrumented suites the spec cites (PromptComposerSendDismissE2eTest,
  * PromptComposerDiscardE2eTest, ComposerPartialExpandE2eTest), driven through
  * the store rather than a rendered tree because the rules being pinned are
- * state rules, not layout ones. See docs/COMPOSER.md §24.
+ * state rules, not layout ones. 
  */
 
 const stage = vi.fn<(payload: unknown) => Promise<StageAttachmentsResult>>();
@@ -75,7 +75,7 @@ describe('draft lifecycle', () => {
   it('keeps a per-session draft — switching away and back restores it', () => {
     composer.setDraft(KEY, 'draft for main');
     composer.setDraft(OTHER, 'draft for build');
-    // The Android owner-stamp would have DISCARDED the first one here (§12.4).
+    // The Android owner-stamp would have DISCARDED the first one here.
     expect(composer.states[KEY]?.draft).toBe('draft for main');
     expect(composer.states[OTHER]?.draft).toBe('draft for build');
   });
@@ -349,7 +349,7 @@ describe('send', () => {
     await pending;
   });
 
-  it('clears the draft and the tiles on delivery, and STAYS OPEN (§12.3)', async () => {
+  it('clears the draft and the tiles on delivery, and STAYS OPEN', async () => {
     composer.setDraft(KEY, 'hello');
     await attach(KEY, [A]);
     await composer.send(KEY, async () => true);
@@ -453,7 +453,7 @@ describe('discard (PromptComposerDiscardE2eTest.kt:160-226)', () => {
   });
 });
 
-describe('visibility state machine (§12.1)', () => {
+describe('visibility state machine', () => {
   it('defaults to docked', () => {
     expect(composer.mode).toBe('docked');
   });
@@ -559,7 +559,7 @@ describe('visibility state machine (§12.1)', () => {
   });
 });
 
-describe('connection degradation is advisory (§9)', () => {
+describe('connection degradation is advisory', () => {
   it('does not gate send', async () => {
     composer.setConnectionDegraded(KEY, true);
     composer.setDraft(KEY, 'send me anyway');
@@ -569,7 +569,7 @@ describe('connection degradation is advisory (§9)', () => {
 });
 
 /**
- * `closeComposerOnSend` (docs/COMPOSER.md §26): the phone's rhythm — send, the
+ * `closeComposerOnSend`: the phone's rhythm — send, the
  * card gets out of the way, the next keystroke brings it back.
  */
 describe('close on send', () => {
@@ -632,7 +632,7 @@ describe('close on send', () => {
 
 /**
  * Closing the composer does NOT decide what the next keystroke does
- * (docs/COMPOSER.md §12.2, revised).
+ *.
  *
  * The user reported the old behaviour as a bug — "I start typing, prompt
  * composer opens, I click esc, continue typing and now the input goes to the
@@ -748,13 +748,12 @@ describe('forget', () => {
 });
 
 /**
- * Sent-prompt history and the arrow-key walk through it (docs/COMPOSER.md
- * §28). The user's report: prompts go into a tmux pane that may not be the one
+ * Sent-prompt history and the arrow-key walk through it. The user's report: prompts go into a tmux pane that may not be the one
  * on screen, so a prompt that has already scrolled away can only be repeated
  * from memory. A shell answers that with `history` and the up arrow; these
  * tests pin the store half of the same answer, per session.
  */
-describe('sent-prompt history (§28)', () => {
+describe('sent-prompt history', () => {
   it('records a CONFIRMED delivery, with the attachment paths already folded in', async () => {
     composer.setDraft(KEY, 'run the tests');
     await attach(KEY, [A]);
@@ -815,7 +814,7 @@ describe('sent-prompt history (§28)', () => {
   });
 });
 
-describe('history recall (§28)', () => {
+describe('history recall', () => {
   it('is a no-op with nothing sent yet', () => {
     composer.setDraft(KEY, 'typed');
     expect(composer.recallOlder(KEY)).toBeNull();
@@ -910,7 +909,7 @@ describe('history recall (§28)', () => {
   });
 });
 
-describe('flushToTerminal — a short draft goes back to the shell on a close (§12.2)', () => {
+describe('flushToTerminal — a short draft goes back to the shell on a close', () => {
   it('hands the draft to the write, clears it, and stands the intercept down', () => {
     composer.setDraft(KEY, 'ls');
     const written: string[] = [];

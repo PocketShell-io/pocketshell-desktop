@@ -9,7 +9,7 @@ import type { ShellId } from '../../shared/types';
  * ---------------
  * `shellId` used to be a module-local `let` inside TerminalView.vue — never
  * returned, never exposed — so nothing outside that component could write to
- * the pane. The prompt composer has to (docs/COMPOSER.md §25.2), and so will
+ * the pane. The prompt composer has to, and so will
  * any future surface that pushes text at a session.
  *
  * WHY A REGISTRY AND NOT FULL SHELL OWNERSHIP
@@ -30,7 +30,7 @@ import type { ShellId } from '../../shared/types';
  *
  * The map is keyed by the same session key TerminalView takes as a prop, and is
  * reactive, because TerminalView re-points its pane whenever that key changes
- * (§25.2) — a consumer that captured the id once would end up writing to a
+ * — a consumer that captured the id once would end up writing to a
  * closed channel.
  *
  * WHAT A CLIENT PER SESSION TAB CHANGES

@@ -54,7 +54,7 @@ export interface SessionDirectory {
   /**
    * Display path: home-relative (`~/git/dataops`) when under `$HOME`, the
    * canonical path otherwise, {@link UNTRACKED_PATH} when there is none.
-   * Home-relative for the same reason root keys are (§8): it is what folds
+   * Home-relative for the same reason root keys are: it is what folds
    * tmux's two spellings of one directory into a single node.
    */
   path: string;
@@ -162,7 +162,7 @@ export function rootHeaderParts(root: SessionRootFolder): { prefix: string; text
  * **Root order.** Registered roots render in REGISTERED ORDER: a declared
  * list is itself an ordering. Derived roots render in FIRST-APPEARANCE order
  * — the position of each root's first row in the session list, which is the
- * host's sort (docs/SESSIONLIST.md §6). There are no comparators left in this
+ * host's sort. There are no comparators left in this
  * file: the panel's job is to fold the host's flat, already-sorted list into
  * roots and folders without disturbing it, the way `buildRows` does one level
  * down. Either way `other` is pinned last, however recent it is: it is a
@@ -180,7 +180,7 @@ export function groupSessionsIntoRoots(
   const configuredKeys = new Set(configured.map((root) => root.key));
   const rows = buildRows(sessions);
 
-  // Pass 1: the roots the NAME heuristic (§4.6) is allowed to file into.
+  // Pass 1: the roots the NAME heuristic is allowed to file into.
   //
   // Configured: the registered list. A root the user declared is BETTER
   // evidence than one we inferred, so a no-cwd session called `tmp-scratch`

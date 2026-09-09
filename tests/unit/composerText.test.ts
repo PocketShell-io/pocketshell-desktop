@@ -15,7 +15,7 @@ import { composerAgentKind } from '../../src/shared/composerSend';
 
 /**
  * Ports of the Android client's own contracts for the composer's pure logic.
- * The case lists come from docs/COMPOSER.md §24 (which in turn comes from
+ * The case lists come from the Android tests (which in turn came from
  * PromptComposerViewModelTest / SlashCommandAutocompleteTest).
  */
 
@@ -356,7 +356,7 @@ describe('insertAtCaret — the keystroke that opened the composer is not lost',
   });
 });
 
-describe('canFlushDraftToTerminal — a short draft goes back to the shell (§12.2)', () => {
+describe('canFlushDraftToTerminal — a short draft goes back to the shell', () => {
   const flushable = (draft: string, extra: Partial<Parameters<typeof canFlushDraftToTerminal>[0]> = {}) =>
     canFlushDraftToTerminal({
       draft,

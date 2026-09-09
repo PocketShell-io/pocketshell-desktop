@@ -5,11 +5,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import { nextTick } from 'vue';
 
 /**
- * The short-draft hand-off (docs/COMPOSER.md §12.2): dismissing the composer
+ * The short-draft hand-off: dismissing the composer
  * with fewer than five characters in the draft puts that text at the shell
  * prompt — raw, no Enter — and stands the typing intercept down, so the user
- * keeps typing in the terminal. Escape AND Ctrl+` both do it, because §12.2's
- * rule is that every user close behaves like every other.
+ * keeps typing in the terminal. Escape AND Ctrl+` both do it, because every user close behaves like every other.
  *
  * The five-character line is the user's own: "it should be less than 5
  * characters put in composer for that, if more than esc doesn't bring the

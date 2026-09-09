@@ -164,12 +164,12 @@ export interface AppSettings {
    * is what it does for a user who never drags anything.
    *
    * PER HOST, keyed on the `~/.ssh/config` alias. The alias rather than the
-   * connection id for the reason the tab order gives (§15.3): a connection id
+   * connection id for the reason the tab order gives: a connection id
    * is an opaque handle minted per connect, so an order keyed on it would be a
    * fresh key every launch and would never survive a restart.
    *
    * It lives in this store rather than in `localStorage`, which is where the
-   * tab order went. §15.3's rule — "the settings store is for preferences a
+   * tab order went. That rule — "the settings store is for preferences a
    * user sets BY NAME in the Settings overlay" — points the other way, and it
    * is overruled here because the two cases differ in scope: a tab order
    * belongs to ONE folder of ONE host and is written by the workspace that owns

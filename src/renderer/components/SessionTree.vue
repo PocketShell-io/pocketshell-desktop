@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // SessionTree: the live tmux session list for the active connection, as a
 // FOLDER VIEW — TWO levels, root then folder, one row per folder
-// (revising docs/SESSIONLIST.md revision 3):
+// (revising  revision 3):
 //
 //   git                          12
 //     dtc-website           2       21h
@@ -37,7 +37,7 @@
 // hold one child does not read as a tree. This is the opposite: there is no
 // session level for ANY folder, whatever it holds, so the panel is always two
 // deep and a reader can predict its shape without knowing what is running.
-// SESSIONLIST §1's measurement is not overturned — it said a level must earn
+// The original measurement is not overturned — it said a level must earn
 // its rows, and this one no longer does.
 //
 // An untracked session (`dir.untracked` — no reported cwd) still renders as a
@@ -157,7 +157,7 @@ const creating = ref<{ startIn: string | null } | null>(null);
 /**
  * The host overlays used to be an overflow menu — Ports and Usage parked behind
  * a `⋯` because unlabelled glyphs were called a memory test (ca79ae2) and the
- * strip had no room for their words. §5.3e reversed that at the user's ask:
+ * strip had no room for their words. Reversed at the user's ask:
  * the kebab is gone and each overlay is its own icon, its words living in the
  * tooltip/accessible name. The buttons themselves come from
  * components/HostPanelButtons.vue so this header and the collapsed rail render
@@ -205,9 +205,9 @@ let clock: ReturnType<typeof setInterval> | null = null;
  *
  * ## Why this exists at all
  *
- * Because the rest of the app already believed it did. docs/SESSIONLIST.md
+ * Because the rest of the app already believed it did. 
  * refers to "the refresh timer" a dozen times over — the
- * argument against keying a row's shape off `directories.length` (§3a), the
+ * argument against keying a row's shape off `directories.length`, the
  * rule that expansion state must never watch the root list, the tab order
  * being stored as a RANKING because "sessions arrive on the refresh timer, and
  * vanish when they are killed here, from the phone or from the user's own
@@ -439,7 +439,7 @@ function dirTooltip(dir: SessionDirectory): string {
   return lines.join('\n');
 }
 
-/* ── Dragging a folder row up and down (docs/SESSIONLIST.md §14) ───────────
+/* ── Dragging a folder row up and down ───────────
  * > "but I can also pull them up and down to rearraange"
  *
  * The same native HTML5 drag the workspace's tab bar uses, turned ninety
@@ -652,7 +652,7 @@ function createInFolder(): void {
  * words for one destructive act, in two menus a click apart, is how a user ends
  * up believing one of them is the safe one.
  *
- * Everything §14 says about the single kill holds here and is multiplied: no
+ * Everything the single-kill rule says holds here and is multiplied: no
  * undo, and each session is usually an agent mid-task. So the item is
  * separated, tinted, and behind a confirmation that NAMES the sessions — which
  * matters more from this panel than from the tab bar, because a folder row does
@@ -714,7 +714,7 @@ function askStopFolder(): void {
  * until it catches up, a dead session that still looks live keeps its tab on
  * the bar and its "[process exited]" pane mounted underneath — precisely the
  * state a confirmed Stop exists to end. The composer record is dropped with
- * it, the third row of §14.3's table. The pool's client goes main-side from
+ * it, the third step of the stop sequence. The pool's client goes main-side from
  * the ipc handler whatever the caller is, and the workspace's mounted pane
  * unmounts as a consequence of the row: `sessionPanes` is filtered against
  * the live tabs, so a session that leaves the store takes its terminal with
@@ -814,7 +814,7 @@ async function onRefresh(): Promise<void> {
  *
  * This navigation now carries a second job it does not know about, and that is
  * the point of it not knowing: when the dialog collected an AGENT as well as a
- * folder (docs/SESSIONLIST.md §13), the choice is parked in
+ * folder, the choice is parked in
  * `renderer/pendingAgentLaunch.ts` and `FolderWorkspaceView` collects it on
  * arrival, because typing the wrapper line needs a PTY and this panel has
  * none. So the launch rides the route change the panel was already making,
@@ -921,7 +921,7 @@ function fmtRelative(epochSeconds: number): string {
       </button>
       <!-- ORDER: `+`, ports, usage, refresh, settings, hide.
            The last four are the user's, given as "here have ... then refresh
-           then settings then hide" against a screenshot of this strip; §5.3e
+           then settings then hide" against a screenshot of this strip; the current order
            expanded their `⋯` into its two contents at the same user's ask. The
            `+` leads because it is the panel's primary action and the others are
            chrome.
@@ -948,11 +948,11 @@ function fmtRelative(epochSeconds: number): string {
         >
           <AppIcon name="plus" :size="14" />
         </button>
-        <!-- Ports and Usage as their own buttons (§5.3e). Their words live in
+        <!-- Ports and Usage as their own buttons. Their words live in
              the tooltips — which double as accessible names — exactly where the
              retired `⋯` trigger kept "Ports, Usage". `auto-forward` drives the
              Ports button's on-air indicator and `forward-count` its live-ports
-             pill (docs/PORTFWD.md §16); the workspace owns both states. -->
+             pill; the workspace owns both states. -->
         <HostPanelButtons
           :auto-forward="autoForward"
           :forward-count="forwardCount"
@@ -1084,7 +1084,7 @@ function fmtRelative(epochSeconds: number): string {
                 i === root.directories.length - 1,
             }"
           >
-            <!-- `draggable` for §14's "pull them up and down". It changes
+            <!-- `draggable` for the "pull them up and down" drag. It changes
                  nothing about the click, the context menu or the keyboard —
                  see the drag section in the script for why each of those is
                  safe rather than merely untested. -->
@@ -1115,7 +1115,7 @@ function fmtRelative(epochSeconds: number): string {
                    folder is labelled by its session name, which is the only
                    label it has. -->
               <span class="label" :class="{ mono: dir.untracked }">{{ dir.label }}</span>
-              <!-- Counted only from 2 up. The `1` is the dead field §1 of
+              <!-- Counted only from 2 up. The `1` is the dead field the original measurement ruled out — see
                    SESSIONLIST measured: every folder row stands for at least
                    one session, so saying so on most of them is noise.
                    IMMEDIATELY AFTER THE LABEL, ahead of the badges, for the
@@ -1332,7 +1332,7 @@ function fmtRelative(epochSeconds: number): string {
      short of that row. */
   flex: 1 1 auto;
   min-height: 0;
-  /* Matches HostWorkspaceView's MIN_PANEL_WIDTH (232px since §5.3e gave the
+  /* Matches HostWorkspaceView's MIN_PANEL_WIDTH (232px since the header strip forced the
      strip its seventh square; before that both were 200, and before THAT this
      was 240, silently contradicting the drag clamp of the day). */
   min-width: 232px;
@@ -1493,7 +1493,7 @@ function fmtRelative(epochSeconds: number): string {
   margin: 0;
   padding: 0;
 }
-/* ---- dragging a folder row (docs/SESSIONLIST.md §14) ---------------------
+/* ---- dragging a folder row ---------------------
  *
  * The tab bar's three rules, turned ninety degrees (FolderWorkspaceView's
  * `.tab.dragging`): the carried row FADES BUT STAYS IN
@@ -1622,8 +1622,7 @@ function fmtRelative(epochSeconds: number): string {
    green dot) say the same thing. This is what replaced the `attached` tag —
    and it now carries the whole of that job, because attachment is no longer a
    SORT key: a row that jumped to the top of its root the moment you opened it
-   was the list rearranging itself in response to being used
-   (docs/SESSIONLIST.md §6). The mark stays; the movement went. */
+   was the list rearranging itself in response to being used. The mark stays; the movement went. */
 .dir-header.attached .label {
   font-weight: var(--fw-semibold);
 }
@@ -1792,7 +1791,7 @@ function fmtRelative(epochSeconds: number): string {
 /* Below ~270px the row cannot hold every field. The timestamp goes first: it
    is still the least operational of them, though the ORIGINAL reason for
    picking it — "a recency-sorted list already carries most of what it says" —
-   died with the recency sort (docs/SESSIONLIST.md §6). What survives the
+   died with the recency sort. What survives the
    revision is the comparison rather than the absolute: at the 232px floor
    something has to go, and every other field on the row either identifies it
    (label), locates it (dot) or says what is running in it (badge), and an age
