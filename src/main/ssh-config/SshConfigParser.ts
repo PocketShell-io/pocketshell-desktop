@@ -42,7 +42,7 @@ export function readSshConfig(configPath?: string): HostEntry[] {
 }
 
 /** Default ~/.ssh/config path. Exported for tests/mocking. */
-export function defaultConfigPath(): string {
+function defaultConfigPath(): string {
   return resolve(homedir(), '.ssh', 'config');
 }
 

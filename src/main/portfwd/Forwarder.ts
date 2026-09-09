@@ -77,7 +77,7 @@ export function forwardKey(spec: ForwardSpec): string {
 const RATE_SAMPLE_MIN_MS = 500;
 
 /** Default idle reaper window, ported from `SSH_FORWARD_IDLE_TIMEOUT` (1h). */
-export const DEFAULT_IDLE_TIMEOUT_MS = 3_600_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 3_600_000;
 
 export interface ForwarderOptions {
   origin?: ForwardOrigin;

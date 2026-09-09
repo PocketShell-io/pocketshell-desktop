@@ -103,7 +103,7 @@ export function viewFileRows<T extends NamedEntry>(
 // ---------------------------------------------------------------------------
 
 /** A place the breadcrumb can send you: a directory and the name to call it. */
-export interface CrumbTarget {
+interface CrumbTarget {
   name: string;
   path: string;
 }

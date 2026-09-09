@@ -14,7 +14,7 @@
  */
 import type { ComposerAgentKind } from './composerSend';
 
-export interface AgentCommandArgument {
+interface AgentCommandArgument {
   placeholder: string;
   required: boolean;
 }

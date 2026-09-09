@@ -26,16 +26,16 @@ import { shellQuoteRemotePath } from '../../shared/shellQuote.js';
 export const DEFAULT_KEEP_NEWEST = 20;
 
 /** Never list more than this many entries in one prune pass. */
-export const DEFAULT_MAX_SCAN_ENTRIES = 5_000;
+const DEFAULT_MAX_SCAN_ENTRIES = 5_000;
 
 /** Delete at most this many paths per `rm` invocation (ARG_MAX headroom). */
-export const DEFAULT_DELETE_BATCH_SIZE = 50;
+const DEFAULT_DELETE_BATCH_SIZE = 50;
 
 /** Attachments older than this are eligible for deletion. */
-export const DEFAULT_TTL_MILLIS = 7 * 24 * 60 * 60 * 1_000;
+const DEFAULT_TTL_MILLIS = 7 * 24 * 60 * 60 * 1_000;
 
 /** Attachments newer than this are never deleted, cap or no cap. */
-export const DEFAULT_PROTECT_NEWEST_MILLIS = 24 * 60 * 60 * 1_000;
+const DEFAULT_PROTECT_NEWEST_MILLIS = 24 * 60 * 60 * 1_000;
 
 export interface AttachmentRetentionPolicy {
   ttlMillis: number;
@@ -57,7 +57,7 @@ export const DEFAULT_RETENTION_POLICY: AttachmentRetentionPolicy = {
 };
 
 /** A remote attachment considered for pruning. */
-export interface RemoteAttachment {
+interface RemoteAttachment {
   name: string;
   /** Modification time in epoch milliseconds. */
   modifiedMillis: number;
@@ -79,7 +79,7 @@ export interface PrunableEntry {
 }
 
 /** Validate a policy, mirroring the Kotlin data class's `require` block. */
-export function assertValidPolicy(policy: AttachmentRetentionPolicy): void {
+function assertValidPolicy(policy: AttachmentRetentionPolicy): void {
   if (!(policy.ttlMillis > 0)) throw new Error('ttlMillis must be positive');
   if (!(policy.keepNewest > 0)) throw new Error('keepNewest must be positive');
   if (!(policy.protectNewestMillis >= 0)) {

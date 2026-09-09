@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { api } from '../ipc';
 
 /** Why the update banner is (or is not) on screen — see main/release. */
-export type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'failed';
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'failed';
 
 interface UpdateState {
   status: UpdateStatus;

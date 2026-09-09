@@ -18,11 +18,11 @@ import { log } from '../log.js';
  * programming errors (bad arguments) still throw.
  */
 
-export const DEFAULT_TIMEOUT_MS = 30_000;
-export const DEFAULT_KEEPALIVE_INTERVAL_SEC = 15;
-export const PTY_TERM = 'xterm-256color';
-export const PTY_DEFAULT_COLS = 80;
-export const PTY_DEFAULT_ROWS = 24;
+const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_KEEPALIVE_INTERVAL_SEC = 15;
+const PTY_TERM = 'xterm-256color';
+const PTY_DEFAULT_COLS = 80;
+const PTY_DEFAULT_ROWS = 24;
 
 export interface ConnectOptions {
   host: string;

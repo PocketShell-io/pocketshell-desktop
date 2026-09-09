@@ -208,7 +208,7 @@ export function inferPathsFromSiblings(sessions: SessionSummary[]): SessionSumma
  * matched no listed session at all. A spelling mismatch the sanitiser does not
  * model shows up there and nowhere else.
  */
-export interface SessionPathDiagnosis {
+interface SessionPathDiagnosis {
   name: string;
   probe: 'absent' | 'no-path' | 'ambiguous';
   /** The column-sanitised key the lenient lookup would have used. */

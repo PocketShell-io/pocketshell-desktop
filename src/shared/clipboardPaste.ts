@@ -66,7 +66,7 @@ export interface ClipboardSnapshot {
 }
 
 /** Which item to ask, and for which type. Both are needed to call `getType`. */
-export interface ClipboardPick {
+interface ClipboardPick {
   /** Index into {@link ClipboardSnapshot.items}. */
   item: number;
   /**

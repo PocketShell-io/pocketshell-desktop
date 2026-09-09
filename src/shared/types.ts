@@ -269,7 +269,7 @@ export type ConnectionState =
  * of the asset that matches THIS platform/arch, and opening it is the user's
  * act.
  */
-export interface ReleaseAssetInfo {
+interface ReleaseAssetInfo {
   /** Direct download URL (the browser asset, not the API URL). */
   downloadUrl: string;
   /** The GitHub release page — the "release notes" link. */

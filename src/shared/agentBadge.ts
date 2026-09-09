@@ -71,7 +71,7 @@ import type { SessionAgentKind } from './types.js';
  * mark renamed in the registry fails `vue-tsc` at the call site rather than
  * rendering an empty `<svg>`.
  */
-export type AgentMarkName = 'hexagon' | 'code' | 'terminal' | 'zap';
+type AgentMarkName = 'hexagon' | 'code' | 'terminal' | 'zap';
 
 /** What a session tab shows for one agent kind. */
 export interface AgentMark {

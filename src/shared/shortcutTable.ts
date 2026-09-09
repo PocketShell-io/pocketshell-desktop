@@ -20,7 +20,7 @@ import type { ShortcutSurface } from './shortcuts';
  * a chord recognised in the main process cannot read the renderer's
  * localStorage, and a chord owned by a third-party keymap is not ours to move.
  */
-export type ShortcutOwner =
+type ShortcutOwner =
   /** A renderer handler that reads this registry. Rebindable. */
   | 'app'
   /** `before-input-event` in the main process. Listed, not rebindable. */

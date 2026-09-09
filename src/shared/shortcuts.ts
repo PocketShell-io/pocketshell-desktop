@@ -470,16 +470,6 @@ export const MENU_CLAIMED_UNSUPPRESSIBLE: readonly { chord: string; role: string
   { chord: 'F11', role: 'togglefullscreen.' },
 ] as const;
 
-/** Menu roles a cancelled keydown DOES suppress. Bindable; see the note. */
-export const MENU_CLAIMED_SUPPRESSIBLE: readonly { chord: string; role: string }[] = [
-  { chord: 'Ctrl+Z', role: 'undo' },
-  { chord: 'Ctrl+Y', role: 'redo' },
-  { chord: 'Ctrl+X', role: 'cut' },
-  { chord: 'Ctrl+C', role: 'copy' },
-  { chord: 'Ctrl+V', role: 'paste' },
-  { chord: 'Ctrl+Shift+V', role: 'pasteAndMatchStyle' },
-  { chord: 'Ctrl+A', role: 'selectAll' },
-] as const;
 
 /**
  * Chords the zoom commands already own.

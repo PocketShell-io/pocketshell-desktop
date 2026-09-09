@@ -51,7 +51,7 @@
 export const PREVIEW_SCHEME = 'psview';
 
 /** Why a request was refused, in the shape the handler turns into a status code. */
-export type PreviewPathError =
+type PreviewPathError =
   /** The URL did not parse, or its path was not absolute / contained a NUL. */
   | 'malformed'
   /** It parsed and normalised fine, but lands outside the preview's root. */
@@ -210,7 +210,7 @@ export function parentDirOf(path: string): string {
  * are different formats that a markdown parser would mangle into
  * plausible-looking nonsense — they stay plain text, which is honest.
  */
-export const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set([
+const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set([
   'md', 'markdown', 'mdown', 'mkd', 'mkdn', 'mdtext',
 ]);
 

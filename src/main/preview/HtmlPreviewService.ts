@@ -169,7 +169,7 @@ export interface PreviewStats {
  * — a page whose single asset is larger than that is not a page anyone is
  * previewing in a file browser's side pane.
  */
-export const MAX_ASSET_BYTES = 8 * 1024 * 1024;
+const MAX_ASSET_BYTES = 8 * 1024 * 1024;
 
 /**
  * Ceiling on requests one preview may make.
@@ -186,7 +186,7 @@ export const MAX_ASSET_BYTES = 8 * 1024 * 1024;
 export const MAX_REQUESTS = 300;
 
 /** Ceiling on total bytes one preview may pull, for the same reason. */
-export const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 
 /**
  * The Content-Security-Policy every preview response carries.

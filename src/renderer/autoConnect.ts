@@ -16,7 +16,7 @@ import type { HostEntry } from '../shared/types';
  */
 
 /** Why an auto-connect did not happen, for the picker to explain or ignore. */
-export type AutoConnectSkipReason =
+type AutoConnectSkipReason =
   /** Already ran this launch. The user is on the picker because they chose to be. */
   | 'already-attempted'
   /** A connection is live — Back from the workspace, not a cold start. */

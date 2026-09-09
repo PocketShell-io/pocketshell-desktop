@@ -283,7 +283,7 @@ export function serveCommand(opts: ServeCommandOptions): string {
 }
 
 /** The line `http.server` prints once the socket is listening. */
-export const SERVE_READY_MARKER = 'Serving HTTP on';
+const SERVE_READY_MARKER = 'Serving HTTP on';
 
 /** What the server's output means so far. Null = nothing conclusive yet. */
 export type ServeOutcome =

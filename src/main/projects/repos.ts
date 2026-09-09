@@ -28,14 +28,14 @@
  */
 
 /** Where a repo lives on the host's disk. */
-export interface RepoLocal {
+interface RepoLocal {
   path: string;
   /** Checked-out branch, or null when it could not be read. */
   head: string | null;
 }
 
 /** The GitHub side of a repo. Fields are best-effort — the helper passes `gh` through. */
-export interface RepoRemote {
+interface RepoRemote {
   defaultBranch: string | null;
   htmlUrl: string | null;
   sshUrl: string | null;

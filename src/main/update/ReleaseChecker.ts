@@ -163,4 +163,3 @@ export async function checkForUpdate(input: CheckInput): Promise<ReleaseCheckRes
   }
 }
 
-export { RELEASES_API };

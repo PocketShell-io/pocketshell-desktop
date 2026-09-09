@@ -150,7 +150,7 @@ export interface StartSessionResult {
 }
 
 /** Why a rename was refused, for a UI that wants to react rather than print. */
-export type RenameSessionFailure = 'illegal-name' | 'name-taken' | 'rename-failed';
+type RenameSessionFailure = 'illegal-name' | 'name-taken' | 'rename-failed';
 
 /** Result of {@link ProjectsService.renameSession}. Never thrown. */
 export interface RenameSessionResult {
@@ -162,7 +162,7 @@ export interface RenameSessionResult {
 }
 
 /** Why a kill was refused. `not-found` is the one a stale tab bar produces. */
-export type KillSessionFailure = 'not-found' | 'kill-failed';
+type KillSessionFailure = 'not-found' | 'kill-failed';
 
 /** Result of {@link ProjectsService.killSession}. Never thrown. */
 export interface KillSessionResult {

@@ -15,7 +15,7 @@
  * percent but no reset on some hosts; others report the reverse). Callers
  * must guard before formatting either field.
  */
-export interface UsageWindow {
+interface UsageWindow {
   percent_remaining: number | null;
   reset_at: string | null;
   /**

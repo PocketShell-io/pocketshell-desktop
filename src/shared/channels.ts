@@ -239,4 +239,3 @@ export const ipc = {
   },
 } as const;
 
-export type IpcChannelMap = typeof ipc;

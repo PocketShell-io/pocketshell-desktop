@@ -48,7 +48,7 @@ export interface VerificationResult {
  * report a mismatch, which is both wrong and a real block: it made every
  * connect to the test fixture fail after its image was rebuilt on a new base.
  */
-export function knownHostsToken(host: string, port = 22): string {
+function knownHostsToken(host: string, port = 22): string {
   return port === 22 ? host : `[${host}]:${port}`;
 }
 
@@ -117,11 +117,11 @@ export class KnownHosts {
   }
 }
 
-export function defaultKnownHostsPath(): string {
+function defaultKnownHostsPath(): string {
   return resolve(homedir(), '.ssh', 'known_hosts');
 }
 
-export function parseKnownHostsText(text: string): HostKeyEntry[] {
+function parseKnownHostsText(text: string): HostKeyEntry[] {
   const out: HostKeyEntry[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();

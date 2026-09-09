@@ -225,7 +225,7 @@ export interface AppSettings {
 }
 
 /** @see AppSettings.agentLaunchDefaults */
-export interface AgentLaunchDefaults {
+interface AgentLaunchDefaults {
   kind: LaunchableKind;
   skipPermissions: boolean;
   /** Last profile NAME chosen per engine (`claude` / `codex`). */

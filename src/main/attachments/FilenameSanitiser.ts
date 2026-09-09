@@ -50,7 +50,7 @@ export const DEFAULT_NAME = 'shared';
  * extensions (the kind a malicious sender might craft to push the file
  * past readable lengths) are noise.
  */
-export const MAX_EXT_LENGTH = 16;
+const MAX_EXT_LENGTH = 16;
 
 /**
  * Sanitised representation of a filename. `base` is the stem (no dot),

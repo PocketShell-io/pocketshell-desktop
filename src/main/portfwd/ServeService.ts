@@ -90,7 +90,7 @@ export interface ServeTimings {
   forwardPollMs: number;
 }
 
-export const DEFAULT_SERVE_TIMINGS: ServeTimings = {
+const DEFAULT_SERVE_TIMINGS: ServeTimings = {
   readyTimeoutMs: 8_000,
   // Comfortably more than two scan intervals (`scanIntervalSec` is 5s but
   // `setIntent` triggers a pass immediately), so a scan that loses the

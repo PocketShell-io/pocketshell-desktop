@@ -28,7 +28,7 @@ import { dirname, join } from 'node:path';
  */
 
 /** `~/.pocketshell/desktop.log` — fixed, predictable, easy to ask for. */
-export function logPath(): string {
+function logPath(): string {
   return join(homedir(), '.pocketshell', 'desktop.log');
 }
 
