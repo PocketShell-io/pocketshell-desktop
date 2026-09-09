@@ -1118,6 +1118,15 @@ onUnmounted(() => imagePaneObserver?.disconnect());
 }
 .image {
   margin: auto;
+  /* Load-bearing against the flex context above: as a flex item the img
+     carries flex-shrink: 1, and a picture whose explicit width exceeds the
+     pane shrinks — floored not at that width but at the automatic minimum
+     size, which for a replaced element is its INTRINSIC size. Every zoom
+     past 100% therefore rendered at exactly natural size and the slider
+     appeared to stop there. `flex: none` puts the explicit width back in
+     charge; margin: auto still centers the small case and still collapses
+     to scroll-to-top-left on overflow, as described on .image-scroll. */
+  flex: none;
 }
 /* The slider rides on Chromium's native range control (this is Electron, so
    there is exactly one engine to paint it), tinted with the app accent —
