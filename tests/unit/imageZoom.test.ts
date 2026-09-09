@@ -6,6 +6,7 @@ import {
   IMAGE_ZOOM_MAX,
   IMAGE_ZOOM_MIN,
   IMAGE_ZOOM_STEPS,
+  overflowsPane,
   sliderToZoom,
   stepImageZoom,
   zoomToSlider,
@@ -13,7 +14,8 @@ import {
 
 /**
  * The pure half of the image viewer's zoom: the clamp, the +/- ladder, the
- * fit arithmetic, and the log-scaled slider mapping.
+ * fit arithmetic, the log-scaled slider mapping, and the overflow predicate
+ * that arms drag-to-pan.
  *
  * The expectations that are not plain arithmetic are pinned to decisions
  * written in the module header:
@@ -106,6 +108,24 @@ describe('fitPercent', () => {
     expect(fitPercent(0, 100, 500, 400)).toBe(100);
     expect(fitPercent(1000, 500, 0, 400)).toBe(100);
     expect(fitPercent(1000, 500, 0, 0)).toBe(100);
+  });
+});
+
+describe('overflowsPane', () => {
+  it('is true only when an axis exceeds the pane at the given zoom', () => {
+    // 1000x500 at 70% is 700x350: wide of a 500x400 pane, not tall of it.
+    expect(overflowsPane(1000, 500, 70, 500, 400)).toBe(true);
+    // 1000x500 at 50% is 500x350: exactly the pane's width is NOT overflow —
+    // the exact-fit border is where panning has nothing to bring in.
+    expect(overflowsPane(1000, 500, 50, 500, 400)).toBe(false);
+    expect(overflowsPane(1000, 500, 40, 500, 400)).toBe(false);
+    // Taller than the pane while narrower: the other axis alone suffices.
+    expect(overflowsPane(1000, 500, 70, 800, 300)).toBe(true);
+  });
+
+  it('is false for measurements that do not exist', () => {
+    expect(overflowsPane(0, 100, 100, 500, 400)).toBe(false);
+    expect(overflowsPane(1000, 500, 100, 0, 400)).toBe(false);
   });
 });
 

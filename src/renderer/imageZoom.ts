@@ -1,7 +1,8 @@
 /**
  * Image zoom for the Files viewer: one whole percentage of the image's
- * NATURAL size, the ladder the +/- controls step along, and the mapping
- * between that percentage and the toolbar's slider.
+ * NATURAL size, the ladder the +/- controls step along, the mapping
+ * between that percentage and the toolbar's slider, and the overflow
+ * predicate that arms drag-to-pan.
  *
  * ---------------------------------------------------------------------------
  * 100% MEANS ONE IMAGE PIXEL PER CSS PIXEL
@@ -81,6 +82,35 @@ export function fitPercent(
     return 100;
   }
   return Math.min(100, Math.min(paneWidth / naturalWidth, paneHeight / naturalHeight) * 100);
+}
+
+/**
+ * Whether the picture AT THIS ZOOM exceeds the pane in either axis — the
+ * condition for drag-to-pan, because panning is only meaningful when there
+ * is picture outside the pane to bring in. Fit never satisfies this by
+ * construction (`fitPercent` never returns a percentage that overflows), so
+ * overflow is a manual-zoom state, and it must be COMPUTED rather than read
+ * off the element's `scrollWidth`: the pane resizes under the splitter and
+ * the window, and a DOM measurement in a computed goes stale exactly then,
+ * while the measured refs this reads from are what `fitPercent` uses too.
+ *
+ * A missing measurement (no decode yet, pane unmeasured) is false — the same
+ * honest reading `fitPercent` gives the same condition: no facts, no claim.
+ */
+export function overflowsPane(
+  naturalWidth: number,
+  naturalHeight: number,
+  zoomPercent: number,
+  paneWidth: number,
+  paneHeight: number,
+): boolean {
+  if (naturalWidth <= 0 || naturalHeight <= 0 || paneWidth <= 0 || paneHeight <= 0) {
+    return false;
+  }
+  return (
+    (naturalWidth * zoomPercent) / 100 > paneWidth ||
+    (naturalHeight * zoomPercent) / 100 > paneHeight
+  );
 }
 
 /**

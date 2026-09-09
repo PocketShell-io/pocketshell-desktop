@@ -229,7 +229,8 @@ progress). The renderer's `CodeEditor` is CodeMirror 6 (Monaco was
 considered and dropped); save calls `window.api.sftp.writeFile`. Binary
 detection by extension + stat; images get an `<img>` preview with a zoom
 bar — Fit / 100% / slider over a scrollable pane, pure arithmetic in
-`src/renderer/imageZoom.ts` — and a Dark/Light backdrop toggle on the
+`src/renderer/imageZoom.ts` — drag-to-pan with a grab cursor whenever the
+zoomed picture exceeds the pane, and a Dark/Light backdrop toggle on the
 canvas, for checking a picture against the ground its author assumed.
 Other binary offers hex/download. HTML,
 markdown and SVG are documents, not binaries: each opens with a

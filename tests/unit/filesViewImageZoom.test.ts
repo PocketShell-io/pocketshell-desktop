@@ -24,7 +24,13 @@ import { formatImageZoom, sliderToZoom } from '../../src/renderer/imageZoom';
  *   - a new `openUrl` is a new file: the override and the stale decode are
  *     dropped, and the next fit is computed from the NEXT image;
  *   - the backdrop toggle repaints the canvas and is deliberately NOT
- *     among the reset — it is not about the file.
+ *     among the reset — it is not about the file;
+ *   - the pan gesture: the hand appears exactly when `overflowsPane` says
+ *     the picture exceeds the pane, a held drag writes the pointer delta
+ *     into the pane's scroll offsets, and release or cancel ends it. The
+ *     subtraction under test is the WIRING's job; clamping the offsets to
+ *     the scrollable range is the scroll container's, so the fixtures keep
+ *     every offset in range rather than pin jsdom's clamping behaviour.
  *
  * FileTree and CodeEditor are stubbed at the module seam, exactly as in
  * filesViewFocus.test.ts.
@@ -223,5 +229,96 @@ describe('FilesView image backdrop', () => {
     files.openUrl = 'blob:y';
     await nextTick();
     expect(wrapper!.find('.image-scroll').classes()).toContain('on-light');
+  });
+});
+
+describe('FilesView image drag-to-pan', () => {
+  const ZOOM_IN = '.seg button:nth-child(2)';
+
+  /**
+   * jsdom has no PointerEvent, and `trigger` cannot write `clientX`/`button`
+   * onto the MouseEvent it builds (getter-only own properties), so a gesture
+   * is a real MouseEvent from its init dict — pointer capture does not exist
+   * here and is not needed: the handlers are bound to the pane itself. The
+   * awaited tick is the class bindings flushing after the handler ran.
+   */
+  async function firePointer(el: Element, type: string, x = 0, y = 0, id = 1): Promise<void> {
+    const ev = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    (ev as unknown as { pointerId: number }).pointerId = id;
+    el.dispatchEvent(ev);
+    await nextTick();
+  }
+
+  /** The pane element, with offsets seeded as a layout engine would report them. */
+  function pane(): HTMLElement {
+    const el = wrapper!.find('.image-scroll').element as HTMLElement;
+    el.scrollLeft = 40;
+    el.scrollTop = 25;
+    return el;
+  }
+
+  /** The default open: 1000x500 in a 500x400 pane, zoomed past fit. */
+  async function openOverflowing(): Promise<HTMLElement> {
+    await mountImage('blob:x');
+    await decode(1000, 500);
+    await wrapper!.find(ZOOM_IN).trigger('click'); // 70% -> 700 wide, overflows
+    await nextTick();
+    return pane();
+  }
+
+  it('arms the hand exactly while the picture exceeds the pane', async () => {
+    await mountImage('blob:x');
+    await decode(1000, 500);
+    // Fit (50% -> 500x350 in a 500x400 pane) holds the whole picture.
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('pan');
+
+    // 70% is 700 wide: picture beyond the right edge, hand on.
+    await wrapper!.find(ZOOM_IN).trigger('click');
+    await nextTick();
+    expect(wrapper!.find('.image-scroll').classes()).toContain('pan');
+
+    // Back under the pane, the hand goes with it.
+    await wrapper!.find('.bar-end button:first-child').trigger('click'); // Fit
+    await nextTick();
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('pan');
+  });
+
+  it('pans by the drag delta while held and stops at release', async () => {
+    const el = await openOverflowing();
+    await firePointer(el, 'pointerdown', 300, 200);
+    expect(wrapper!.find('.image-scroll').classes()).toContain('panning');
+
+    // Dragged 40 left and 10 down: the picture follows the pointer.
+    await firePointer(el, 'pointermove', 260, 210);
+    expect(el.scrollLeft).toBe(80);
+    expect(el.scrollTop).toBe(15);
+
+    await firePointer(el, 'pointerup');
+    expect(wrapper!.find('.image-scroll').classes()).toContain('pan');
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('panning');
+
+    // A later move without a held drag moves nothing.
+    await firePointer(el, 'pointermove', 100, 100);
+    expect(el.scrollLeft).toBe(80);
+    expect(el.scrollTop).toBe(15);
+  });
+
+  it('ends the drag on pointercancel, not only on button up', async () => {
+    const el = await openOverflowing();
+    await firePointer(el, 'pointerdown', 300, 200);
+    await firePointer(el, 'pointercancel');
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('panning');
+  });
+
+  it('does not grab at Fit, where there is nothing to pan into', async () => {
+    await mountImage('blob:x');
+    await decode(1000, 500);
+    const el = pane();
+
+    await firePointer(el, 'pointerdown', 300, 200);
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('panning');
+    await firePointer(el, 'pointermove', 260, 210);
+    expect(el.scrollLeft).toBe(40);
+    expect(el.scrollTop).toBe(25);
   });
 });

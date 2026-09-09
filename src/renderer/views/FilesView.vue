@@ -28,6 +28,7 @@ import {
   formatImageZoom,
   IMAGE_ZOOM_MAX,
   IMAGE_ZOOM_MIN,
+  overflowsPane,
   sliderToZoom,
   stepImageZoom,
   zoomToSlider,
@@ -472,6 +473,61 @@ watch(
 );
 
 /**
+ * Drag-to-pan. Once a manual zoom lets the picture exceed the pane, the
+ * native scrollbars are joined by the gesture every image viewer shares:
+ * the cursor becomes a hand, and a held drag moves the picture — scrollLeft/
+ * scrollTop against the pointer delta, nothing more. The overflow test is
+ * the pure `overflowsPane` (same measured inputs as Fit), so the hand
+ * appears and disappears with the splitter and the zoom slider; at Fit it
+ * never appears, because there the pane holds the whole picture and there
+ * is nothing to pan into.
+ *
+ * The drag is pointer events with capture, not mouse events, so a drag that
+ * leaves the pane keeps panning and a lost pointer (button up outside the
+ * window, alt-tab) ends it through `pointercancel` rather than sticking.
+ */
+const imageOverflows = computed(() => {
+  const n = imageNatural.value;
+  const p = imagePane.value;
+  if (!n || !p || imageZoom.value == null) return false;
+  return overflowsPane(n.w, n.h, imageZoom.value, p.w, p.h);
+});
+const panDrag = ref<{
+  id: number;
+  startX: number;
+  startY: number;
+  left: number;
+  top: number;
+} | null>(null);
+const panning = computed(() => panDrag.value != null);
+
+function onPanStart(e: PointerEvent): void {
+  if (!imageOverflows.value || e.button !== 0) return;
+  const el = imagePaneEl.value;
+  if (!el) return;
+  e.preventDefault();
+  panDrag.value = {
+    id: e.pointerId,
+    startX: e.clientX,
+    startY: e.clientY,
+    left: el.scrollLeft,
+    top: el.scrollTop,
+  };
+  el.setPointerCapture?.(e.pointerId);
+}
+function onPanMove(e: PointerEvent): void {
+  const d = panDrag.value;
+  const el = imagePaneEl.value;
+  if (!d || !el || e.pointerId !== d.id) return;
+  el.scrollLeft = d.left - (e.clientX - d.startX);
+  el.scrollTop = d.top - (e.clientY - d.startY);
+}
+function onPanEnd(e: PointerEvent): void {
+  if (panDrag.value?.id !== e.pointerId) return;
+  panDrag.value = null;
+}
+
+/**
  * The ground the picture is inspected on: the terminal surface it has always
  * sat on, or white. A drawing authored against one reads wrongly on the
  * other — dark-stroked line art vanishes into the dark ground, white-backed
@@ -837,14 +893,23 @@ onUnmounted(() => imagePaneObserver?.disconnect());
           <div
             ref="imagePaneEl"
             class="image-scroll"
-            :class="{ 'on-light': imageBgLight }"
+            :class="{ 'on-light': imageBgLight, pan: imageOverflows && !panning, panning }"
+            @pointerdown="onPanStart"
+            @pointermove="onPanMove"
+            @pointerup="onPanEnd"
+            @pointercancel="onPanEnd"
           >
+            <!-- `draggable="false"`: the img's native HTML5 drag would win
+                 the gesture the pane exists to own — a held drag pans the
+                 picture — and dropping it outside the app would "save" it
+                 to whatever surface the drop landed on. -->
             <img
               v-if="files.openUrl"
               class="image"
               :src="files.openUrl"
               :alt="openName"
               :style="imageStyle"
+              draggable="false"
               @load="onImageLoad"
             />
           </div>
@@ -1153,6 +1218,17 @@ onUnmounted(() => imagePaneObserver?.disconnect());
   overflow: auto;
   display: flex;
   padding: var(--sp-4);
+}
+/* The pan gesture's cursor, armed by the component's `overflowsPane`
+   answer: a hand when there is picture beyond the pane to drag in, a
+   closed hand while the drag is held — the vocabulary every image viewer
+   shares. At Fit neither applies: the whole picture is visible, and a
+   hand promising a drag that cannot move anything would be a lie. */
+.image-scroll.pan {
+  cursor: grab;
+}
+.image-scroll.panning {
+  cursor: grabbing;
 }
 /* The light backdrop is WHITE and not a token, for the reason .html-frame
    states: the point is the canvas a picture's author assumed, and the app
