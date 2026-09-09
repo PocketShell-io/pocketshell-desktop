@@ -1,7 +1,9 @@
 # PocketShell Desktop — Architecture
 
-How the Electron app is structured: process boundaries, module layout,
-the terminal model, state, and security.
+How the Electron app is structured: process boundaries, the terminal model,
+state, and security. The module layout lives in the tree below and in the
+directory names themselves; this file's job is the decisions the tree cannot
+show.
 
 ---
 
@@ -19,9 +21,7 @@ Standard hardened Electron: three processes.
 ┌──────────────────────────────────────────────────────────────▼──────────────┐
 │  Main (Node, privileged — the only process that touches ssh2/keys/fs)        │
 │  - SshService, SftpService, ForwardService, TmuxClientPool, AplexerClient     │
-│  - SshConfigParser, KnownHosts, PocketshellClient                            │
 │  - ConnectionRegistry (connection id → live ssh2 Client)                      │
-│  - PortfwdStore (electron-store); NO keychain — see the rule below           │
 │  - ipcMain handlers                                                          │
 └─────────────────────────────────────────────────────────────┬───────────────┘
                                                               │ ssh2 (TCP/SSH)
@@ -48,57 +48,20 @@ Standard hardened Electron: three processes.
 
 ## 2. Module layout
 
-```
-src/
-├─ main/
-│  ├─ index.ts                 # app/window lifecycle, registers ipc handlers
-│  ├─ ipc.ts                   # ipcMain.handle registrations (the API surface)
-│  ├─ log.ts                   # main-process file log
-│  ├─ windowState.ts           # window size/position/maximized across launches
-│  ├─ attachments/             # composer attachments: staging, name sanitising, mime, retention
-│  ├─ helper/                  # PocketshellClient (`pocketshell <cmd>` over an exec
-│  │                           # channel), bootstrap (PATH probe + install), parsers
-│  ├─ portfwd/
-│  │  ├─ Forwarder.ts          # one -L/-R/-D forward (ssh2 forwardOut/forwardIn)
-│  │  ├─ ForwardService.ts     # per-connection forward lifecycle: manual + auto rules
-│  │  ├─ AutoForwarder.ts      # scan loop + mirror/allocate (extends Android local-only)
-│  │  ├─ PortScanner.ts        # ss -tlnp -> netstat -> ss output parsing
-│  │  ├─ scanRemotePorts.ts    # remote listener-scan command assembly + merge
-│  │  ├─ serveCommand.ts       # "serve this folder": command/port/URL construction (pure)
-│  │  ├─ ServeService.ts       # "serve this folder": execution + output classification
-│  │  └─ PortfwdStore.ts       # electron-store: forward rules
-│  ├─ preview/                 # document preview of remote HTML/markdown/SVG (URL<->path safety)
-│  ├─ projects/                # project-folder-first sessions: folder pick, clone, name derivation
-│  ├─ sftp/SftpService.ts      # list/read/write/mkdir/rename/delete/upload/download
-│  ├─ ssh/
-│  │  ├─ SshService.ts         # connect/exec/tail/shell/close (ssh2 wrapper)
-│  │  ├─ ConnectionRegistry.ts # connectionId -> Client + metadata
-│  │  ├─ ShellTracker.ts       # live PTY shells by shellId (renderer never holds the channel)
-│  │  └─ TmuxClientPool.ts     # per-session tmux clients; LRU cap, channel budget
-│  ├─ ssh-config/              # SshConfigParser (~/.ssh/config -> HostEntry[]),
-│  │                           # KnownHosts (verify against known_hosts, TOFU)
-│  └─ update/ReleaseChecker.ts # GitHub Releases poll -> newer / current / failed
-├─ preload/index.ts            # contextBridge.exposeInMainWorld('api', ...)
-├─ shared/                     # types + pure logic both processes import: types,
-│                              # channels, reconnectBackoff, shellQuote, composer*, ...
-└─ renderer/
-   ├─ main.ts, App.vue         # Vue app bootstrap
-   ├─ router.ts                # host-picker / host-workspace / folder-workspace
-   ├─ ipc.ts                   # typed wrapper over window.api
-   ├─ parseStall.ts, xtermWriteBuffer.ts  # xterm stall watchdog + write-loop
-   │                                      # repair (§9.1)
-   ├─ terminalPaths.ts, terminalLinks.ts  # path detection + click -> Files tab
-   ├─ stores/                  # Pinia: connection, sessions, shells, files, projects,
-   │                           # agents (usage rows), composer, forwards, settings, update
-   ├─ views/                   # HostPicker, HostWorkspace, FolderWorkspace, Files, Usage,
-   │                           # PortPanel, EnvPanel, Settings, session placeholder/redirect
-   └─ components/              # TerminalView (xterm.js), SessionTree, FileTree,
-                               # CodeEditor (CodeMirror), PromptComposer, OverlayPanel, ...
-```
+The directories under `src/` are the map: `main/` groups by domain (`ssh/`,
+`sftp/`, `portfwd/`, `helper/`, `attachments/`, `preview/`, `projects/`,
+`ssh-config/`, `update/`), `renderer/` is `stores/` + `views/` +
+`components/`, `shared/` holds the types and pure logic both processes
+import, `preload/` is the bridge. Two `tsconfig.json`s:
+`tsconfig.node.json` (main + preload, `@types/node`) and
+`tsconfig.web.json` (renderer, DOM libs), over a shared strict base.
 
-Two `tsconfig.json`s: `tsconfig.node.json` (main + preload, `@types/node`)
-and `tsconfig.web.json` (renderer, DOM libs). A shared `tsconfig.base.json`
-holds strict options.
+The non-obvious residents, by name: `renderer/parseStall.ts` +
+`xtermWriteBuffer.ts` are the xterm stall watchdog and write-loop repair
+(§9.1); `terminalPaths.ts` / `terminalLinks.ts` are terminal path detection
+and click-to-Files; `TmuxClientPool.ts` keeps the per-tab PTY clients; the
+`helper/` client speaks `pocketshell <cmd>` over exec channels and probes
+and installs itself on a host missing it.
 
 ---
 
@@ -219,21 +182,18 @@ proposed-API, so the renderer constructs the terminal with
 
 ## 4. SSH service contract
 
-`SshService` mirrors the Android `RealSshSession` surface, adapted to
-`ssh2`'s event model:
+`SshService` mirrors the Android `RealSshSession` surface adapted to
+`ssh2`'s event model. The three rules a caller must know:
 
-| Method | Behaviour |
-|---|---|
-| `connect(cfg): Promise<connectionId>` | publickey auth; 30s timeout; `keepaliveInterval=15`; verifies host key via `KnownHosts`. Never throws — returns a result object; non-ready is an error result. |
-| `exec(connectionId, cmd): Promise<ExecResult>` | `{stdout, stderr, exitCode}`. **No throw on non-zero exit** (exit codes are semantic: `command -v`, `tmux has-session`). |
-| `tail(connectionId, path, fromLine, onLine): TailHandle` | spawns `tail -F -n +N '<path>'`; swallows transport drops; the caller (reconnect FSM) re-launches on a new connection. |
-| `shell(connectionId, {term, cols, rows}): Promise<ShellHandle>` | PTY shell; `ShellHandle { stdin, stdout, setWindow, close }`. |
-| `close(connectionId)` | idempotent; cancels tails, closes forwards/shells, disconnects. |
+- Operations return **result objects, never throw** for expected failures;
+  `exec` does not throw on non-zero exit either — exit codes are semantic
+  (`command -v`, `tmux has-session`).
+- `tail` swallows transport drops and does **not** self-heal: the caller
+  (the reconnect FSM) re-launches on the new connection.
+- `close` is idempotent and cancels tails, shells and forwards.
 
-Key formats: `ssh2` parses PEM / OpenSSH-v1 / PKCS8 directly (ed25519 +
-RSA). PuTTY `.ppk` via a parser if needed later. A passphrase is optional
-connect-call input: the renderer supplies it with `connect`, main hands it
-to `ssh2` once, and nothing stores it (§1).
+Key formats: PEM / OpenSSH-v1 / PKCS8 via `ssh2` (ed25519 + RSA); a
+passphrase travels one way, with the connect call (§1).
 
 ---
 
@@ -256,17 +216,16 @@ users expect:
 in `PortfwdStore`, so manual toggles and persisted remappings survive
 reconnects (unlike the Android in-memory-only manual toggles). Reconnect
 itself is the renderer's job (§9): main only reports the drop, and after
-the new connection is up a fresh scan rediscovers the forward set.
+the new connection is up a fresh scan rediscovers the forward set. The
+full decision record is `docs/PORTFWD.md`.
 
 ---
 
 ## 6. Files (SFTP)
 
-`SftpService` over `ssh2`'s own sftp channel (`client.sftp()` →
-`SFTPWrapper`; the long-unused `ssh2-sftp-client` dependency is gone):
-`list`, `readFile`/`stat`, `createWriteStream`/`writeFile`,
-`mkdir`, `rename`, `delete`, `fastPut`/`fastGet` (upload/download, with
-progress events). The renderer's `CodeEditor` is CodeMirror 6 (Monaco was
+`SftpService` over `ssh2`'s own sftp channel:
+`list`, read/write, `mkdir`, `rename`, `delete`, `fastPut`/`fastGet` (with
+progress). The renderer's `CodeEditor` is CodeMirror 6 (Monaco was
 considered and dropped); save calls `window.api.sftp.writeFile`. Binary
 detection by extension + stat; images get an `<img>` preview with a zoom
 bar — Fit / 100% / slider over a scrollable pane, pure arithmetic in
@@ -286,24 +245,12 @@ channel. The env panel layers that secret-via-stdin safety on for the
 
 ## 7. State management
 
-Pinia stores in the renderer hold **view state only** — never secrets:
-
-| Store | Holds |
-|---|---|
-| `connection` | active connectionId per host, connection/error state, bootstrap result, reconnect schedule |
-| `sessions` | per-host `SessionSummary[]`, refresh state |
-| `shells` | which live PTY (shellId) belongs to which session |
-| `projects` | active host `$HOME`, SFTP folder browser, and repository loading state; cleared when the connection id changes |
-| `files` | current path, tree cache, open file buffers |
-| `agents` | per-pane detection, conversation events, usage rows |
-| `composer` | per-session composer state: draft text, attachments, send state |
-| `forwards` | per-host forward table + statuses |
-| `settings` | fonts, theme, zoom, folder order, per-host root folders |
-| `update` | release-check status behind the update banner |
-
-Streams (terminal bytes, tail lines, forward bytes) are pushed from main
-to renderer over IPC events keyed by id; the stores subscribe and the
-components render.
+Pinia stores in the renderer hold **view state only** — never secrets — one
+per domain (`connection`, `sessions`, `shells`, `projects`, `files`,
+`agents`, `composer`, `forwards`, `settings`, `update`); the names are the
+directories. Streams (terminal bytes, tail lines, forward bytes) are pushed
+from main to renderer over IPC events keyed by id; the stores subscribe and
+the components render.
 
 ---
 
