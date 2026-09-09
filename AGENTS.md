@@ -27,7 +27,8 @@ lint`, `npm run test:unit`, `npm run test:integration` (needs Docker),
 Docs in `docs/`: `ARCHITECTURE.md` is the deep dive — read the relevant
 section before working in an area; feature docs (`COMPOSER`, `PORTFWD`,
 `SESSIONLIST`, `SHORTCUTS`, `SERVE`, `DESIGN`) record how each subsystem
-works; `BACKLOG.md` holds planned work.
+works; `BACKLOG.md` holds planned work and findings worth keeping;
+`CLEAN_CODE.md` the rules the code is held to.
 
 Dependency rule: production `dependencies` is only what is `require()`d
 from disk at runtime (currently just `ssh2`); everything the renderer
