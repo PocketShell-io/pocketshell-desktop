@@ -1,9 +1,9 @@
 # SYNC — optional Google-login settings sync
 
 One optional feature: sign in with a Google account and the host entries
-from `~/.ssh/config` sync to it, encrypted so the server cannot read them.
-Everything here is opt-in — with no account signed in, the app behaves
-exactly as it did before this existed.
+you pick from `~/.ssh/config` sync to it, encrypted so the server cannot
+read them. Everything here is opt-in — with no account signed in, the app
+behaves exactly as it did before this existed.
 
 The backend (API Gateway + Lambda + DynamoDB, deployed from
 `aws-infra/sandbox/pocketshell-sync`) is documented in that repo, including
@@ -50,31 +50,47 @@ auth tag appended to `ct` makes a wrong passphrase and a corrupted blob fail
 closed. Pull hands the decrypted plaintext across IPC; the envelope itself
 never does.
 
-## What syncs, and the merge
+## What syncs: the selection
 
-The synced payload is the host list exactly as `listConfigHosts()` reports
-it — hostnames, users, ports, jump hosts, forward directives. Private keys
-are files on disk and never leave it. One payload, one slot (`main`), the
-whole list per sync: the entries are small, and 8 KB (the server's ceiling,
-enforced before upload in `SyncService`) holds hundreds of them.
+Sync is selective. The Account & sync section lists `~/.ssh/config`'s hosts
+with a checkbox each; ONLY ticked hosts are uploaded — an unticked host
+never leaves the machine, encrypted or otherwise. That is the privacy
+property, and it is why the payload is assembled rather than merged: the
+payload is the ticked set, and pushing replaces the account's content with
+it (`assembleSyncSet` in `src/shared/syncMerge.ts`).
 
-The merge (`src/shared/syncMerge.ts`) is a union by alias, local-wins:
+The tick marks live in the settings store (`syncSelectedHosts`, per
+machine, persisted — a forgotten selection is the dangerous direction: a
+relaunch that reset every tick would let an innocent "Sync now" wipe the
+account). Each ticked alias contributes its LOCAL entry when the config
+has one — the machine you are sitting at is authoritative for the hosts it
+has — else the ACCOUNT's entry, so a ticked host the config has lost keeps
+its backup instead of silently vanishing from the account too.
 
-- a host known to only one side is kept — that is how a host added on the
-  laptop reaches the desktop and vice versa;
-- a host both sides know is taken whole from the LOCAL machine. No per-field
-  merge and no per-host timestamps: `HostEntry` has none, and a half-merged
-  host is worse than either whole entry.
+The account is part of the selection rather than a rival to it: aliases
+pulled from the account tick themselves on — but only ones the local
+config lacks, so an alias this machine can see is one the user has decided
+about and their untick stands. The two rules together give the flows that
+matter: a fresh machine pulls and auto-ticks everything, so its next push
+re-uploads the account instead of wiping it; and removing a host from the
+account is untick + sync, nowhere else.
 
-Pushing sends the version the merge started from as the conflict base; a 409
-(another device wrote first) re-pulls, re-merges, and retries up to three
-times. The merge is idempotent over its own output, so a retry cannot
-compound.
+Entries travel exactly as `listConfigHosts()` reports them — hostnames,
+users, ports, jump hosts, forward directives; private keys are files on
+disk and never leave it. One payload, one slot (`main`), whole list per
+sync: the entries are small, and 8 KB (the server's ceiling, enforced
+before upload in `SyncService`) holds hundreds of them.
+
+Pushing sends the version the pull returned as the conflict base; a 409
+(another device wrote first) re-pulls, re-absorbs its aliases,
+re-assembles, and retries up to three times. Each retry absorbs only new
+aliases, so a retry cannot compound.
 
 ## Applying the account to this machine
 
-`sync:applyHosts` → `src/main/ssh-config/SshConfigWriter.ts` appends hosts
-the local `~/.ssh/config` does not have. Appends ONLY: the config is the
+`sync:applyHosts` → `src/main/ssh-config/SshConfigWriter.ts` appends the
+synced set's hosts that the local `~/.ssh/config` does not have. Appends
+ONLY: the config is the
 user's document, full of directives this app never parses, so rewriting an
 existing entry is not an operation this module defines. A directive's every
 non-wildcard, non-negated token claims a name; the write is temp-file-plus-
@@ -95,4 +111,5 @@ from a blob. `applyHosts` degrades its payload per entry
 config writer.
 
 The renderer side is `src/renderer/stores/sync.ts` plus the Account & sync
-section of `views/SettingsView.vue`.
+section of `views/SettingsView.vue`; the tick marks themselves are the
+settings store's `syncSelectedHosts`.

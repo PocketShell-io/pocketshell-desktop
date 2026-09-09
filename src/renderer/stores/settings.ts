@@ -222,6 +222,20 @@ export interface AppSettings {
    * and a Windows box keeps working.
    */
   shortcutOverrides: Record<string, string>;
+  /**
+   * The host aliases ticked for settings sync (docs/SYNC.md), as
+   * `~/.ssh/config` aliases. Only ticked hosts are uploaded to the sync
+   * account — an unticked host never leaves the machine — and the sync
+   * store auto-ticks aliases it pulls from the account, so this list is
+   * "the selection" rather than "the local opinion": it grows on every pull
+   * and shrinks only on an explicit untick.
+   *
+   * It lives here, persisted per machine, rather than in the sync store's
+   * memory, because a FORGOTTEN selection is the dangerous direction: a
+   * relaunch that reset every tick to off would let an innocent "Sync now"
+   * push an empty list and wipe the account.
+   */
+  syncSelectedHosts: string[];
 }
 
 /** @see AppSettings.agentLaunchDefaults */
@@ -368,6 +382,27 @@ function asShortcutOverrides(raw: unknown): Record<string, string> | undefined {
   return out;
 }
 
+/**
+ * The sync selection: an array of non-empty alias strings, deduped, capped.
+ * Degrades per ENTRY like `asRootMap` — one malformed alias costs itself,
+ * never the list. The cap bounds the blob (and, downstream, the sync
+ * payload; the server's ceiling is 8 KB and aliases are short).
+ */
+const SYNC_SELECTED_HOSTS_MAX = 256;
+
+function asAliasList(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const alias = entry.trim();
+    if (alias === '' || out.includes(alias)) continue;
+    out.push(alias);
+    if (out.length >= SYNC_SELECTED_HOSTS_MAX) break;
+  }
+  return out;
+}
+
 /** The registry the loader, the defaults and the validator are all generic over. */
 const SETTING_SPECS: SettingSpecs = {
   // Both composer defaults are TRUE: typing into a terminal that fronts an
@@ -406,6 +441,9 @@ const SETTING_SPECS: SettingSpecs = {
   // shipped before this setting existed — the same rule every other default
   // here follows.
   shortcutOverrides: { default: {}, parse: asShortcutOverrides },
+  // Empty means "no host is synced", which is what a fresh install must say:
+  // syncing nothing is the safe default, and the user opt in per host.
+  syncSelectedHosts: { default: [], parse: asAliasList },
 };
 
 const STORAGE_KEY = 'pocketshell.settings.v1';

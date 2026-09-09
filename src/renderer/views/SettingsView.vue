@@ -933,9 +933,9 @@ function shellCostNote(spec: ShortcutSpec): { text: string; safe: boolean } | nu
         <div class="row-text">
           <label class="row-label">Google account</label>
           <p class="row-hint">
-            Optional. Signing in lets this machine put the host entries from
-            your ~/.ssh/config into your account, encrypted on THIS device —
-            the server stores what it cannot read. Without an account
+            Optional. Signing in lets this machine put host entries YOU PICK
+            from your ~/.ssh/config into your account, encrypted on THIS
+            device — the server stores what it cannot read. Without an account
             everything keeps working exactly as it does now.
           </p>
         </div>
@@ -986,19 +986,50 @@ function shellCostNote(spec: ShortcutSpec): { text: string; safe: boolean } | nu
         </div>
       </div>
 
+      <div v-if="sync.status?.loggedIn" class="row stacked">
+        <div class="row-main">
+          <div class="row-text">
+            <label class="row-label">Hosts to sync</label>
+            <p class="row-hint">
+              Tick the hosts to keep in your account. Unticked hosts never
+              leave this machine — not even encrypted. Hosts pulled from the
+              account tick themselves on, so syncing never silently drops
+              what another machine put there; removing one is untick + sync.
+              The tick marks are remembered on this machine.
+            </p>
+          </div>
+        </div>
+        <ul class="sync-hosts">
+          <li v-for="host in connection.hosts" :key="host.name">
+            <label class="sync-host">
+              <input
+                type="checkbox"
+                :checked="settings.syncSelectedHosts.includes(host.name)"
+                :disabled="sync.busy"
+                @change="sync.setSelected(host.name, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="sync-host-alias">{{ host.name }}</span>
+              <span class="sync-host-dest">{{ host.hostname }}</span>
+            </label>
+          </li>
+          <li v-if="connection.hosts.length === 0" class="row-hint">
+            No hosts found in ~/.ssh/config.
+          </li>
+        </ul>
+      </div>
+
       <div class="row">
         <div class="row-text">
           <label class="row-label">Sync now</label>
           <p class="row-hint">
-            Merges the account's hosts with this machine's (this machine wins
-            on conflicts) and pushes the result; hosts the account knows that
-            ~/.ssh/config does not are added to it. Nothing is ever deleted.
+            Uploads the ticked hosts to your account (replacing what is
+            there) and adds any account host that ~/.ssh/config is missing.
           </p>
         </div>
         <div class="control">
           <button
             class="btn-ghost"
-            :disabled="sync.busy || !sync.status?.loggedIn"
+            :disabled="sync.busy || !sync.status?.loggedIn || settings.syncSelectedHosts.length === 0"
             @click="sync.syncNow()"
           >
             {{ sync.busy ? 'Syncing…' : 'Sync now' }}
@@ -1466,6 +1497,47 @@ kbd {
    "decryption failed — wrong passphrase" is a colour apart from a count. */
 .sync-error {
   color: var(--error);
+}
+/* The sync selection list: a scroller rather than an ever-growing stack —
+   a config with thirty hosts must not stretch the settings panel. Two
+   columns while there is room (aliases are short), one on a narrow panel. */
+.sync-hosts {
+  margin: 0;
+  padding: var(--sp-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--sp-1) var(--sp-4);
+  max-height: 11rem;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+.sync-host {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  cursor: pointer;
+  font-size: var(--fs-300);
+  font-family: var(--font-ui);
+}
+.sync-host input[type='checkbox'] {
+  flex: none;
+  accent-color: var(--accent);
+}
+.sync-host-alias {
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sync-host-dest {
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Each sample sits on its surface's own ground at its surface's own size, so
    it answers the question the user is actually asking — "what will THIS look
