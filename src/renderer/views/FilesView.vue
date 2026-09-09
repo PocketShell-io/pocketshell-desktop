@@ -472,6 +472,22 @@ watch(
 );
 
 /**
+ * The ground the picture is inspected on: the terminal surface it has always
+ * sat on, or white. A drawing authored against one reads wrongly on the
+ * other — dark-stroked line art vanishes into the dark ground, white-backed
+ * art haloes against white — and which ground is wrong is a fact about the
+ * picture, so the viewer offers both.
+ *
+ * Component state like the zoom, and for the same reason: a fact about
+ * LOOKING, not a preference to name in Settings. Unlike the zoom it is NOT
+ * reset when a new file opens — the zoom is derived from the file and goes
+ * stale, this says nothing about the file at all — so a run of pictures can
+ * be checked against the same backdrop. It dies with the tab, as the zoom
+ * does.
+ */
+const imageBgLight = ref(false);
+
+/**
  * The pane is MEASURED, not assumed: `fitPercent` needs the scroll area's
  * CSS box, which changes under the splitter drag, a window resize and the
  * tree pane's own width. The observer is (re)bound by watching the template
@@ -799,8 +815,30 @@ onUnmounted(() => imagePaneObserver?.disconnect());
                 100%
               </button>
             </div>
+            <div class="seg" role="group" aria-label="Backdrop">
+              <button
+                type="button"
+                :class="{ active: !imageBgLight }"
+                title="Dark backdrop"
+                @click="imageBgLight = false"
+              >
+                Dark
+              </button>
+              <button
+                type="button"
+                :class="{ active: imageBgLight }"
+                title="Light backdrop"
+                @click="imageBgLight = true"
+              >
+                Light
+              </button>
+            </div>
           </div>
-          <div ref="imagePaneEl" class="image-scroll">
+          <div
+            ref="imagePaneEl"
+            class="image-scroll"
+            :class="{ 'on-light': imageBgLight }"
+          >
             <img
               v-if="files.openUrl"
               class="image"
@@ -1115,6 +1153,13 @@ onUnmounted(() => imagePaneObserver?.disconnect());
   overflow: auto;
   display: flex;
   padding: var(--sp-4);
+}
+/* The light backdrop is WHITE and not a token, for the reason .html-frame
+   states: the point is the canvas a picture's author assumed, and the app
+   has no light surface of its own to lend. Only the canvas changes — the
+   toolbar keeps the app's surface, because it is app chrome, not ground. */
+.image-scroll.on-light {
+  background: #fff;
 }
 .image {
   margin: auto;

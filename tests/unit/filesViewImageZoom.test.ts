@@ -6,11 +6,12 @@ import { nextTick } from 'vue';
 import { formatImageZoom, sliderToZoom } from '../../src/renderer/imageZoom';
 
 /**
- * The image viewer's zoom bar in FilesView: that the toolbar's controls
- * actually drive the picture, and that the state resets when the file does.
+ * The image viewer's toolbar in FilesView: that its controls actually drive
+ * what the pane shows, and that file-derived state resets when the file
+ * does.
  *
- * The arithmetic is pinned in imageZoom.test.ts; what belongs here is the
- * WIRING, which is where a viewer breaks in ways the pure module cannot
+ * The zoom arithmetic is pinned in imageZoom.test.ts; what belongs here is
+ * the WIRING, which is where a viewer breaks in ways the pure module cannot
  * see:
  *
  *   - the default is Fit, computed from a `load` event (decoded size) and a
@@ -21,7 +22,9 @@ import { formatImageZoom, sliderToZoom } from '../../src/renderer/imageZoom';
  *   - each control (−, +, slider, Fit, 100%) lands the image on the width
  *     the pure model says;
  *   - a new `openUrl` is a new file: the override and the stale decode are
- *     dropped, and the next fit is computed from the NEXT image.
+ *     dropped, and the next fit is computed from the NEXT image;
+ *   - the backdrop toggle repaints the canvas and is deliberately NOT
+ *     among the reset — it is not about the file.
  *
  * FileTree and CodeEditor are stubbed at the module seam, exactly as in
  * filesViewFocus.test.ts.
@@ -190,5 +193,35 @@ describe('FilesView image zoom', () => {
     ResizeObserverStub.last!.emit(250, 400);
     await nextTick();
     expect(imageWidthPx()).toBe('250px');
+  });
+});
+
+describe('FilesView image backdrop', () => {
+  it('paints the canvas dark by default and light from the toggle', async () => {
+    await mountImage('blob:x');
+    const backdrop = wrapper!.find('[aria-label="Backdrop"]');
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('on-light');
+    expect(backdrop.find('button.active').text()).toBe('Dark');
+
+    await backdrop.findAll('button')[1]!.trigger('click');
+    await nextTick();
+    expect(wrapper!.find('.image-scroll').classes()).toContain('on-light');
+    expect(backdrop.find('button.active').text()).toBe('Light');
+
+    await backdrop.findAll('button')[0]!.trigger('click');
+    await nextTick();
+    expect(wrapper!.find('.image-scroll').classes()).not.toContain('on-light');
+  });
+
+  it('keeps the backdrop across files — it is not about the file', async () => {
+    await mountImage('blob:x');
+    await wrapper!.find('[aria-label="Backdrop"]').findAll('button')[1]!.trigger('click');
+    await nextTick();
+
+    const files = useFilesStore();
+    files.openPath = '/home/u/other.png';
+    files.openUrl = 'blob:y';
+    await nextTick();
+    expect(wrapper!.find('.image-scroll').classes()).toContain('on-light');
   });
 });
