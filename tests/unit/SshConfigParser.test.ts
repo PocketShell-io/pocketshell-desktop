@@ -122,6 +122,27 @@ Host second
     expect(hosts[0]!.identityFile).toBe(homedir());
   });
 
+  it('ignores directives it does not model', () => {
+    const hosts = parseSshConfigText(
+      'Host h\n  Ciphers chacha20-poly1305@openssh.com\n  MACs hmac-sha2-256\n  HostName h.example.com\n',
+    );
+    expect(hosts).toHaveLength(1);
+    expect(hosts[0]!.hostname).toBe('h.example.com');
+  });
+
+  it('does not model DynamicForward (no SOCKS entries in the host list)', () => {
+    const hosts = parseSshConfigText('Host sock\n  DynamicForward 1080\n');
+    expect(hosts).toHaveLength(1);
+    expect(hosts[0]!.localForwards ?? []).toEqual([]);
+  });
+
+  it('parses a LocalForward with a listen port but no destination', () => {
+    const hosts = parseSshConfigText('Host h\n  LocalForward 2222\n');
+    const fwds = hosts[0]!.localForwards ?? [];
+    expect(fwds).toHaveLength(1);
+    expect(fwds[0]).toMatchObject({ listenPort: 2222, destHost: '', destPort: 0 });
+  });
+
   it('leaves absolute IdentityFile paths alone', () => {
     const abs = resolve(homedir(), 'keys', 'k');
     const hosts = parseSshConfigText(`Host h\n  IdentityFile ${abs}\n`);
