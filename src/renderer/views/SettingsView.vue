@@ -31,6 +31,7 @@ import { useProjectsStore } from '../stores/projects';
 import { useSessionsStore } from '../stores/sessions';
 import { useSettingsStore } from '../stores/settings';
 import { useUpdateStore } from '../stores/update';
+import { useSyncStore } from '../stores/sync';
 import { defaultHostStatus } from '../autoConnect';
 import { canonicalisePath } from '../sessionGrouping';
 import {
@@ -74,6 +75,7 @@ const projects = useProjectsStore();
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const updates = useUpdateStore();
+const sync = useSyncStore();
 
 /**
  * The host whose project roots this section edits.
@@ -93,6 +95,10 @@ onMounted(async () => {
   // the single source for the default-host choices, so ask for it when the
   // list is empty rather than rendering an empty select.
   if (!connection.hosts.length) await connection.loadHosts();
+  // The account state lives in main; the section renders nothing honest
+  // until it has been asked at least once. Re-asked on every mount, never
+  // assumed across mounts — sign-in can change out from under a cached copy.
+  void sync.refreshStatus();
   if (
     !connection.activeHost &&
     settings.defaultHost &&
@@ -921,6 +927,90 @@ function shellCostNote(spec: ShortcutSpec): { text: string; safe: boolean } | nu
     </section>
 
     <section class="group">
+      <h3 class="group-title">Account &amp; sync</h3>
+
+      <div class="row">
+        <div class="row-text">
+          <label class="row-label">Google account</label>
+          <p class="row-hint">
+            Optional. Signing in lets this machine put the host entries from
+            your ~/.ssh/config into your account, encrypted on THIS device —
+            the server stores what it cannot read. Without an account
+            everything keeps working exactly as it does now.
+          </p>
+        </div>
+        <div class="control">
+          <template v-if="sync.status?.loggedIn">
+            <button class="btn-ghost" :disabled="sync.busy" @click="sync.logout()">
+              Sign out
+            </button>
+            <p class="row-hint">Signed in as {{ sync.status.email ?? 'your Google account' }}.</p>
+          </template>
+          <template v-else>
+            <button
+              class="btn-ghost"
+              :disabled="sync.busy || (sync.status !== null && !sync.status.keychainAvailable)"
+              @click="sync.login()"
+            >
+              {{ sync.busy ? 'Signing in…' : 'Sign in with Google' }}
+            </button>
+            <p class="row-hint" v-if="sync.status !== null && !sync.status.keychainAvailable">
+              No OS keychain is available, so sign-in tokens cannot be stored
+              safely and sync is disabled.
+            </p>
+          </template>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <label class="row-label">Sync passphrase</label>
+          <p class="row-hint">
+            Encrypts your settings before they leave this machine. It is not
+            your Google password, it is never stored — not here, not on the
+            server — and it cannot be recovered: losing it means re-uploading
+            from scratch. The first sync sets it; every device must type the
+            same one.
+          </p>
+        </div>
+        <div class="control">
+          <input
+            class="control"
+            type="password"
+            autocomplete="off"
+            placeholder="passphrase"
+            :value="sync.passphrase"
+            :disabled="!sync.status?.loggedIn"
+            @input="sync.passphrase = ($event.target as HTMLInputElement).value"
+          />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-text">
+          <label class="row-label">Sync now</label>
+          <p class="row-hint">
+            Merges the account's hosts with this machine's (this machine wins
+            on conflicts) and pushes the result; hosts the account knows that
+            ~/.ssh/config does not are added to it. Nothing is ever deleted.
+          </p>
+        </div>
+        <div class="control">
+          <button
+            class="btn-ghost"
+            :disabled="sync.busy || !sync.status?.loggedIn"
+            @click="sync.syncNow()"
+          >
+            {{ sync.busy ? 'Syncing…' : 'Sync now' }}
+          </button>
+          <p class="row-hint" :class="{ 'sync-error': sync.message?.kind === 'error' }">
+            {{ sync.message?.text ?? '' }}
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="group">
       <h3 class="group-title">Updates</h3>
 
       <div class="row">
@@ -1371,6 +1461,11 @@ kbd {
 .control.size {
   width: 5rem;
   font-variant-numeric: tabular-nums;
+}
+/* The sync rows' outcome line. Same hint metric; an error tints the text so
+   "decryption failed — wrong passphrase" is a colour apart from a count. */
+.sync-error {
+  color: var(--error);
 }
 /* Each sample sits on its surface's own ground at its surface's own size, so
    it answers the question the user is actually asking — "what will THIS look

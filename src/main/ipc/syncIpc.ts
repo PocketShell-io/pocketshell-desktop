@@ -42,12 +42,15 @@ export function registerSyncIpc(ctx: IpcContext): void {
 
   ipcMain.handle(
     ipc.sync.push,
-    async (_evt, slot: unknown, plaintext: unknown, passphrase: unknown): Promise<SyncPushResult> => {
+    async (_evt, slot: unknown, plaintext: unknown, passphrase: unknown, baseVersion: unknown): Promise<SyncPushResult> => {
       if (typeof plaintext !== 'string') throw new TypeError('plaintext must be a string');
+      // The version the caller merged from — the server's optimistic-
+      // concurrency base. A value that is not a number could only mean a
+      // mismatched caller; treat it as "create or first write" (0).
+      const base = typeof baseVersion === 'number' && Number.isInteger(baseVersion) && baseVersion >= 0 ? baseVersion : 0;
       try {
         const envelope = encryptToEnvelope(plaintext, readPassphrase(passphrase));
-        const base = await ctx.sync.pull(readSlot(slot));
-        const pushed = await ctx.sync.push(readSlot(slot), envelope, base?.version ?? 0);
+        const pushed = await ctx.sync.push(readSlot(slot), envelope, base);
         return { kind: 'ok', version: pushed.version };
       } catch (err) {
         if (err instanceof SyncConflictError) return { kind: 'conflict', currentVersion: err.currentVersion };

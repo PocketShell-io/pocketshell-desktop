@@ -28,6 +28,9 @@ vi.mock('../../src/renderer/ipc', () => ({
     },
     helper: { sessionsList: vi.fn(async () => []) },
     projects: { home: vi.fn(async () => ({ ok: false })) },
+    // SettingsView's mount asks main who is signed in; signed out with no
+    // keychain is the answer every assertion here assumes.
+    sync: { status: vi.fn(async () => ({ loggedIn: false, email: null, keychainAvailable: false })) },
   },
 }));
 

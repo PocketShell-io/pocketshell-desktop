@@ -747,9 +747,13 @@ const api = {
      */
     pull: (slot: string, passphrase: string): Promise<SyncPullResult> =>
       ipcRenderer.invoke(ipc.sync.pull, slot, passphrase),
-    /** Encrypt [plaintext] with [passphrase] and store it (version-checked). */
-    push: (slot: string, plaintext: string, passphrase: string): Promise<SyncPushResult> =>
-      ipcRenderer.invoke(ipc.sync.push, slot, plaintext, passphrase),
+    /**
+     * Encrypt [plaintext] with [passphrase] and store it. [baseVersion] is
+     * the version the caller merged from (0 for a first write); a mismatch
+     * comes back as a `conflict` result, not a rejection.
+     */
+    push: (slot: string, plaintext: string, passphrase: string, baseVersion: number): Promise<SyncPushResult> =>
+      ipcRenderer.invoke(ipc.sync.push, slot, plaintext, passphrase, baseVersion),
     /** Append hosts missing from ~/.ssh/config; returns the aliases added. */
     applyHosts: (hosts: HostEntry[]): Promise<SyncApplyResult> =>
       ipcRenderer.invoke(ipc.sync.applyHosts, hosts),
