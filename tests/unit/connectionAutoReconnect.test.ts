@@ -25,7 +25,6 @@ const fwdList = vi.fn<(id: string) => Promise<never[]>>();
 const fwdDiscovered = vi.fn<(id: string) => Promise<never[]>>();
 const fwdStatus = vi.fn<(id: string) => Promise<null>>();
 const fwdScan = vi.fn<(id: string) => Promise<never[]>>();
-const serveList = vi.fn<(id: string) => Promise<never[]>>();
 
 vi.mock('../../src/renderer/ipc', () => ({
   api: {
@@ -48,7 +47,6 @@ vi.mock('../../src/renderer/ipc', () => ({
       status: (id: string) => fwdStatus(id),
       scan: (id: string) => fwdScan(id),
     },
-    serve: { list: (id: string) => serveList(id) },
     // The files store (pulled in by `disconnect`) subscribes to this at setup.
     preview: { onStats: vi.fn() },
   },
@@ -104,7 +102,6 @@ beforeEach(() => {
   fwdDiscovered.mockResolvedValue([]);
   fwdStatus.mockResolvedValue(null);
   fwdScan.mockResolvedValue([]);
-  serveList.mockResolvedValue([]);
 });
 
 afterEach(() => {

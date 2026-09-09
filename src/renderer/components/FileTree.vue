@@ -314,53 +314,6 @@ async function copyPath(entry: DirEntry): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Serve this folder
-// ---------------------------------------------------------------------------
-//
-// Runs a real static HTTP server on the HOST for this directory, tunnels it
-// through the port-forward machinery the Ports panel already owns, and opens
-// the local URL in the system browser. Distinct from the HTML preview, which
-// renders one file by pulling its assets over SFTP: this is the actual site,
-// with working relative URLs and working JavaScript, because a real origin is
-// serving it.
-//
-// The server binds the host's LOOPBACK and nothing else — see
-// `SERVE_BIND_ADDRESS` in src/main/portfwd/serveCommand.ts for why that is the
-// single most important line in the feature. There is no bind-address control
-// here, or anywhere in the renderer, by design.
-//
-// `window.open` rather than an IPC verb: main's `setWindowOpenHandler` already
-// allow-lists http(s) and hands those to `shell.openExternal` (index.ts:148),
-// which is how every other external link in this app is opened. A served URL
-// is `http://127.0.0.1:<port>/`, so it takes exactly that path.
-
-/** Absolute path of the folder whose serve request is in flight. */
-const serving = ref<string | null>(null);
-
-async function serveFolder(entry: DirEntry): Promise<void> {
-  const connectionId = connId.value;
-  const dir = pathOf(entry);
-  closeMenu();
-  if (!connectionId) return;
-  serving.value = dir;
-  files.error = null;
-  try {
-    const served = await api.serve.start(connectionId, dir);
-    // `url` is non-null on success — the main process refuses to resolve a
-    // record whose tunnel never opened, precisely so this cannot hand the
-    // browser a link to nothing.
-    if (served.url) window.open(served.url, '_blank', 'noopener,noreferrer');
-  } catch (e) {
-    // The main process writes these to be read: "No python3 on the host",
-    // "<dir> is not readable on the host", "no free port". The banner is the
-    // right surface for them — a folder that did not get served must say so.
-    files.error = errorMessage(e);
-  } finally {
-    serving.value = null;
-  }
-}
-
 async function onEntry(entry: DirEntry): Promise<void> {
   if (!connId.value) return;
   if (entry.type === 'dir') {
@@ -578,7 +531,7 @@ function count(n: number): string {
 // VS Code do it. The breadcrumb strip already IS the "where am I" line, and
 // spending another --tabbar-h on a control used a few times a session, in a
 // pane whose whole job is a list, is not a trade this layout can afford (see
-// the same reasoning behind the merged session bar, DESIGN.md §5.4). The pencil
+// the same reasoning behind the merged session bar). The pencil
 // button is the affordance, so the feature does not depend on knowing a chord;
 // Ctrl+L is there for people who expect it from every address bar they use.
 //
@@ -856,18 +809,6 @@ defineExpose({ editPath: startEditing, focusSearch });
             {{ menu.entry.type === 'dir' ? 'Open here' : 'Open in this tab' }}
           </button>
         </li>
-        <!-- A FOLDER action: serving a single file is what the HTML preview is
-             for, and `http.server` needs a directory root anyway. -->
-        <li v-if="menu.entry.type === 'dir'">
-          <button
-            class="menu-item"
-            :disabled="serving !== null"
-            @click="serveFolder(menu.entry)"
-          >
-            <AppIcon name="arrow-right" :size="14" />
-            Serve this folder
-          </button>
-        </li>
         <li class="menu-sep" />
         <li>
           <button class="menu-item" @click="copyPath(menu.entry)">
@@ -1024,7 +965,7 @@ defineExpose({ editPath: startEditing, focusSearch });
   margin-left: auto;
 }
 /* Navigation, not selection: accent is reserved for the selected row (see
-   HostPickerView and DESIGN.md §5.2). An all-cyan crumb row made pure
+   HostPickerView and ). An all-cyan crumb row made pure
    wayfinding the loudest thing on the Files screen. */
 .crumb a {
   display: flex;
@@ -1042,7 +983,7 @@ defineExpose({ editPath: startEditing, focusSearch });
    crumb that has stopped working. Full `--fg` against the ancestors'
    `--fg-secondary`, and the weight lift is the same signal Nautilus's path bar
    gives its `current-dir` button while dimming everything left of it.
-   Still no accent: accent is reserved for the selected ROW (DESIGN.md 5.2).
+   Still no accent: accent is reserved for the selected ROW.
    The head/tail spans inside it pick up the SAME `.nm-head`/`.nm-tail` rules
    the entry rows use, further down; that is the point: one truncation
    mechanism, applied to one cell instead of four. */

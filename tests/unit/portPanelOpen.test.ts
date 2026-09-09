@@ -5,10 +5,9 @@ import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import type { HostEntry } from '../../src/shared/types';
 import type { ForwardState } from '../../src/main/portfwd/Forwarder';
 import type { DiscoveredPort } from '../../src/main/portfwd/AutoForwarder';
-import type { ServedFolder } from '../../src/main/portfwd/ServeService';
 
 /**
- * The Ports panel's one-click open (docs/PORTFWD.md §17).
+ * The Ports panel's one-click open.
  *
  * The ask: "for port forwarding I want to open the port in the browser with
  * one click — like I do it with ssh-auto-forward or in the Android app". The
@@ -26,9 +25,6 @@ import type { ServedFolder } from '../../src/main/portfwd/ServeService';
  *      the button would open an error page and teach the user it lies.
  *   4. **A wide listen host still opens.** `0.0.0.0` in an address bar is not
  *      a URL anyone can reason about; the loopback is what the tunnel binds.
- *   5. **The served row's own open stays, and is the only one there.** It was
- *      already this feature for one special kind of row; its mark now matches
- *      the general one, so the column says "open" one way.
  */
 
 vi.mock('../../src/renderer/ipc', () => ({
@@ -48,11 +44,6 @@ vi.mock('../../src/renderer/ipc', () => ({
       refresh: vi.fn(),
       scan: vi.fn().mockResolvedValue([]),
       addManual: vi.fn().mockResolvedValue(true),
-    },
-    serve: {
-      onChanged: vi.fn(() => vi.fn()),
-      list: vi.fn().mockResolvedValue([]),
-      stop: vi.fn(),
     },
   },
 }));
@@ -100,20 +91,6 @@ function disco(over: Partial<DiscoveredPort> = {}): DiscoveredPort {
   };
 }
 
-function served(over: Partial<ServedFolder> = {}): ServedFolder {
-  return {
-    connectionId: 'conn-1',
-    dir: '/srv/app/dist',
-    remotePort: 8123,
-    localPort: 8123,
-    url: 'http://127.0.0.1:8123/',
-    startedAt: 0,
-    state: 'running',
-    error: null,
-    ...over,
-  };
-}
-
 async function flush(wrapper: VueWrapper): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -122,7 +99,7 @@ async function flush(wrapper: VueWrapper): Promise<void> {
 }
 
 /** Mount the panel (store empty — the mount-time sync reads the mocks), then seed it. */
-async function open(seed: { states?: ForwardState[]; disco?: DiscoveredPort[]; served?: ServedFolder[] } = {}): Promise<VueWrapper> {
+async function open(seed: { states?: ForwardState[]; disco?: DiscoveredPort[] } = {}): Promise<VueWrapper> {
   const connection = useConnectionStore();
   connection.connectionId = 'conn-1';
   connection.activeHost = { name: 'hetzner' } as HostEntry;
@@ -134,7 +111,6 @@ async function open(seed: { states?: ForwardState[]; disco?: DiscoveredPort[]; s
   const forwards = useForwardsStore();
   forwards.states = seed.states ?? [];
   forwards.discovered = seed.disco ?? [];
-  forwards.served = seed.served ?? [];
   await wrapper.vm.$nextTick();
   return wrapper;
 }
@@ -195,21 +171,6 @@ describe('PortPanelView — one-click open in the browser', () => {
     const wrapper = await open({ disco: [disco()] });
     expect(openButton(wrapper).exists()).toBe(false);
   });
-
-  it('keeps the served row’s own open — the only open that row gets', async () => {
-    // The served folder was this feature before this feature existed, for one
-    // special row. Its button keeps the server's URL (trailing slash), the
-    // general one does not appear beside it, and both carry the SAME mark.
-    const wrapper = await open({
-      states: [fwd({ key: 'local:8123->127.0.0.1:8123', listenPort: 8123, destPort: 8123 })],
-      served: [served()],
-    });
-    const opens = wrapper.findAll('button[title^="Open http"], button[title^="http"]');
-    expect(opens).toHaveLength(1);
-    expect(opens[0]!.attributes('title')).toBe('http://127.0.0.1:8123/');
-    await opens[0]!.trigger('click');
-    expect(windowOpen).toHaveBeenCalledWith('http://127.0.0.1:8123/', '_blank', 'noopener,noreferrer');
-  });
 });
 
 /**
@@ -222,7 +183,7 @@ function folded(wrapper: DOMWrapper<Element>): boolean {
   return (wrapper.attributes('style') ?? '').includes('none');
 }
 
-describe('PortPanelView — the panel is arranged live-first (docs/PORTFWD.md §18)', () => {
+describe('PortPanelView — the panel is arranged live-first', () => {
   it('leads with the forwarded rows and folds the listening tail under a count', async () => {
     // One live forward (3000) and two bare listeners (22, 631): the forward
     // is shown, the listeners are folded, and the fold row says how many.

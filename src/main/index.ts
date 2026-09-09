@@ -31,9 +31,10 @@ const forwards = new ForwardService(ssh, registry);
 const projects = new ProjectsService(ssh, helper, aplexer);
 const preview = new HtmlPreviewService(sftp);
 // Evict cached per-connection state owned by the application entrypoint (SFTP
-// wrapper, remote $HOME, aplexer availability, live HTML previews) on close. ForwardService and ServeService own their own close
-// subscriptions: forwarding needs to distinguish a lost transport from an
-// explicit stop so reconnect can retain the host's auto-forward preference.
+// wrapper, remote $HOME, aplexer availability, live HTML previews) on close.
+// ForwardService owns its own close subscription: forwarding needs to
+// distinguish a lost transport from an explicit stop so reconnect can retain
+// the host's auto-forward preference.
 ssh.onCloseConnection((id) => {
   sftp.evict(id);
   projects.evict(id);

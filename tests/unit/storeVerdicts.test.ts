@@ -129,18 +129,4 @@ describe('forwards store — the per-row commands', () => {
     await forwards.togglePort(CONN, 5173);
     expect(calls['forwards.togglePort']).toHaveBeenCalledWith(CONN, 5173);
   });
-
-  it('stopServe kills the server through serve.stop, not forwards.remove', async () => {
-    calls['serve.stop'] = vi.fn().mockResolvedValue(undefined);
-    const forwards = useForwardsStore();
-
-    await forwards.stopServe(CONN, 4173);
-    expect(calls['serve.stop']).toHaveBeenCalledWith(CONN, 4173);
-    expect(calls['forwards.remove']?.mock.calls.length ?? 0).toBe(0);
-  });
-
-  it('servedOn finds the folder on a port or answers null', () => {
-    const forwards = useForwardsStore();
-    expect(forwards.servedOn(4173)).toBeNull();
-  });
 });

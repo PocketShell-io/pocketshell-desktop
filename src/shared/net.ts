@@ -11,7 +11,6 @@ export const MAX_PORT = 65_535;
 
 /**
  * The loopback the tunnels bind. The remote side of a `-L`-style forward and
- * the local listener both mean THIS address; `serveCommand`'s
- * `SERVE_BIND_ADDRESS` is a named alias of it for the serve feature.
+ * the local listener both mean THIS address.
  */
 export const LOOPBACK_HOST = '127.0.0.1';

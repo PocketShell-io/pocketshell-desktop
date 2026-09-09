@@ -159,18 +159,6 @@ export const ipc = {
     states: 'forwards:event:states', // event: { connectionId, states[] }
   },
   /**
-   * "Serve this folder": run a static HTTP server on the host for a directory
-   * and reach it through the SAME tunnel machinery `forwards:*` owns — a
-   * served folder is an ordinary Ports-panel row, which is what makes it
-   * visible and stoppable. See src/main/portfwd/ServeService.ts.
-   */
-  serve: {
-    start: 'serve:start', // serve a remote dir; resolves the local URL
-    stop: 'serve:stop', // kill the server AND its tunnel
-    list: 'serve:list', // what is served on a connection
-    changed: 'serve:event:changed', // event: { connectionId, served[] }
-  },
-  /**
    * The Files tab's document preview. `openHtml` / `openMarkdown` /
    * `openSvg` mint a capability — a one-off token plus the `psview://` URL
    * to frame — and `release` revokes it, so a closed file's frame cannot go

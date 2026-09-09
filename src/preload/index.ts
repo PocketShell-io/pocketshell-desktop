@@ -20,7 +20,6 @@ import type { RemotePort } from '../main/portfwd/PortScanner.js';
 import type { ForwardState } from '../main/portfwd/Forwarder.js';
 import type { AutoForwarderStatus, DiscoveredPort } from '../main/portfwd/AutoForwarder.js';
 import type { PortIntent } from '../main/portfwd/PortfwdStore.js';
-import type { ServedFolder } from '../main/portfwd/ServeService.js';
 import type { ForwardSpec } from '../shared/types.js';
 import type {
   AplexerSessionRef,
@@ -473,48 +472,6 @@ const api = {
     onProgress: (
       handler: (payload: { transferId: string } & TransferProgress) => void,
     ): Unsubscribe => subscribe(ipc.sftp.progress, handler),
-  },
-
-  /**
-   * "Serve this folder": a real static HTTP server on the host, reached
-   * through the SAME tunnel the Ports panel manages.
-   *
-   * Distinct from `preview`, which renders ONE remote HTML file by pulling its
-   * assets over SFTP. This runs the actual site — relative URLs, `fetch`,
-   * routing and all — because a real origin is serving it.
-   *
-   * Note what is NOT here: no bind address. The server is always on the host's
-   * loopback (src/main/portfwd/serveCommand.ts, `SERVE_BIND_ADDRESS`) and the
-   * renderer has no way to widen that.
-   */
-  serve: {
-    /**
-     * Serve a remote directory and resolve once its tunnel is open.
-     *
-     * Rejects with a message written to be shown to the user: no python on the
-     * host, an unreadable folder, every candidate port busy, or a server that
-     * did not come up. It never resolves for a server that is not listening.
-     */
-    start: (connectionId: string, dir: string): Promise<ServedFolder> =>
-      ipcRenderer.invoke(ipc.serve.start, connectionId, dir),
-
-    /** Stop a served folder: kills the remote server AND closes its tunnel. */
-    stop: (connectionId: string, remotePort: number): Promise<boolean> =>
-      ipcRenderer.invoke(ipc.serve.stop, connectionId, remotePort),
-
-    /** What is currently served on a connection. */
-    list: (connectionId: string): Promise<ServedFolder[]> =>
-      ipcRenderer.invoke(ipc.serve.list, connectionId),
-
-    /**
-     * Subscribe to served-folder snapshots. Returns an unsubscribe fn.
-     *
-     * This is how the panel learns that a server DIED — the case that would
-     * otherwise leave a URL on screen that quietly answers nothing.
-     */
-    onChanged: (
-      handler: (payload: { connectionId: string; served: ServedFolder[] }) => void,
-    ): Unsubscribe => subscribe(ipc.serve.changed, handler),
   },
 
   /**

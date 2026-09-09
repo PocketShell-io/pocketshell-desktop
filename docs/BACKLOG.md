@@ -14,7 +14,6 @@ section rather than reordering.
 
 | | Item | Why it is worth doing |
 |---|---|---|
-| ⬜ | A `serve` subcommand in the pocketshell CLI | Filed as `alexeygrigorev/pocketshell#2333`. The desktop side ships on `python3 -m http.server`; retiring that costs one function. |
 | ⬜ | Component/store refactor passes filed by the clean-code audit | The extractions that pay first, largest first: the composer's doodle orchestration (~370 lines) → `useDoodleSheet`; TerminalView's geometry reconcile loop → a module; SettingsView's chord capture → `useChordCapture`; FileTree's roving tabindex → `useRovingList`. Components over the 1000-line bar: `FolderWorkspaceView.vue` (~2390), `PromptComposer.vue` (~2170), `SessionTree.vue` (~1800), `NewSessionDialog.vue` (~1580), `TerminalView.vue` (~1520), `DoodleCanvas.vue` (~1420), `SettingsView.vue` (~1420), `FileTree.vue` (~1100), `PortPanelView.vue` (~1030). Also filed: a `fileModel.ts` for the `files` store's pure helpers (1301 lines), per-domain api builders for the preload (758), grouping `PocketshellClient`'s helper verbs by feature (1046). Each is a UI-risk refactor that wants its own session. |
 
 ---
@@ -34,7 +33,6 @@ section rather than reordering.
 
 | | Item |
 |---|---|
-| 🔍 | **No stray `python3 -m http.server` after quitting.** The serve feature relies on a channel close hanging up the process — traced through code, never observed, and it runs on a production box (`docs/SERVE.md` §4). |
 | ✅ | electron-builder asar — run and executed: the packaged `win-unpacked` build boots from `app.asar`, and `import('./assets/toml-*.js')` inside it resolves the grammar. |
 | 🔍 | Only Python was eyeballed for syntax highlighting; the other 40 grammars are covered headlessly. |
 | 🔍 | Terminal palettes were verified as colour values, not against real `ls --color` or a tmux status line in every theme. |
@@ -62,7 +60,6 @@ Things nobody asked about that turned out to matter.
 - **Three bugs came from `return false` in xterm's key handler** without `preventDefault()`: `_keyDown` bails before calling its own `cancel()`, so the DOM event stays live.
 - **`tmux -u` and plain `tmux` spell names differently, per display column** — that desynchronised the two halves of the session/cwd join for months of non-ASCII session names.
 - **The session list and the cwd probe can read different tmux servers;** the sweep now covers every socket rather than assuming one.
-- **`http.server` binds all interfaces when `--bind` is omitted** — the default would have published a right-clicked folder to the internet (`docs/SERVE.md` §1).
 - **An ESM-only dependency in main is a runtime bomb that every test passes:** `marked` ships ESM only, electron-vite emits CJS for main, and Node 20 predates `require(esm)` — `ERR_REQUIRE_ESM` the first time anyone opens a `.md`, while Vitest loads the same import natively and stays green. Check a package's `exports` before trusting externalisation (`electron-store` taught the lesson first; the config now names both).
 - **Revoking a capability was quietly revoking a FACT:** `releasePreview()` cleared `openHasScripts` along with the token, so on every Reload and theme re-mint the "scripts are not run" line vanished, leaving a document that renders as an empty shell with nothing on screen saying why. Reading the code did not catch it; a screenshot after a theme switch did.
 - **The sanitiser that reads `obj[key]` reads the prototype too:** a payload of `{ __proto__: { '--bg': 'red' } }` has no own `--bg`, yet an index lookup returns `red` — caught by a test written to assert unknown keys were dropped. Structured clone strips prototypes over IPC, so it was unreachable; it would have become reachable the first time main built one of these objects itself.

@@ -5,7 +5,6 @@ import type { ConnectionId, ForwardSpec } from '../../shared/types';
 import type { AutoForwarderStatus, DiscoveredPort } from '../../main/portfwd/AutoForwarder';
 import type { ForwardState } from '../../main/portfwd/Forwarder';
 import type { PortIntent } from '../../main/portfwd/PortfwdStore';
-import type { ServedFolder } from '../../main/portfwd/ServeService';
 import { errorMessage } from '../../shared/errors';
 
 /**
@@ -30,22 +29,11 @@ import { errorMessage } from '../../shared/errors';
  * than showing nothing, {@link sync} falls back to the one-shot `scan` and
  * marks the result {@link annotated}`= false`, so the panel can still list
  * what is listening and be honest that it does not know the policy verdict.
- *
- * A fourth source rides along: `served` — folders the Files tab is serving
- * over HTTP on this host. Those are ORDINARY forwarded ports (the server binds
- * the host's loopback, the scan sees it, the tunnel is a normal `-L`), so they
- * merge into the same rows; what `served` adds is the URL, the folder, and the
- * ability to stop the server rather than merely the tunnel. Without that last
- * part the panel could close a tunnel and leave a python process serving a
- * directory on a live box, which is the exact orphan this feature must not
- * create.
  */
 export const useForwardsStore = defineStore('forwards', () => {
   const states = ref<ForwardState[]>([]);
   const discovered = ref<DiscoveredPort[]>([]);
   const status = ref<AutoForwarderStatus | null>(null);
-  /** Folders served over HTTP on this host, keyed in the panel by remotePort. */
-  const served = ref<ServedFolder[]>([]);
   /** False when `discovered` came from the raw scan fallback (see above). */
   const annotated = ref(false);
   const autoOn = ref(false);
@@ -55,7 +43,6 @@ export const useForwardsStore = defineStore('forwards', () => {
   const pending = ref<number | null>(null);
 
   let unsub: (() => void) | null = null;
-  let unsubServed: (() => void) | null = null;
 
   function subscribe(connectionId: ConnectionId): void {
     if (unsub) unsub();
@@ -67,15 +54,6 @@ export const useForwardsStore = defineStore('forwards', () => {
       // than making the panel poll on a second, unrelated timer.
       void sync(connectionId, { quiet: true });
     });
-    if (unsubServed) unsubServed();
-    // Pushed, not polled, for one reason that matters: this is how the panel
-    // learns a served folder's server DIED. A row that goes on claiming a URL
-    // after the process behind it is gone is the failure this app keeps
-    // hitting, and a poll would leave it on screen until the next tick.
-    unsubServed = api.serve.onChanged(({ connectionId: id, served: s }) => {
-      if (id !== connectionId) return;
-      served.value = s;
-    });
   }
 
   /**
@@ -85,7 +63,7 @@ export const useForwardsStore = defineStore('forwards', () => {
   async function sync(connectionId: ConnectionId, options: { quiet?: boolean } = {}): Promise<void> {
     if (!options.quiet) loading.value = true;
     try {
-      const [live, ports, health, auto, serving] = await Promise.all([
+      const [live, ports, health, auto] = await Promise.all([
         api.forwards.list(connectionId),
         api.forwards.discovered(connectionId),
         api.forwards.status(connectionId),
@@ -93,15 +71,10 @@ export const useForwardsStore = defineStore('forwards', () => {
         // on lazily starts the whole engine (`ForwardService.ensure`), so the
         // header would otherwise keep saying OFF while the scan loop ran.
         api.forwards.isAutoEnabled(connectionId),
-        // Cheap: a main-process map read, no host round trip. Pulled on the
-        // same beat so a served row and its forward can never disagree about
-        // whether they exist.
-        api.serve.list(connectionId),
       ]);
       states.value = live;
       status.value = health;
       autoOn.value = auto;
-      served.value = serving;
       if (ports.length > 0 || health !== null) {
         discovered.value = ports;
         annotated.value = true;
@@ -262,24 +235,6 @@ export const useForwardsStore = defineStore('forwards', () => {
     await run(connectionId, remotePort, () => api.forwards.togglePort(connectionId, remotePort));
   }
 
-  /**
-   * Stop a served folder.
-   *
-   * Deliberately NOT `remove(key)`. Removing the row would close the tunnel
-   * and leave the `http.server` process running on the host, still serving the
-   * directory, with nothing in the app that knows about it — an orphan on
-   * someone's production box. `serve.stop` kills the server first and takes
-   * the tunnel down after, in that order.
-   */
-  async function stopServe(connectionId: ConnectionId, remotePort: number): Promise<void> {
-    await run(connectionId, remotePort, () => api.serve.stop(connectionId, remotePort));
-  }
-
-  /** The served folder occupying a remote port, if any. */
-  function servedOn(remotePort: number): ServedFolder | null {
-    return served.value.find((s) => s.remotePort === remotePort) ?? null;
-  }
-
   /** Mark a row busy, run its mutation, then re-read. */
   async function run(
     connectionId: ConnectionId,
@@ -302,16 +257,8 @@ export const useForwardsStore = defineStore('forwards', () => {
       unsub();
       unsub = null;
     }
-    if (unsubServed) {
-      unsubServed();
-      unsubServed = null;
-    }
     states.value = [];
     discovered.value = [];
-    // Only the panel's VIEW of the served folders is dropped. The servers
-    // themselves keep running (they belong to the connection, not to this
-    // panel being mounted) and reappear on the next `sync`.
-    served.value = [];
     status.value = null;
     annotated.value = false;
     autoOn.value = false;
@@ -322,9 +269,6 @@ export const useForwardsStore = defineStore('forwards', () => {
   return {
     states,
     discovered,
-    served,
-    servedOn,
-    stopServe,
     status,
     annotated,
     autoOn,

@@ -63,7 +63,6 @@ beforeEach(() => {
   calls['forwards.status'] = vi.fn().mockResolvedValue(null);
   calls['forwards.isAutoEnabled'] = vi.fn().mockResolvedValue(false);
   calls['forwards.scan'] = vi.fn().mockResolvedValue([]);
-  calls['serve.list'] = vi.fn().mockResolvedValue([]);
 });
 
 describe('forwards store — sync fills the panel sources', () => {
@@ -112,20 +111,6 @@ describe('forwards store — sync fills the panel sources', () => {
     push({ connectionId: 'conn-1', states: [{ key: 'L8080' }] } as never);
     await vi.waitFor(() => expect(calls['forwards.list']).toHaveBeenCalledWith('conn-1'));
     expect(forwards.states).toEqual([{ key: 'L8080' }]);
-  });
-
-  it('serve.onChanged updates the served folders for this connection only', () => {
-    const forwards = useForwardsStore();
-    forwards.subscribe('conn-1');
-
-    const push = subscribers['serve.onChanged']![0]!;
-    push({ connectionId: 'conn-2', served: [{ remotePort: 1 }] } as never);
-    expect(forwards.served).toEqual([]);
-
-    push({ connectionId: 'conn-1', served: [{ remotePort: 9 }] } as never);
-    expect(forwards.served).toEqual([{ remotePort: 9 }]);
-    expect(forwards.servedOn(9)).toEqual({ remotePort: 9 });
-    expect(forwards.servedOn(10)).toBeNull();
   });
 });
 
@@ -217,15 +202,6 @@ describe('forwards store — per-row run lifecycle', () => {
     await forwards.rename('conn-1', 3000, '   ');
     expect(calls['forwards.setName']).toHaveBeenLastCalledWith('conn-1', 3000, null);
   });
-
-  it('stopServe kills the server first and the tunnel after', async () => {
-    const forwards = useForwardsStore();
-
-    await forwards.stopServe('conn-1', 8123);
-
-    expect(calls['serve.stop']).toHaveBeenCalledWith('conn-1', 8123);
-    expect(calls['forwards.remove']).toBeUndefined();
-  });
 });
 
 describe('forwards store — clear', () => {
@@ -241,7 +217,6 @@ describe('forwards store — clear', () => {
 
     expect(forwards.states).toEqual([]);
     expect(forwards.discovered).toEqual([]);
-    expect(forwards.served).toEqual([]);
     expect(forwards.status).toBeNull();
     expect(forwards.autoOn).toBe(false);
     expect(forwards.error).toBeNull();
@@ -249,6 +224,5 @@ describe('forwards store — clear', () => {
     // Re-subscribing after clear must not stack handlers.
     forwards.subscribe('conn-1');
     expect(subscribers['forwards.onStates']).toHaveLength(1);
-    expect(subscribers['serve.onChanged']).toHaveLength(1);
   });
 });

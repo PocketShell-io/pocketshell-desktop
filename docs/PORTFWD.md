@@ -11,7 +11,7 @@ and that property is load-bearing (one auth, one keepalive, one TOFU prompt,
 one reconnect FSM). So the *behaviour* was ported onto the existing
 connection; the Python process is never involved. Lineage: the Android engine
 was `-L`-only; desktop added `-R` and `-D` net-new, and auto-forwarding stays
-`-L`-only everywhere. "Serve this folder" rides on this engine — `docs/SERVE.md`.
+`-L`-only everywhere.
 
 ---
 

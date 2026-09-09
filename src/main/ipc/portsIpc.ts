@@ -1,7 +1,6 @@
 import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import { ServeService, type ServedFolder } from '../portfwd/ServeService.js';
 import type { RemotePort } from '../portfwd/PortScanner.js';
 import type { AutoForwarderStatus, DiscoveredPort } from '../portfwd/AutoForwarder.js';
 import type { PortIntent } from '../portfwd/PortfwdStore.js';
@@ -9,7 +8,7 @@ import type { ForwardSpec } from '../../shared/types.js';
 
 
 export function registerPortsIpc(ctx: IpcContext): void {
-  const { forwards, ssh, broadcast } = ctx;
+  const { forwards } = ctx;
   // --- forwards:* ---------------------------------------------------------
   // Port forwarding: scan remote listeners, start/stop the auto-forwarder,
   // and add/remove manual -L/-R/-D forwards. State snapshots stream over
@@ -148,35 +147,5 @@ export function registerPortsIpc(ctx: IpcContext): void {
       return forwards.isAutoEnabled(connectionId);
     },
   );
-
-  // --- serve:* -------------------------------------------------------------
-  // "Serve this folder". Built on `ssh` and `forwards` — which are already
-  // here — so it is CONSTRUCTED here rather than in index.ts: it subscribes to
-  // `onCloseConnection` itself (exactly like ForwardService), so there is
-  // nothing for the entry point to remember to wire, and no second owner of
-  // the tunnel machinery.
-  const serve = new ServeService(ssh, forwards);
-  serve.onChanged((connectionId, served) => {
-    broadcast(ipc.serve.changed, { connectionId, served });
-  });
-  // Rejects with a message written to be shown verbatim (ServeError). Nothing
-  // here resolves for a server that is not listening or a tunnel that is not
-  // open — both are waited for in the service.
-  ipcMain.handle(
-    ipc.serve.start,
-    async (_evt, connectionId: string, dir: string): Promise<ServedFolder> => {
-      return serve.start(connectionId, dir);
-    },
-  );
-  ipcMain.handle(
-    ipc.serve.stop,
-    async (_evt, connectionId: string, remotePort: number): Promise<boolean> => {
-      await serve.stop(connectionId, remotePort);
-      return true;
-    },
-  );
-  ipcMain.handle(ipc.serve.list, async (_evt, connectionId: string): Promise<ServedFolder[]> => {
-    return serve.list(connectionId);
-  });
 
 }
