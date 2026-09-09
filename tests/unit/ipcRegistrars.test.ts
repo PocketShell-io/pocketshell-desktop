@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { log } from '../../src/main/log';
+import { checkForUpdate } from '../../src/main/update/ReleaseChecker';
+import { runBootstrap } from '../../src/main/helper/bootstrap';
+import { MAX_IMAGE_READ_BYTES } from '../../src/main/attachments/LocalFileReader';
+import { KnownHosts } from '../../src/main/ssh-config/KnownHosts';
+import { APP_TITLE } from '../../src/shared/windowTitle';
 
 /**
  * The main-process boundary, driven the way the renderer drives it.
@@ -16,20 +22,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const handlers = new Map<string, (...args: never[]) => unknown>();
 const events = new Map<string, (...args: never[]) => void>();
-const openExternal = vi.fn();
+
+// vi.hoisted: the electron mock factory below runs during import hoisting,
+// before this module's own statements execute.
+const { openExternal, showOpenDialog, showSaveDialog, fromWebContents } = vi.hoisted(() => ({
+  openExternal: vi.fn(),
+  showOpenDialog: vi.fn(),
+  showSaveDialog: vi.fn(),
+  fromWebContents: vi.fn(),
+}));
 
 vi.mock('electron', () => ({
   ipcMain: {
     handle: (channel: string, fn: (...args: never[]) => unknown) => handlers.set(channel, fn),
     on: (channel: string, fn: (...args: never[]) => void) => events.set(channel, fn),
   },
-  dialog: { showSaveDialog: vi.fn(), showOpenDialog: vi.fn() },
+  dialog: { showSaveDialog, showOpenDialog },
   shell: { openExternal },
+  app: { getVersion: () => '0.0.0-test' },
+  BrowserWindow: { fromWebContents },
 }));
 
 vi.mock('../../src/main/log', () => ({ log: vi.fn() }));
 vi.mock('../../src/main/ssh-config/SshConfigParser', () => ({ readSshConfig: vi.fn(() => [{ name: 'hetzner' }]) }));
 vi.mock('../../src/main/update/ReleaseChecker', () => ({ checkForUpdate: vi.fn(async () => ({ status: 'up-to-date' })) }));
+vi.mock('../../src/main/helper/bootstrap', () => ({ runBootstrap: vi.fn(async () => ({ ok: true })) }));
 
 type Fakes = Record<string, ReturnType<typeof vi.fn>>;
 
@@ -39,6 +56,14 @@ function fakeService(): Fakes {
     {},
     {
       get(_t, prop: string) {
+        if (prop === '__clearAll') {
+          // beforeEach wipes call history; the registrar fakes live for the
+          // whole file, so an assertion like "never called" is only honest
+          // against a spy that was reset.
+          return () => {
+            for (const fn of mocks.values()) fn.mockClear();
+          };
+        }
         if (prop === '__mock') {
           // Creating on demand: a test arms a method before the handler ever
           // touched it, and both paths must land on the SAME spy.
@@ -96,11 +121,18 @@ function mockOf(service: Fakes, name: string): ReturnType<typeof vi.fn> {
   return (service as unknown as { __mock(n: string): ReturnType<typeof vi.fn> }).__mock(name);
 }
 
+function clearServiceMocks(): void {
+  for (const service of [ssh, helper, aplexer, sftp, forwards, projects, preview, tmuxClients, attachments, localFiles]) {
+    (service as unknown as { __clearAll(): void }).__clearAll();
+  }
+}
+
 beforeEach(() => {
   handlers.clear();
   events.clear();
   openExternal.mockClear();
   broadcast.mockClear();
+  clearServiceMocks();
   registerAppIpc(ctx);
   registerTerminalIpc(ctx);
   registerHelperIpc(ctx);
@@ -137,8 +169,9 @@ describe('terminalIpc — the composer session fence', () => {
     expect(mockOf(ssh, 'shellInput')).toHaveBeenCalledWith('shell-1', 'ls');
 
     await (handler as (e: unknown, id: string, data: string) => Promise<boolean>)({}, 'shell-1', 'ls');
-    // Both invocations consulted the fence — the refused one and this one.
-    expect(mockOf(tmuxClients, 'isShowing')).toHaveBeenCalledTimes(2);
+    // Plain keystrokes name no session, so the fence is not consulted — only
+    // the refused invocation above ever asked.
+    expect(mockOf(tmuxClients, 'isShowing')).toHaveBeenCalledTimes(1);
   });
 
   it('close disposes the shell and answers true', async () => {
@@ -235,5 +268,404 @@ describe('delegations the renderer depends on', () => {
     const windowSize = handlers.get(ipc.shell.windowSize)!;
     await (windowSize as (e: unknown, id: string) => Promise<unknown>)({}, 'shell-1');
     expect(mockOf(tmuxClients, 'windowSize')).toHaveBeenCalledWith('shell-1');
+  });
+});
+
+describe('terminalIpc — shell events cross the bridge as plain Uint8Array', () => {
+  it('shell:open copies PTY bytes into a fresh view before broadcasting', async () => {
+    let deliver: ((data: Buffer) => void) | undefined;
+    mockOf(ssh, 'openTrackedShell').mockImplementation(
+      async (_id: string, opts: { onData: (data: Buffer) => void }) => {
+        deliver = opts.onData;
+        return 'shell-9';
+      },
+    );
+
+    const handler = handlers.get(ipc.shell.open)!;
+    await (
+      handler as (e: unknown, p: { connectionId: string }) => Promise<string>
+    )({ connectionId: 'conn-1' }, { connectionId: 'conn-1' });
+    expect(mockOf(ssh, 'openTrackedShell')).toHaveBeenCalled();
+
+    const bytes = Buffer.from([1, 2, 3]);
+    deliver!(bytes);
+    expect(broadcast).toHaveBeenCalledWith(
+      ipc.shell.data,
+      expect.objectContaining({ shellId: 'shell-9' }),
+    );
+    const sent = broadcast.mock.calls.at(-1)![1] as { data: Uint8Array };
+    expect(sent.data).toEqual(new Uint8Array([1, 2, 3]));
+    // The structured clone must not be handed the ssh2 buffer's own backing
+    // store — a detached view would blank the renderer's copy mid-read.
+    expect(sent.data.buffer).not.toBe(bytes.buffer);
+  });
+
+  it('shell:attachSession forwards only the keys the payload carries', async () => {
+    mockOf(tmuxClients, 'attach').mockResolvedValue({ shellId: 'shell-2', switched: false });
+
+    const handler = handlers.get(ipc.shell.attachSession)!;
+    await (
+      handler as (
+        e: unknown,
+        p: { connectionId: string; sessionName: string; backend?: string; tag?: string },
+      ) => Promise<unknown>
+    )({}, { connectionId: 'conn-1', sessionName: 'git-demo', backend: 'aplexer', tag: 'demo' });
+
+    expect(mockOf(tmuxClients, 'attach')).toHaveBeenCalledWith(
+      'conn-1',
+      'git-demo',
+      expect.objectContaining({ backend: 'aplexer', tag: 'demo' }),
+    );
+    const opts = mockOf(tmuxClients, 'attach').mock.calls[0]![2] as Record<string, unknown>;
+    expect(opts).not.toHaveProperty('workspace');
+    expect(opts).not.toHaveProperty('aplexerId');
+  });
+
+  it('attachSession exit events broadcast under the shell they belong to', async () => {
+    let exit: ((shellId: string, code: number) => void) | undefined;
+    mockOf(tmuxClients, 'attach').mockImplementation(
+      async (
+        _id: string,
+        _name: string,
+        opts: { onExit: (shellId: string, code: number) => void },
+      ) => {
+        exit = opts.onExit;
+        return { shellId: 'shell-3', switched: true };
+      },
+    );
+
+    await (
+      handlers.get(ipc.shell.attachSession)! as (e: unknown, p: unknown) => Promise<unknown>
+    )({}, { connectionId: 'conn-1', sessionName: 'git-demo' });
+    exit!('shell-3', 0);
+
+    expect(broadcast).toHaveBeenCalledWith(ipc.shell.exited, { shellId: 'shell-3', exitCode: 0 });
+  });
+});
+
+describe('previewIpc — release, staging defaults, the picker allow-list', () => {
+  it('release ignores non-strings and releases real tokens', () => {
+    // Registered with `on`: releasing is fire-and-forget on the way out of a file.
+    const release = events.get(ipc.preview.release)! as (e: unknown, token: unknown) => void;
+    release({}, 42);
+    expect(mockOf(preview, 'release')).not.toHaveBeenCalled();
+    release({}, 'tok-1');
+    expect(mockOf(preview, 'release')).toHaveBeenCalledWith('tok-1');
+  });
+
+  it('openMarkdown coalesces an absent style into an empty object', async () => {
+    mockOf(preview, 'openMarkdown').mockResolvedValue({ token: 't', url: 'psview://x' });
+    const handler = handlers.get(ipc.preview.openMarkdown)!;
+    await (
+      handler as (e: unknown, id: string, p: string, style: unknown) => Promise<unknown>
+    )({}, 'conn-1', '~/notes.md', null);
+    expect(mockOf(preview, 'openMarkdown')).toHaveBeenCalledWith('conn-1', '~/notes.md', {});
+  });
+
+  it('stage treats missing sources as an empty batch', async () => {
+    mockOf(attachments, 'stage').mockResolvedValue({ paths: [], errors: [] });
+    const handler = handlers.get(ipc.attachments.stage)!;
+    await (
+      handler as (e: unknown, p: { connectionId: string; scopeKey: string }) => Promise<unknown>
+    )({}, { connectionId: 'conn-1', scopeKey: 'host:tag' });
+    expect(mockOf(attachments, 'stage')).toHaveBeenCalledWith('conn-1', 'host:tag', []);
+  });
+
+  it('pickFiles remembers what the dialog handed out, cancelled means empty', async () => {
+    const handler = handlers.get(ipc.attachments.pickFiles)!;
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] });
+    await expect(
+      (handler as (e: unknown, p?: unknown) => Promise<string[]>)({}, {}),
+    ).resolves.toEqual([]);
+    expect(mockOf(localFiles, 'remember')).toHaveBeenCalledWith([]);
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/tmp/a.png'] });
+    await (handler as (e: unknown, p?: unknown) => Promise<string[]>)({}, { multiple: false });
+    expect(mockOf(localFiles, 'remember')).toHaveBeenCalledWith(['/tmp/a.png']);
+  });
+});
+
+describe('projectsIpc — rename and kill move the pool with the host', () => {
+  it('a successful rename moves the pooled client to the new name', async () => {
+    mockOf(projects, 'renameSession').mockResolvedValue({ ok: true, sessionName: 'git-demo-2' });
+    const handler = handlers.get(ipc.projects.renameSession)!;
+    await (
+      handler as (e: unknown, id: string, from: string, to: string) => Promise<unknown>
+    )({}, 'conn-1', 'git-demo', 'git-demo-2');
+    expect(mockOf(tmuxClients, 'renamed')).toHaveBeenCalledWith('conn-1', 'git-demo', 'git-demo-2', undefined);
+  });
+
+  it('a failed rename leaves the pool untouched', async () => {
+    mockOf(projects, 'renameSession').mockResolvedValue({ ok: false, code: 'busy' });
+    await (
+      handlers.get(ipc.projects.renameSession)! as (e: unknown, id: string, f: string, t: string) => Promise<unknown>
+    )({}, 'conn-1', 'a', 'b');
+    expect(mockOf(tmuxClients, 'renamed')).not.toHaveBeenCalled();
+  });
+
+  it('a kill drops the pooled client even when the host says already-gone', async () => {
+    const handler = handlers.get(ipc.projects.killSession)! as (
+      e: unknown,
+      id: string,
+      name: string,
+    ) => Promise<unknown>;
+
+    mockOf(projects, 'killSession').mockResolvedValue({ ok: true });
+    await handler({}, 'conn-1', 'gone');
+    expect(mockOf(tmuxClients, 'killed')).toHaveBeenCalledWith('conn-1', 'gone', undefined);
+
+    mockOf(projects, 'killSession').mockResolvedValue({ ok: false, code: 'not-found' });
+    await handler({}, 'conn-1', 'gone');
+    expect(mockOf(tmuxClients, 'killed')).toHaveBeenCalledTimes(2);
+
+    mockOf(projects, 'killSession').mockResolvedValue({ ok: false, code: 'in-use' });
+    await handler({}, 'conn-1', 'alive');
+    expect(mockOf(tmuxClients, 'killed')).toHaveBeenCalledTimes(2);
+  });
+
+  it('reposList treats a missing request as an empty one', async () => {
+    mockOf(projects, 'reposList').mockResolvedValue({ repos: [] });
+    await (
+      handlers.get(ipc.projects.reposList)! as (e: unknown, id: string, req?: unknown) => Promise<unknown>
+    )({}, 'conn-1', undefined);
+    expect(mockOf(projects, 'reposList')).toHaveBeenCalledWith('conn-1', {});
+  });
+
+  it('clone progress streams to every window under the clone channel', async () => {
+    let push: ((p: unknown) => void) | undefined;
+    mockOf(projects, 'cloneRepo').mockImplementation(
+      async (_id: string, _req: unknown, onProgress: (p: unknown) => void) => {
+        push = onProgress;
+        return { ok: true };
+      },
+    );
+    await (
+      handlers.get(ipc.projects.reposClone)! as (e: unknown, id: string, req: unknown) => Promise<unknown>
+    )({}, 'conn-1', { url: 'https://github.com/x/y' });
+    push!({ phase: 'started' });
+    expect(broadcast).toHaveBeenCalledWith(ipc.projects.cloneProgress, { phase: 'started' });
+  });
+});
+
+describe('portsIpc — auto-forward defaults', () => {
+  it('startAuto treats absent config forwards as none', async () => {
+    const handler = handlers.get(ipc.forwards.startAuto)!;
+    await expect(
+      (handler as (e: unknown, id: string, f?: unknown) => Promise<boolean>)({}, 'conn-1', undefined),
+    ).resolves.toBe(true);
+    expect(mockOf(forwards, 'startAuto')).toHaveBeenCalledWith('conn-1', []);
+  });
+});
+
+describe('sftpIpc — transfers, save-as, create defaults', () => {
+  it('readBinary falls back to the image ceiling for an absent cap', async () => {
+    const handler = handlers.get(ipc.sftp.readBinary)!;
+    await (
+      handler as (e: unknown, id: string, p: string, max?: number) => Promise<unknown>
+    )({}, 'conn-1', '/home/u/a.png', undefined);
+    expect(mockOf(sftp, 'readBinary')).toHaveBeenCalledWith('conn-1', '/home/u/a.png', MAX_IMAGE_READ_BYTES);
+  });
+
+  it('upload streams transfer progress under the caller-supplied id', async () => {
+    let progress: ((p: unknown) => void) | undefined;
+    mockOf(sftp, 'upload').mockImplementation(
+      async (
+        _id: string,
+        _local: string,
+        _remote: string,
+        onProgress: (p: unknown) => void,
+      ) => {
+        progress = onProgress;
+      },
+    );
+
+    const handler = handlers.get(ipc.sftp.upload)!;
+    await (
+      handler as (e: unknown, p: { connectionId: string; localPath: string; remotePath: string; transferId: string }) => Promise<boolean>
+    )({}, { connectionId: 'conn-1', localPath: 'C:/a.png', remotePath: '/tmp/a.png', transferId: 'tr-1' });
+    progress!({ bytesSoFar: 10, totalBytes: 100 });
+
+    expect(broadcast).toHaveBeenCalledWith(ipc.sftp.progress, {
+      transferId: 'tr-1',
+      bytesSoFar: 10,
+      totalBytes: 100,
+    });
+  });
+
+  it('saveAs answers null on cancel and downloads to the chosen path otherwise', async () => {
+    const handler = handlers.get(ipc.sftp.saveAs)! as (e: unknown, p: { connectionId: string; remotePath: string }) => Promise<string | null>;
+    const payload = { connectionId: 'conn-1', remotePath: '/home/u/report.pdf' };
+
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: '' });
+    await expect(handler({}, payload)).resolves.toBeNull();
+    expect(mockOf(sftp, 'download')).not.toHaveBeenCalled();
+
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: 'C:/dl/report.pdf' });
+    await expect(handler({}, payload)).resolves.toBe('C:/dl/report.pdf');
+    expect(mockOf(sftp, 'download')).toHaveBeenCalledWith('conn-1', '/home/u/report.pdf', 'C:/dl/report.pdf');
+  });
+
+  it('createFile writes an empty body when none is supplied', async () => {
+    const handler = handlers.get(ipc.sftp.createFile)!;
+    await (
+      handler as (e: unknown, id: string, p: string, content?: string) => Promise<boolean>
+    )({}, 'conn-1', '/home/u/new.txt', undefined);
+    expect(mockOf(sftp, 'createFile')).toHaveBeenCalledWith('conn-1', '/home/u/new.txt', '');
+  });
+});
+
+describe('helperIpc — create maps the outcome, not the error', () => {
+  it('sessionsCreate answers with outcome.ok, and usage delegates', async () => {
+    const create = handlers.get(ipc.helper.sessionsCreate)! as (
+      e: unknown,
+      id: string,
+      name: string,
+      cwd: string,
+    ) => Promise<boolean>;
+
+    mockOf(helper, 'createSession').mockResolvedValue({ ok: false, code: 'exists' });
+    await expect(create({}, 'conn-1', 'dup', '~')).resolves.toBe(false);
+
+    mockOf(helper, 'createSession').mockResolvedValue({ ok: true });
+    await expect(create({}, 'conn-1', 'fresh', '~')).resolves.toBe(true);
+
+    mockOf(helper, 'usage').mockResolvedValue([]);
+    await expect(
+      (handlers.get(ipc.helper.usage)! as (e: unknown, id: string) => Promise<unknown>)({}, 'conn-1'),
+    ).resolves.toEqual([]);
+    expect(mockOf(helper, 'usage')).toHaveBeenCalledWith('conn-1');
+  });
+
+  it('bootstrap delegates to the runner', async () => {
+    await (
+      handlers.get(ipc.helper.bootstrap)! as (e: unknown, id: string) => Promise<unknown>
+    )({}, 'conn-1');
+    expect(vi.mocked(runBootstrap)).toHaveBeenCalledWith(expect.anything(), 'conn-1');
+  });
+});
+
+describe('appIpc — title validation and the update check', () => {
+  it('setTitle applies a real title, falls back to APP_TITLE on blank, ignores dead windows', async () => {
+    const setTitle = events.get(ipc.win.setTitle)! as (e: unknown, title: unknown) => void;
+    const win = { isDestroyed: () => false, setTitle: vi.fn() };
+    fromWebContents.mockReturnValue(win);
+
+    setTitle({ sender: 'w' }, 'host: hetzner');
+    expect(win.setTitle).toHaveBeenCalledWith('host: hetzner');
+
+    setTitle({ sender: 'w' }, '   ');
+    expect(win.setTitle).toHaveBeenLastCalledWith(APP_TITLE);
+
+    fromWebContents.mockReturnValue(null);
+    setTitle({ sender: 'w' }, 'no window');
+    expect(win.setTitle).toHaveBeenCalledTimes(2);
+  });
+
+  it('diag:log merges stack into the detail and logs nothing when empty', async () => {
+    const logMock = vi.mocked(log);
+    const handler = events.get(ipc.diag.log)! as (
+      e: unknown,
+      entry: { kind: string; message: string; stack?: string; detail?: Record<string, unknown> },
+    ) => void;
+
+    handler({}, { kind: 'error', message: 'boom', stack: 'at x', detail: { alpha: 1 } });
+    expect(logMock).toHaveBeenCalledWith('renderer', 'error: boom', { alpha: 1, stack: 'at x' });
+
+    handler({}, { kind: 'info', message: 'fine' });
+    expect(logMock).toHaveBeenLastCalledWith('renderer', 'info: fine', undefined);
+  });
+
+  it('update:check polls the Releases API with this app identity', async () => {
+    await (handlers.get(ipc.update.check)! as () => Promise<unknown>)();
+    expect(vi.mocked(checkForUpdate)).toHaveBeenCalledWith(
+      expect.objectContaining({ currentVersion: '0.0.0-test', platform: process.platform, arch: process.arch }),
+    );
+  });
+});
+
+describe('every remaining channel is wired to its service call', () => {
+  // Passthrough handlers carry no policy of their own; what matters is that
+  // the channel maps to the right service method with the right argument
+  // shape — the preload's typed surface is only as honest as this table.
+  const table: {
+    channel: string;
+    service: Fakes;
+    method: string;
+    args?: unknown[];
+    result?: unknown;
+  }[] = [
+    // terminal / ssh
+    { channel: ipc.ssh.exec, service: ssh, method: 'exec', args: ['conn-1', 'ls'], result: '' },
+    { channel: ipc.ssh.close, service: ssh, method: 'close', args: ['conn-1'], result: true },
+    { channel: ipc.shell.resize, service: ssh, method: 'shellResize', args: ['shell-1', 80, 24], result: true },
+    // sftp
+    { channel: ipc.sftp.list, service: sftp, method: 'list', args: ['conn-1', '~'], result: [] },
+    { channel: ipc.sftp.stat, service: sftp, method: 'stat', args: ['conn-1', '~'], result: {} },
+    { channel: ipc.sftp.readFile, service: sftp, method: 'readFile', args: ['conn-1', '~/a.txt'], result: 'x' },
+    { channel: ipc.sftp.writeFile, service: sftp, method: 'writeFile', args: ['conn-1', '~/a.txt', 'x'], result: true },
+    { channel: ipc.sftp.mkdir, service: sftp, method: 'mkdir', args: ['conn-1', '~/d'], result: true },
+    { channel: ipc.sftp.rename, service: sftp, method: 'rename', args: ['conn-1', '~/a', '~/b'], result: true },
+    { channel: ipc.sftp.deleteFile, service: sftp, method: 'deleteFile', args: ['conn-1', '~/a'], result: true },
+    { channel: ipc.sftp.rmdir, service: sftp, method: 'rmdir', args: ['conn-1', '~/d'], result: true },
+    { channel: ipc.sftp.realPath, service: sftp, method: 'realPath', args: ['conn-1', '~'], result: '/home/u' },
+    // projects
+    { channel: ipc.projects.home, service: projects, method: 'home', args: ['conn-1'], result: { home: '/home/u' } },
+    { channel: ipc.projects.deriveName, service: projects, method: 'deriveSessionName', args: ['conn-1', '~/git/x', undefined], result: 'git-x' },
+    { channel: ipc.projects.createFolder, service: projects, method: 'createFolder', args: ['conn-1', { parent: '~', name: 'n' }], result: { ok: true } },
+    { channel: ipc.projects.startSession, service: projects, method: 'startSession', args: ['conn-1', { folder: '~/git/x' }], result: { ok: true } },
+    { channel: ipc.agent.kinds, service: helper, method: 'agentSubcommands', args: ['conn-1'], result: [] },
+    { channel: ipc.agent.profiles, service: helper, method: 'listProfiles', args: ['conn-1'], result: [] },
+    { channel: ipc.agent.envList, service: helper, method: 'envList', args: ['conn-1', '~/p'], result: [] },
+    { channel: ipc.agent.envGet, service: helper, method: 'envGet', args: ['conn-1', '~/p', ['A']], result: [] },
+    { channel: ipc.agent.envSet, service: helper, method: 'envSet', args: ['conn-1', '~/p', { A: '1' }, undefined], result: true },
+    // forwards
+    { channel: ipc.forwards.scan, service: forwards, method: 'scan', args: ['conn-1'], result: [] },
+    { channel: ipc.forwards.stopAuto, service: forwards, method: 'stopAuto', args: ['conn-1'], result: true },
+    { channel: ipc.forwards.addManual, service: forwards, method: 'addManual', args: ['conn-1', { kind: 'L' }], result: true },
+    { channel: ipc.forwards.remove, service: forwards, method: 'remove', args: ['conn-1', 'k'], result: true },
+    { channel: ipc.forwards.list, service: forwards, method: 'list', args: ['conn-1'], result: [] },
+    { channel: ipc.forwards.refresh, service: forwards, method: 'refresh', args: ['conn-1'], result: true },
+    { channel: ipc.forwards.discovered, service: forwards, method: 'discovered', args: ['conn-1'], result: [] },
+    { channel: ipc.forwards.status, service: forwards, method: 'status', args: ['conn-1'], result: null },
+    { channel: ipc.forwards.setName, service: forwards, method: 'setName', args: ['conn-1', 3000, 'api'], result: true },
+    { channel: ipc.forwards.setRemap, service: forwards, method: 'setRemap', args: ['conn-1', 3000, 3001], result: true },
+    { channel: ipc.forwards.clearRemap, service: forwards, method: 'clearRemap', args: ['conn-1', 3000], result: true },
+    { channel: ipc.forwards.setIntent, service: forwards, method: 'setIntent', args: ['conn-1', 3000, 'on'], result: true },
+    { channel: ipc.forwards.togglePort, service: forwards, method: 'togglePort', args: ['conn-1', 3000], result: true },
+    { channel: ipc.forwards.isAutoEnabled, service: forwards, method: 'isAutoEnabled', args: ['conn-1'], result: false },
+  ];
+
+  it.each(table)('$channel delegates to $method', async ({ channel, service, method, args = [], result }) => {
+    mockOf(service, method).mockResolvedValue(result);
+    const handler = handlers.get(channel)! as (e: unknown, ...a: unknown[]) => Promise<unknown>;
+    expect(handler).toBeDefined();
+    await expect(handler({}, ...args)).resolves.toEqual(result);
+    expect(mockOf(service, method)).toHaveBeenCalledWith(...args);
+  });
+
+  it('ssh.connect passes the payload through with a fresh KnownHosts', async () => {
+    mockOf(ssh, 'connect').mockResolvedValue({ ok: true });
+    const payload = { host: 'h', user: 'u', tofuDecision: 'accept-once' as const };
+    await expect(
+      (handlers.get(ipc.ssh.connect)! as (e: unknown, p: unknown) => Promise<unknown>)({}, payload),
+    ).resolves.toEqual({ ok: true });
+    const call = mockOf(ssh, 'connect').mock.calls[0]![0] as Record<string, unknown>;
+    expect(call).toEqual(expect.objectContaining(payload));
+    expect(call['knownHosts']).toBeInstanceOf(KnownHosts);
+  });
+
+  it('sftp.download reports progress under the caller-supplied transfer id', async () => {
+    let progress: ((p: unknown) => void) | undefined;
+    mockOf(sftp, 'download').mockImplementation(
+      async (_id: string, _remote: string, _local: string, onProgress: (p: unknown) => void) => {
+        progress = onProgress;
+      },
+    );
+    await (
+      handlers.get(ipc.sftp.download)! as (e: unknown, p: unknown) => Promise<boolean>
+    )({}, { connectionId: 'c', remotePath: '/r', localPath: '/l', transferId: 't-9' });
+    progress!({ bytesSoFar: 1, totalBytes: 2 });
+    expect(broadcast).toHaveBeenCalledWith(ipc.sftp.progress, { transferId: 't-9', bytesSoFar: 1, totalBytes: 2 });
   });
 });
