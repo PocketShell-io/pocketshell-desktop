@@ -32,6 +32,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useConnectionStore } from '../stores/connection';
 import { useSettingsStore } from '../stores/settings';
+import { useSyncStore } from '../stores/sync';
 import { api } from '../ipc';
 import { windowTitle } from '../../shared/windowTitle';
 import {
@@ -49,6 +50,7 @@ import type { HostEntry } from '../../shared/types';
 const router = useRouter();
 const connection = useConnectionStore();
 const settings = useSettingsStore();
+const sync = useSyncStore();
 const connectError = ref<string | null>(null);
 const connectingTo = ref<string | null>(null);
 const settingsOpen = ref(false);
@@ -77,6 +79,27 @@ const defaultMissing = computed(
   () => defaultHostStatus(settings.defaultHost, connection.hosts) === 'missing',
 );
 
+const accountSignedIn = computed(() => sync.status?.loggedIn === true);
+const accountEmail = computed(() => sync.status?.email || 'Signed in');
+const accountUnavailable = computed(
+  () => sync.status !== null && sync.status !== undefined && !sync.status.keychainAvailable,
+);
+const accountAriaLabel = computed(() =>
+  accountSignedIn.value
+    ? `Google account: ${accountEmail.value}. Open account and sync settings`
+    : sync.busy
+      ? 'Signing in with Google'
+      : 'Sign in with Google',
+);
+
+function onAccountAction(): void {
+  if (accountSignedIn.value) {
+    settingsOpen.value = true;
+    return;
+  }
+  void sync.login();
+}
+
 /**
  * The host we are connected to right now, if any. Back from the workspace
  * keeps the link alive, so this list can be looked at WHILE connected — and
@@ -98,6 +121,11 @@ onMounted(async () => {
   // identity on it and deliberately does not reset it on unmount (mount order
   // during a route swap is not something to depend on).
   api.win.setTitle(windowTitle(null));
+  // The picker only needs the small account state. Detailed sync controls stay
+  // in Settings, but the header must know which compact action to show.
+  void sync.refreshStatus().catch(() => {
+    // A status read failure leaves the safe, signed-out presentation in place.
+  });
   try {
     await connection.loadHosts();
   } catch {
@@ -251,6 +279,21 @@ function onToggleDefault(host: HostEntry): void {
       <h1>PocketShell</h1>
       <div class="header-actions">
         <button
+          class="account-action"
+          :class="{ 'signed-in': accountSignedIn }"
+          :disabled="sync.busy || accountUnavailable"
+          :aria-busy="sync.busy"
+          :aria-label="accountAriaLabel"
+          :title="accountAriaLabel"
+          @click="onAccountAction"
+        >
+          <span class="account-status-dot" :class="{ 'signed-in': accountSignedIn }" aria-hidden="true" />
+          <span class="account-copy">
+            <span class="account-provider">Google</span>
+            <span class="account-state">{{ accountSignedIn ? accountEmail : 'Sign in' }}</span>
+          </span>
+        </button>
+        <button
           class="icon-btn"
           :disabled="reloadingHosts"
           :aria-busy="reloadingHosts"
@@ -387,6 +430,72 @@ h1 {
   align-items: center;
   gap: var(--sp-1);
   align-self: center;
+}
+/* The account action is the landing screen's one high-discoverability CTA.
+   Once signed in it becomes a quiet account chip that opens the detailed
+   Account & sync section in Settings rather than duplicating those controls. */
+.account-action {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 220px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-200);
+  line-height: var(--lh-200);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.account-action:not(.signed-in) {
+  border-color: var(--accent-dim);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.account-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--state-hover);
+  color: var(--fg);
+}
+.account-action:not(.signed-in):hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.account-action:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+.account-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+.account-status-dot.signed-in {
+  background: var(--success);
+}
+.account-copy {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: var(--sp-1);
+}
+.account-provider {
+  font-weight: var(--fw-semibold);
+}
+.account-state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Status strip above the list: the app is doing something, the list is still
    there, and the way out is in the same line as the message. */

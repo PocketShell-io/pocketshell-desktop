@@ -37,6 +37,8 @@ vi.mock('vue-router', () => ({
 const sshConnect = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const sshClose = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const listConfigHosts = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+const syncStatus = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+const syncLogin = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
 /**
  * The renderer api, as a Proxy — the same shape folderWorkspaceCreate.test.ts
@@ -49,6 +51,8 @@ const overrides: Record<string, unknown> = {
   'ssh.connect': (...a: unknown[]) => sshConnect(...a),
   'ssh.close': (...a: unknown[]) => sshClose(...a),
   'ssh.listConfigHosts': (...a: unknown[]) => listConfigHosts(...a),
+  'sync.status': (...a: unknown[]) => syncStatus(...a),
+  'sync.login': (...a: unknown[]) => syncLogin(...a),
 };
 
 function channel(group: string): unknown {
@@ -130,6 +134,40 @@ beforeEach(() => {
   // long launch unless each test puts it back.
   resetAutoConnectLatch();
   sshClose.mockResolvedValue(undefined);
+  syncStatus.mockResolvedValue({ loggedIn: false, email: null, keychainAvailable: true });
+  syncLogin.mockResolvedValue(null);
+});
+
+describe('HostPickerView — the header account action', () => {
+  it('clearly invites signed-out users to sign in with Google', async () => {
+    const wrapper = await openPicker([host('hetzner')]);
+    const account = wrapper.get('.account-action');
+
+    expect(account.text()).toContain('Google');
+    expect(account.text()).toContain('Sign in');
+    expect(account.attributes('aria-label')).toBe('Sign in with Google');
+
+    await account.trigger('click');
+    expect(syncLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the signed-in account and opens detailed sync settings', async () => {
+    syncStatus.mockResolvedValue({
+      loggedIn: true,
+      email: 'alexey@example.com',
+      keychainAvailable: true,
+    });
+    const wrapper = await openPicker([host('hetzner')]);
+    const account = wrapper.get('.account-action');
+
+    expect(account.text()).toContain('Google');
+    expect(account.text()).toContain('alexey@example.com');
+    expect(account.attributes('aria-label')).toContain('Open account and sync settings');
+
+    await account.trigger('click');
+    expect(wrapper.find('overlay-panel-stub').exists()).toBe(true);
+    expect(syncLogin).not.toHaveBeenCalled();
+  });
 });
 
 describe('HostPickerView — cancel is always visible while dialling', () => {
