@@ -303,7 +303,19 @@ export class SshService {
    */
   shellInput(shellId: ShellId, data: string | Buffer): boolean {
     const rec = this.shells.get(shellId);
-    if (!rec) return false;
+    if (!rec) {
+      // Logged at any size, because a write aimed at an id that is gone is
+      // always a sender holding a registry entry across the shell's death —
+      // and that drop is exactly the one that must not be silent: the agent
+      // launch that left a user staring at a plain shell stayed invisible for
+      // months because this path returned before any log line.
+      log('shell', 'input dropped: no live shell for id', {
+        shellId,
+        bytes: data.length,
+        preview: data.toString().slice(0, 60),
+      });
+      return false;
+    }
     // Diagnostic for double-delivery. A paste that arrives twice is either
     // the renderer SENDING it twice (two live onData bindings) or the
     // terminal ECHOING it twice (two live output subscriptions), and those
