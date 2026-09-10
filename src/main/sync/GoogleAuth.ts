@@ -117,6 +117,12 @@ interface TokenResponse {
   expires_in: number;
 }
 
+interface LoopbackRedirect {
+  uri: string;
+  code: Promise<string>;
+  cancel: () => void;
+}
+
 export interface GoogleAuthDeps {
   /** The app's userData directory — where the encrypted token file lives. */
   userDataDir: string;
@@ -236,8 +242,14 @@ export class GoogleAuth {
     url.searchParams.set('code_challenge', challenge);
     url.searchParams.set('code_challenge_method', 'S256');
     url.searchParams.set('state', state);
-    await this.openExternal(url.toString());
-    const tokens = await this.exchangeCode(redirect.code, verifier, redirect.uri);
+    try {
+      await this.openExternal(url.toString());
+    } catch (err) {
+      redirect.cancel();
+      await redirect.code.catch(() => undefined);
+      throw err;
+    }
+    const tokens = await this.exchangeCode(await redirect.code, verifier, redirect.uri);
     const identity = decodeIdTokenPayload(tokens.id_token);
     this.store(tokens, tokens.refresh_token ?? null, identity);
     return { sub: identity.sub, email: identity.email };
@@ -248,45 +260,85 @@ export class GoogleAuth {
    * Google (i.e. the browser) calls back with the state we sent; the server
    * is closed either way before this returns.
    */
-  private listenForCode(state: string): Promise<{ uri: string; code: string }> {
-    return new Promise((resolve, reject) => {
-      let port = 0;
-      const server = createServer((req, res) => {
-        const path = req.url?.split('?')[0] ?? '/';
-        if (path !== '/') {
-          // Browsers poke favicon.ico and friends; ignore quietly.
-          res.writeHead(404).end();
-          return;
-        }
-        const params = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams;
-        const fail = (message: string): void => {
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end(`<html><body><h3>Sign-in failed</h3><p>${message}</p></body></html>`);
-          server.close();
-          reject(new Error(message));
-        };
-        const err = params.get('error');
-        if (err) return fail(`Google sign-in was not completed (${err}).`);
-        const code = params.get('code');
-        if (!code) return fail('Google did not return an authorization code.');
-        if (params.get('state') !== state) return fail('sign-in response did not match this request (state).');
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end('<html><body><p>PocketShell sign-in complete — you can close this window.</p></body></html>');
-        server.close(() => resolve({ uri: `http://127.0.0.1:${port}`, code }));
-      });
-      server.on('error', reject);
+  private async listenForCode(state: string): Promise<LoopbackRedirect> {
+    let resolveCode!: (code: string) => void;
+    let rejectCode!: (err: Error) => void;
+    const code = new Promise<string>((resolve, reject) => {
+      resolveCode = resolve;
+      rejectCode = reject;
+    });
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let listening = false;
+    let rejectListening: ((err: Error) => void) | null = null;
+
+    const server = createServer((req, res) => {
+      const path = req.url?.split('?')[0] ?? '/';
+      if (path !== '/') {
+        // Browsers poke favicon.ico and friends; ignore quietly.
+        res.writeHead(404).end();
+        return;
+      }
+      const params = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams;
+      const fail = (message: string): void => {
+        res.writeHead(400, { 'Content-Type': 'text/html' });
+        res.end(`<html><body><h3>Sign-in failed</h3><p>${message}</p></body></html>`);
+        settle(new Error(message));
+      };
+      const err = params.get('error');
+      if (err) return fail(`Google sign-in was not completed (${err}).`);
+      const callbackCode = params.get('code');
+      if (!callbackCode) return fail('Google did not return an authorization code.');
+      if (params.get('state') !== state) return fail('sign-in response did not match this request (state).');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><body><p>PocketShell sign-in complete — you can close this window.</p></body></html>');
+      settle(undefined, callbackCode);
+    });
+
+    const settle = (err?: Error, callbackCode?: string): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      server.close();
+      if (err) rejectCode(err);
+      else resolveCode(callbackCode!);
+    };
+
+    const serverError = (err: Error): void => {
+      if (!listening) rejectListening?.(err);
+      else settle(err);
+    };
+    server.on('error', serverError);
+
+    await new Promise<void>((resolve, reject) => {
+      rejectListening = reject;
       // Port 0: the OS picks a free one, which is the point of loopback
       // redirect URIs — nothing to collide with, nothing to pre-register.
-      // The address only exists once 'listening' fires, and the callback
-      // above reads it only after a request — which cannot precede it.
       server.listen(0, '127.0.0.1', () => {
-        port = (server.address() as { port: number }).port;
+        listening = true;
+        resolve();
       });
-      setTimeout(() => {
+    }).catch((err: unknown) => {
+      server.removeListener('error', serverError);
+      try {
         server.close();
-        reject(new Error('sign-in timed out — no browser response within 5 minutes'));
-      }, LOGIN_TIMEOUT_MS).unref();
+      } catch {
+        // The server may already have failed before entering the listening state.
+      }
+      throw err;
     });
+
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      settle(new Error('could not determine the sign-in callback port'));
+      throw new Error('could not determine the sign-in callback port');
+    }
+    const uri = `http://127.0.0.1:${address.port}`;
+    timer = setTimeout(() => {
+      settle(new Error('sign-in timed out — no browser response within 5 minutes'));
+    }, LOGIN_TIMEOUT_MS);
+    timer.unref();
+    return { uri, code, cancel: () => settle(new Error('sign-in cancelled')) };
   }
 
   private async exchangeCode(code: string, verifier: string, redirectUri: string): Promise<TokenResponse> {

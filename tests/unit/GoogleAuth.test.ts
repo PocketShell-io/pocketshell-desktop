@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -10,10 +13,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('electron', () => ({
-  safeStorage: { isEncryptionAvailable: () => true, encryptString: vi.fn(), decryptString: vi.fn() },
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (value: string) => Buffer.from(value, 'utf8'),
+    decryptString: (value: Buffer) => value.toString('utf8'),
+  },
 }));
 
 import {
+  GoogleAuth,
   createPkcePair,
   decodeIdTokenPayload,
   isIdTokenExpired,
@@ -74,6 +82,42 @@ describe('isIdTokenExpired', () => {
     // Just before the skew boundary: still good.
     expect(isIdTokenExpired(OBTAINED, TTL_S, OBTAINED + (TTL_S - 61) * 1000)).toBe(false);
   });
+});
+
+describe('browser sign-in flow', () => {
+  it('opens the browser before waiting for the loopback callback', async () => {
+    const previousSecret = process.env['POCKETSHELL_GOOGLE_SECRET'];
+    process.env['POCKETSHELL_GOOGLE_SECRET'] = 'test-client-secret';
+    const userDataDir = mkdtempSync(join(tmpdir(), 'pocketshell-google-auth-'));
+    const idToken = `header.${base64urlJson({ sub: 'sub-123', email: 'a@b.c' })}.signature`;
+
+    try {
+      const openExternal = vi.fn(async (authUrl: string) => {
+        const auth = new URL(authUrl);
+        const redirect = new URL(auth.searchParams.get('redirect_uri')!);
+        redirect.searchParams.set('code', 'authorization-code');
+        redirect.searchParams.set('state', auth.searchParams.get('state')!);
+        const callback = await fetch(redirect);
+        expect(callback.ok).toBe(true);
+      });
+      const fetchFn: typeof fetch = async (input) => {
+        const inputUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        expect(inputUrl).toBe('https://oauth2.googleapis.com/token');
+        return new Response(
+          JSON.stringify({ id_token: idToken, refresh_token: 'refresh-token', expires_in: 3600 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      };
+
+      const auth = new GoogleAuth({ userDataDir, openExternal, fetchFn });
+      await expect(auth.login()).resolves.toEqual({ sub: 'sub-123', email: 'a@b.c' });
+      expect(openExternal).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(userDataDir, { recursive: true, force: true });
+      if (previousSecret === undefined) delete process.env['POCKETSHELL_GOOGLE_SECRET'];
+      else process.env['POCKETSHELL_GOOGLE_SECRET'] = previousSecret;
+    }
+  }, 10_000);
 });
 
 describe('electron mock', () => {
