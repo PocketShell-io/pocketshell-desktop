@@ -151,6 +151,16 @@ describe('HostPickerView — the header account action', () => {
     expect(syncLogin).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the token-exchange error after Google redirects back', async () => {
+    syncLogin.mockRejectedValue(new Error('token exchange failed (HTTP 400): invalid_grant'));
+    const wrapper = await openPicker([host('hetzner')]);
+
+    await wrapper.get('.account-action').trigger('click');
+    await flush(wrapper);
+
+    expect(wrapper.get('.account-banner').text()).toContain('invalid_grant');
+  });
+
   it('shows the signed-in account and opens detailed sync settings', async () => {
     syncStatus.mockResolvedValue({
       loggedIn: true,

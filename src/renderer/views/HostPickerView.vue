@@ -309,6 +309,9 @@ function onToggleDefault(host: HostEntry): void {
       </div>
     </header>
     <main>
+      <p v-if="sync.message?.kind === 'error'" class="account-banner" role="alert">
+        {{ sync.message.text }}
+      </p>
       <!-- The escape hatch, for ANY dial — automatic or clicked. It sits
            above the list, and the list stays usable underneath, so a dial is
            something happening ON the picker rather than instead of it. It used
@@ -496,6 +499,17 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.account-banner {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: var(--fs-200);
+  line-height: var(--lh-200);
+  overflow-wrap: anywhere;
 }
 /* Status strip above the list: the app is doing something, the list is still
    there, and the way out is in the same line as the message. */

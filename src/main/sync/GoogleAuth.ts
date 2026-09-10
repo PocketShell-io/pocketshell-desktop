@@ -314,7 +314,7 @@ export class GoogleAuth {
       if (!callbackCode) return fail('Google did not return an authorization code.');
       if (params.get('state') !== state) return fail('sign-in response did not match this request (state).');
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end('<html><body><p>PocketShell sign-in complete — you can close this window.</p></body></html>');
+      res.end('<html><body><p>Google sign-in response received — return to PocketShell.</p></body></html>');
       settle(undefined, callbackCode);
     });
 

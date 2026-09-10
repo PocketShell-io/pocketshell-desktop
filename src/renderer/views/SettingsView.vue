@@ -959,6 +959,9 @@ function shellCostNote(spec: ShortcutSpec): { text: string; safe: boolean } | nu
               safely and sync is disabled.
             </p>
           </template>
+          <p v-if="sync.message?.kind === 'error'" class="row-hint sync-error" role="alert">
+            {{ sync.message.text }}
+          </p>
         </div>
       </div>
 
