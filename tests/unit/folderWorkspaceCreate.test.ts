@@ -221,6 +221,9 @@ beforeEach(() => {
   startSession.mockReset();
   sessionsList.mockReset();
   shellInput.mockReset();
+  // The api contract is a Promise<boolean>; the default mock honours it, so a
+  // delivery the watcher awaits resolves instead of leaving the launch armed.
+  shellInput.mockResolvedValue(true);
   terminalFocusCalls.length = 0;
   route.params = { name: 'host', folder: '~/git/x' };
   route.query = {};

@@ -1437,8 +1437,13 @@ watch(
   (shellId) => {
     const pending = pendingLaunch.value;
     if (!pending || !shellId) return;
-    pendingLaunch.value = null;
-    clearLaunchTimer();
+    // The write is answered, never assumed. False means main tracks no live
+    // channel for the id the registry answered with — a lookup and a write
+    // straddling the shell's death. Consuming the launch here is how the line
+    // once vanished into a corpse with no message and no retry: the launch
+    // stays armed, the next registration re-points this watcher, and the
+    // deadline below stays the backstop for the case where nothing ever does.
+    //
     // Through the wrapper, never the bare `claude`/`codex` binary: the wrapper
     // is what records the kind, and a session started around it shows up as
     // `unknown` forever.
@@ -1448,7 +1453,11 @@ watch(
     // was WRONG — a bare `pocketshell agent claude` with no `--dir`, which the
     // helper rejects with exit 2 and a usage message, so the session came up as
     // a plain shell every single time.
-    void api.shell.input(shellId, `${buildLaunchCommand(pending.choice)}\r`);
+    void api.shell.input(shellId, `${buildLaunchCommand(pending.choice)}\r`).then((delivered) => {
+      if (!delivered) return;
+      pendingLaunch.value = null;
+      clearLaunchTimer();
+    });
   },
 );
 
