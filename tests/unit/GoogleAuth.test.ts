@@ -85,9 +85,7 @@ describe('isIdTokenExpired', () => {
 });
 
 describe('browser sign-in flow', () => {
-  it('opens the browser and completes without a client secret', async () => {
-    const previousSecret = process.env['POCKETSHELL_GOOGLE_SECRET'];
-    delete process.env['POCKETSHELL_GOOGLE_SECRET'];
+  it('opens the browser and completes through the backend broker', async () => {
     const userDataDir = mkdtempSync(join(tmpdir(), 'pocketshell-google-auth-'));
     const idToken = `header.${base64urlJson({ sub: 'sub-123', email: 'a@b.c' })}.signature`;
 
@@ -102,9 +100,11 @@ describe('browser sign-in flow', () => {
       });
       const fetchFn: typeof fetch = async (input, init) => {
         const inputUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-        expect(inputUrl).toBe('https://oauth2.googleapis.com/token');
-        expect(init?.body).toBeInstanceOf(URLSearchParams);
-        expect((init?.body as URLSearchParams).has('client_secret')).toBe(false);
+        expect(inputUrl).toBe('https://a7sota2qic.execute-api.eu-west-1.amazonaws.com/auth/google/token');
+        expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+        const body = JSON.parse(String(init?.body)) as Record<string, string>;
+        expect(body.grant_type).toBe('authorization_code');
+        expect(body).not.toHaveProperty('client_secret');
         return new Response(
           JSON.stringify({ id_token: idToken, refresh_token: 'refresh-token', expires_in: 3600 }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -116,8 +116,6 @@ describe('browser sign-in flow', () => {
       expect(openExternal).toHaveBeenCalledOnce();
     } finally {
       rmSync(userDataDir, { recursive: true, force: true });
-      if (previousSecret === undefined) delete process.env['POCKETSHELL_GOOGLE_SECRET'];
-      else process.env['POCKETSHELL_GOOGLE_SECRET'] = previousSecret;
     }
   }, 10_000);
 });

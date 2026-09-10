@@ -16,20 +16,16 @@ the app side.
 Desktop-app OAuth against Google, driven by `src/main/sync/GoogleAuth.ts`:
 a one-shot loopback HTTP listener on `127.0.0.1:<random port>`, the system
 browser opened at Google's authorization endpoint with a PKCE `S256`
-challenge and a `state` nonce, and the returned `code` exchanged for an ID
-token plus a refresh token. Signing in twice shares one in-flight flow; a
-deny, a state mismatch, or five minutes of silence all fail the same
-promise with the reason.
+challenge and a `state` nonce. The returned code and PKCE verifier go to the
+sync backend's token-broker route, which exchanges them with Google using the
+client secret held in AWS Secrets Manager. Signing in twice shares one
+in-flight flow; a deny, a state mismatch, or five minutes of silence all fail
+the same promise with the reason.
 
 The OAuth credential is the "Desktop app" type in `src/shared/syncConfig.ts`.
-Desktop clients are public clients: PKCE protects the authorization-code
-exchange, and Google's token endpoint makes `client_secret` optional for
-desktop apps. A downloaded PocketShell therefore needs no user-supplied
-credential beyond the Google account itself. For deployments that still
-provide one, `GoogleAuth` optionally reads it at login/refresh time from
-`~/.config/pocketshell/google-client-secret` (one line) or
-`POCKETSHELL_GOOGLE_SECRET`; it is never required. The server-side email
-allowlist is what bounds who can hold an account.
+The downloaded app embeds only its public client ID; it never asks the user
+for a client secret. The backend secret and the server-side email allowlist
+are what control access to the sync service.
 
 Tokens never reach the renderer. They live in the main process, encrypted
 with Electron `safeStorage` (OS keychain) in `userData/sync-auth.bin`; when

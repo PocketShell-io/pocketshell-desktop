@@ -1,22 +1,20 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { safeStorage } from 'electron';
-import { GOOGLE_CLIENT_ID } from '../../shared/syncConfig.js';
+import { GOOGLE_CLIENT_ID, SYNC_API_URL } from '../../shared/syncConfig.js';
 
 /**
  * Google sign-in for settings sync — the optional "Gmail login".
  *
- * Desktop-app OAuth, straight against Google (no Cognito, no auth backend):
- * a one-shot loopback HTTP listener on 127.0.0.1, the system browser opened
- * at Google's authorization endpoint with PKCE, and the `code` exchanged at
- * the token endpoint for an ID token + refresh token. Every sync call then
- * carries `Authorization: Bearer <ID token>`; ID tokens last an hour and are
- * refreshed from the refresh token on demand (see `getIdToken`).
- * Desktop clients are public clients: PKCE protects the exchange, and no
- * client secret is required on the user's machine.
+ * Desktop-app OAuth with a backend token broker: a one-shot loopback HTTP
+ * listener on 127.0.0.1, the system browser opened at Google's authorization
+ * endpoint with PKCE, and the `code` exchanged through the sync API for an ID
+ * token + refresh token. The backend keeps Google's client secret in
+ * Secrets Manager. Every sync call then carries `Authorization: Bearer
+ * <ID token>`; ID tokens last an hour and are refreshed from the refresh token
+ * on demand (see `getIdToken`).
  *
  * Tokens at rest are encrypted with Electron `safeStorage` (OS keychain) in
  * a small file under the app's userData directory. If no OS keychain is
@@ -30,7 +28,7 @@ import { GOOGLE_CLIENT_ID } from '../../shared/syncConfig.js';
  */
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
-const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const TOKEN_ENDPOINT = `${SYNC_API_URL}/auth/google/token`;
 const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 const SCOPE = 'openid email profile';
 /** How long to leave the browser loopback open before giving up. */
@@ -88,28 +86,9 @@ export function isIdTokenExpired(obtainedAtMs: number, expiresInS: number, nowMs
   return nowMs >= obtainedAtMs + expiresInS * 1000 - EXPIRY_SKEW_S * 1000;
 }
 
-/**
- * An optional OAuth client secret for deployments that still provide one.
- * Desktop clients are public clients, so a downloaded app must work without
- * this value; Google documents `client_secret` as optional for desktop token
- * exchanges. Environment first (dev), then the one-line compatibility file.
- */
-function readGoogleClientSecret(): string | undefined {
-  const fromEnv = process.env['POCKETSHELL_GOOGLE_SECRET'];
-  if (fromEnv !== undefined && fromEnv.trim() !== '') return fromEnv.trim();
-  const path = join(homedir(), '.config', 'pocketshell', 'google-client-secret');
-  if (existsSync(path)) {
-    const value = readFileSync(path, 'utf8').trim();
-    if (value !== '') return value;
-  }
-  return undefined;
-}
-
-function tokenBody(values: Record<string, string>): URLSearchParams {
-  const body = new URLSearchParams(values);
-  const clientSecret = readGoogleClientSecret();
-  if (clientSecret !== undefined) body.set('client_secret', clientSecret);
-  return body;
+/** The token broker request stays JSON so the backend can validate its shape. */
+function tokenBody(values: Record<string, string>): string {
+  return JSON.stringify(values);
 }
 
 async function tokenError(response: Response): Promise<string> {
@@ -203,11 +182,10 @@ export class GoogleAuth {
     const refreshToken = this.decrypt(stored.refreshEnc);
     const res = await this.fetchFn(TOKEN_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/json' },
       body: tokenBody({
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
-        client_id: GOOGLE_CLIENT_ID,
       }),
     });
     if (!res.ok) throw new Error(`token refresh failed (HTTP ${res.status}): ${await tokenError(res)}`);
@@ -367,13 +345,12 @@ export class GoogleAuth {
   private async exchangeCode(code: string, verifier: string, redirectUri: string): Promise<TokenResponse> {
     const res = await this.fetchFn(TOKEN_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/json' },
       body: tokenBody({
         grant_type: 'authorization_code',
         code,
         code_verifier: verifier,
         redirect_uri: redirectUri,
-        client_id: GOOGLE_CLIENT_ID,
       }),
     });
     if (!res.ok) throw new Error(`token exchange failed (HTTP ${res.status}): ${await tokenError(res)}`);

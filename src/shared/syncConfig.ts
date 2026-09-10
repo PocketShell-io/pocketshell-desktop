@@ -5,10 +5,9 @@
  * API URL is the `ApiUrl` output of the pocketshell-sync CloudFormation
  * stack in the aws-infra repo (sandbox/pocketshell-sync).
  *
- * Desktop OAuth clients are public clients: PKCE is the protection and the
- * token endpoint does not require a client secret. GoogleAuth accepts an
- * optional environment/file override for deployments that still provide one,
- * but a downloaded app must not need a user-supplied secret.
+ * The desktop app uses PKCE and sends the one-time code to the sync backend's
+ * token broker. The backend holds Google's client secret; the downloaded app
+ * contains only this public client ID.
  */
 
 export const GOOGLE_CLIENT_ID =
