@@ -22,12 +22,14 @@ deny, a state mismatch, or five minutes of silence all fail the same
 promise with the reason.
 
 The OAuth credential is the "Desktop app" type in `src/shared/syncConfig.ts`.
-Google's token endpoint requires its client secret even for installed apps,
-but the secret is a deployment fact of this machine's owner, not source —
-GitHub push protection refuses any push containing one, and rightly. It is
-read at login time from `~/.config/pocketshell/google-client-secret` (one
-line) or `POCKETSHELL_GOOGLE_SECRET`, and lives nowhere else. The
-server-side email allowlist is what bounds who can hold an account.
+Desktop clients are public clients: PKCE protects the authorization-code
+exchange, and Google's token endpoint makes `client_secret` optional for
+desktop apps. A downloaded PocketShell therefore needs no user-supplied
+credential beyond the Google account itself. For deployments that still
+provide one, `GoogleAuth` optionally reads it at login/refresh time from
+`~/.config/pocketshell/google-client-secret` (one line) or
+`POCKETSHELL_GOOGLE_SECRET`; it is never required. The server-side email
+allowlist is what bounds who can hold an account.
 
 Tokens never reach the renderer. They live in the main process, encrypted
 with Electron `safeStorage` (OS keychain) in `userData/sync-auth.bin`; when

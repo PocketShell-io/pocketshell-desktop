@@ -15,6 +15,8 @@ import { GOOGLE_CLIENT_ID } from '../../shared/syncConfig.js';
  * the token endpoint for an ID token + refresh token. Every sync call then
  * carries `Authorization: Bearer <ID token>`; ID tokens last an hour and are
  * refreshed from the refresh token on demand (see `getIdToken`).
+ * Desktop clients are public clients: PKCE protects the exchange, and no
+ * client secret is required on the user's machine.
  *
  * Tokens at rest are encrypted with Electron `safeStorage` (OS keychain) in
  * a small file under the app's userData directory. If no OS keychain is
@@ -87,12 +89,12 @@ export function isIdTokenExpired(obtainedAtMs: number, expiresInS: number, nowMs
 }
 
 /**
- * The OAuth client secret, read at use time and never committed: GitHub
- * push protection refuses any push containing one, and the value belongs to
- * this machine's owner, not to the source tree. Environment first (dev),
- * then the one-line file under ~/.config.
+ * An optional OAuth client secret for deployments that still provide one.
+ * Desktop clients are public clients, so a downloaded app must work without
+ * this value; Google documents `client_secret` as optional for desktop token
+ * exchanges. Environment first (dev), then the one-line compatibility file.
  */
-function readGoogleClientSecret(): string {
+function readGoogleClientSecret(): string | undefined {
   const fromEnv = process.env['POCKETSHELL_GOOGLE_SECRET'];
   if (fromEnv !== undefined && fromEnv.trim() !== '') return fromEnv.trim();
   const path = join(homedir(), '.config', 'pocketshell', 'google-client-secret');
@@ -100,7 +102,14 @@ function readGoogleClientSecret(): string {
     const value = readFileSync(path, 'utf8').trim();
     if (value !== '') return value;
   }
-  throw new Error(`Google OAuth client secret not found — put it in ${path} (one line), or set POCKETSHELL_GOOGLE_SECRET`);
+  return undefined;
+}
+
+function tokenBody(values: Record<string, string>): URLSearchParams {
+  const body = new URLSearchParams(values);
+  const clientSecret = readGoogleClientSecret();
+  if (clientSecret !== undefined) body.set('client_secret', clientSecret);
+  return body;
 }
 
 interface StoredAuth extends GoogleIdentity {
@@ -180,11 +189,10 @@ export class GoogleAuth {
     const res = await this.fetchFn(TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
+      body: tokenBody({
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
         client_id: GOOGLE_CLIENT_ID,
-        client_secret: readGoogleClientSecret(),
       }),
     });
     if (!res.ok) throw new Error(`token refresh failed (HTTP ${res.status})`);
@@ -345,13 +353,12 @@ export class GoogleAuth {
     const res = await this.fetchFn(TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
+      body: tokenBody({
         grant_type: 'authorization_code',
         code,
         code_verifier: verifier,
         redirect_uri: redirectUri,
         client_id: GOOGLE_CLIENT_ID,
-        client_secret: readGoogleClientSecret(),
       }),
     });
     if (!res.ok) throw new Error(`token exchange failed (HTTP ${res.status})`);
