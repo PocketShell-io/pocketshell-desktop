@@ -6,7 +6,13 @@ import { checkForUpdate } from '../update/ReleaseChecker.js';
 import { log } from '../log.js';
 
 
-export function registerAppIpc(_ctx: IpcContext): void {
+export function registerAppIpc(ctx: IpcContext): void {
+  // --- win:openAccount ----------------------------------------------------
+  // The account surface is a real window rather than a settings overlay, so
+  // it remains available while the host picker is being used and gets its
+  // own taskbar/Alt-Tab entry.
+  ipcMain.handle(ipc.win.openAccount, () => ctx.openAccountWindow());
+
   // --- win:setTitle --------------------------------------------------------
   // The OS window title mirrors the VIEW — "PocketShell" on the picker, the
   // host's identity in the workspace — which is why the renderer drives it

@@ -50,12 +50,49 @@ const CONFLICT_RETRIES = 3;
 
 export const useSyncStore = defineStore('sync', () => {
   const status = ref<SyncStatus | null>(null);
+  /** The last account contents read with the current passphrase, or unknown. */
+  const accountHosts = ref<HostEntry[] | null>(null);
   const passphrase = ref('');
   const busy = ref(false);
   const message = ref<SyncMessage | null>(null);
 
   async function refreshStatus(): Promise<void> {
     status.value = await api.sync.status();
+    if (!status.value.loggedIn) accountHosts.value = null;
+  }
+
+  /** Read the account so the Account window can distinguish synced hosts. */
+  async function loadAccount(): Promise<void> {
+    if (busy.value) return;
+    if (!status.value?.loggedIn) {
+      message.value = { kind: 'error', text: 'Sign in first.' };
+      return;
+    }
+    if (passphrase.value === '') {
+      message.value = { kind: 'error', text: 'Enter your sync passphrase.' };
+      return;
+    }
+    busy.value = true;
+    message.value = null;
+    try {
+      const pulled = await api.sync.pull(SYNC_SLOT, passphrase.value);
+      if (pulled.kind === 'absent') {
+        accountHosts.value = [];
+        message.value = { kind: 'ok', text: 'Your account has no synced hosts yet.' };
+        return;
+      }
+      const remote = parseSyncPayload(pulled.plaintext);
+      accountHosts.value = remote;
+      absorbRemoteAliases(remote);
+      message.value = {
+        kind: 'ok',
+        text: `Your account has ${remote.length} synced host${remote.length === 1 ? '' : 's'}.`,
+      };
+    } catch (err) {
+      message.value = { kind: 'error', text: (err as Error).message };
+    } finally {
+      busy.value = false;
+    }
   }
 
   /** Tick or untick one alias. Unticked hosts never leave this machine. */
@@ -106,6 +143,7 @@ export const useSyncStore = defineStore('sync', () => {
     try {
       await api.sync.logout();
       passphrase.value = '';
+      accountHosts.value = null;
       message.value = null;
       await refreshStatus();
     } finally {
@@ -136,7 +174,10 @@ export const useSyncStore = defineStore('sync', () => {
       if (pulled.kind === 'ok') {
         baseVersion = pulled.version;
         remoteHosts = parseSyncPayload(pulled.plaintext);
+        accountHosts.value = remoteHosts;
         absorbRemoteAliases(remoteHosts);
+      } else {
+        accountHosts.value = [];
       }
       if (settings.syncSelectedHosts.length === 0) {
         message.value = { kind: 'error', text: 'Tick at least one host to sync.' };
@@ -163,9 +204,12 @@ export const useSyncStore = defineStore('sync', () => {
         if (repulled.kind !== 'ok') throw new Error('the account changed while syncing — try again');
         baseVersion = repulled.version;
         const reparsed = parseSyncPayload(repulled.plaintext);
+        accountHosts.value = reparsed;
         absorbRemoteAliases(reparsed);
         set = assembleSyncSet(connection.hosts, reparsed, settings.syncSelectedHosts);
       }
+
+      accountHosts.value = set;
 
       // 4. Restore path: the synced set is offered to main, which appends
       // whatever ~/.ssh/config is actually missing (it re-checks against the
@@ -187,10 +231,12 @@ export const useSyncStore = defineStore('sync', () => {
 
   return {
     status,
+    accountHosts,
     passphrase,
     busy,
     message,
     refreshStatus,
+    loadAccount,
     setSelected,
     login,
     logout,

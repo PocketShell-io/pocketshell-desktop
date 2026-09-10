@@ -44,9 +44,22 @@ export function registerIpcHandlers(deps: {
   preview: HtmlPreviewService;
   syncAuth: GoogleAuth;
   sync: SyncService;
+  openAccountWindow: () => void;
   getWindows: () => BrowserWindow[];
 }): void {
-  const { ssh, helper, aplexer, sftp, forwards, projects, preview, syncAuth, sync, getWindows } = deps;
+  const {
+    ssh,
+    helper,
+    aplexer,
+    sftp,
+    forwards,
+    projects,
+    preview,
+    syncAuth,
+    sync,
+    openAccountWindow,
+    getWindows,
+  } = deps;
 
   // Prompt attachments ride the SSH/SFTP services that are already here —
   // no second connection, no shelling out to scp.
@@ -101,6 +114,7 @@ export function registerIpcHandlers(deps: {
     preview,
     syncAuth,
     sync,
+    openAccountWindow,
     getWindows,
     broadcast,
     tmuxClients,

@@ -114,6 +114,7 @@ const ctx = {
   preview: preview as never,
   syncAuth: syncAuth as never,
   sync: sync as never,
+  openAccountWindow: vi.fn(),
   getWindows,
   broadcast,
   tmuxClients: tmuxClients as never,

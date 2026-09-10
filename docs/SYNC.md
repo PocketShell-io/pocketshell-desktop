@@ -34,10 +34,20 @@ store plaintext. `getIdToken` serves the cached token and refreshes it on
 demand; the API client (`src/main/sync/SyncService.ts`) retries a request
 once through a forced refresh on a 401 before surfacing the failure.
 
+## Account window
+
+The host picker keeps a compact account button at the far right of its header.
+It opens or focuses a separate Account & sync window, so account actions do
+not compete with local application settings. The window owns sign-in, sign-out,
+the in-memory passphrase, host selection, and Sync now. After entering the
+passphrase, Check account decrypts the current account copy and labels each
+host as in the account, selected here but not synced, or not selected. Hosts
+that exist only in the account remain visible as backup entries.
+
 ## Encryption
 
 Zero-knowledge, in `src/main/sync/SyncCrypto.ts`. The passphrase is typed in
-Settings and lives only in the renderer's memory for the session — not in
+the Account & sync window and lives only in the renderer's memory for the session — not in
 localStorage, not in main, not on the server — so it cannot be recovered:
 losing it loses the stored blob (the section says so). Each write derives a
 key with PBKDF2-SHA256 (600k iterations, 256 bits) over a fresh 16-byte
@@ -50,7 +60,7 @@ never does.
 
 ## What syncs: the selection
 
-Sync is selective. The Account & sync section lists `~/.ssh/config`'s hosts
+Sync is selective. The Account & sync window lists `~/.ssh/config`'s hosts
 with a checkbox each; ONLY ticked hosts are uploaded — an unticked host
 never leaves the machine, encrypted or otherwise. That is the privacy
 property, and it is why the payload is assembled rather than merged: the
@@ -108,6 +118,7 @@ from a blob. `applyHosts` degrades its payload per entry
 (`coerceHostEntries` in `src/shared/sync.ts`) before anything reaches the
 config writer.
 
-The renderer side is `src/renderer/stores/sync.ts` plus the Account & sync
-section of `views/SettingsView.vue`; the tick marks themselves are the
-settings store's `syncSelectedHosts`.
+The renderer side is `src/renderer/stores/sync.ts` plus
+`views/AccountView.vue`; the tick marks themselves are the settings store's
+`syncSelectedHosts`. Local application preferences remain in
+`views/SettingsView.vue`.

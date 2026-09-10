@@ -38,7 +38,7 @@ const sshConnect = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const sshClose = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const listConfigHosts = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const syncStatus = vi.fn<(...args: unknown[]) => Promise<unknown>>();
-const syncLogin = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+const openAccount = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
 /**
  * The renderer api, as a Proxy — the same shape folderWorkspaceCreate.test.ts
@@ -52,7 +52,7 @@ const overrides: Record<string, unknown> = {
   'ssh.close': (...a: unknown[]) => sshClose(...a),
   'ssh.listConfigHosts': (...a: unknown[]) => listConfigHosts(...a),
   'sync.status': (...a: unknown[]) => syncStatus(...a),
-  'sync.login': (...a: unknown[]) => syncLogin(...a),
+  'win.openAccount': (...a: unknown[]) => openAccount(...a),
 };
 
 function channel(group: string): unknown {
@@ -135,7 +135,7 @@ beforeEach(() => {
   resetAutoConnectLatch();
   sshClose.mockResolvedValue(undefined);
   syncStatus.mockResolvedValue({ loggedIn: false, email: null, keychainAvailable: true });
-  syncLogin.mockResolvedValue(null);
+  openAccount.mockResolvedValue(undefined);
 });
 
 describe('HostPickerView — the header account action', () => {
@@ -145,23 +145,14 @@ describe('HostPickerView — the header account action', () => {
 
     expect(account.text()).toContain('Google');
     expect(account.text()).toContain('Sign in');
-    expect(account.attributes('aria-label')).toBe('Sign in with Google');
+    expect(account.attributes('aria-label')).toBe('Open account and sync');
 
     await account.trigger('click');
-    expect(syncLogin).toHaveBeenCalledTimes(1);
+    expect(openAccount).toHaveBeenCalledTimes(1);
+    expect(wrapper.findAll('.header-actions > button').at(-1)?.element).toBe(account.element);
   });
 
-  it('shows the token-exchange error after Google redirects back', async () => {
-    syncLogin.mockRejectedValue(new Error('token exchange failed (HTTP 400): invalid_grant'));
-    const wrapper = await openPicker([host('hetzner')]);
-
-    await wrapper.get('.account-action').trigger('click');
-    await flush(wrapper);
-
-    expect(wrapper.get('.account-banner').text()).toContain('invalid_grant');
-  });
-
-  it('shows the signed-in account and opens detailed sync settings', async () => {
+  it('shows the signed-in account and opens the separate account window', async () => {
     syncStatus.mockResolvedValue({
       loggedIn: true,
       email: 'alexey@example.com',
@@ -172,11 +163,10 @@ describe('HostPickerView — the header account action', () => {
 
     expect(account.text()).toContain('Google');
     expect(account.text()).toContain('alexey@example.com');
-    expect(account.attributes('aria-label')).toContain('Open account and sync settings');
+    expect(account.attributes('aria-label')).toContain('Open account and sync');
 
     await account.trigger('click');
-    expect(wrapper.find('overlay-panel-stub').exists()).toBe(true);
-    expect(syncLogin).not.toHaveBeenCalled();
+    expect(openAccount).toHaveBeenCalledTimes(1);
   });
 });
 

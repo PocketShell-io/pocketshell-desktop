@@ -86,6 +86,32 @@ async function readyStore(local: HostEntry[]): Promise<ReturnType<typeof useSync
 }
 
 describe('syncStore — the selection is the payload', () => {
+  it('loads the account hosts for the account window', async () => {
+    syncApi.pull.mockResolvedValue({
+      kind: 'ok',
+      version: 6,
+      plaintext: serializeSyncPayload([host('local'), host('remote', 'remote.example')]),
+    });
+    const sync = await readyStore([host('local')]);
+
+    await sync.loadAccount();
+
+    expect(sync.accountHosts?.map((entry) => entry.name)).toEqual(['local', 'remote']);
+    expect(sync.message?.text).toContain('2 synced hosts');
+  });
+
+  it('does not contact the account when no passphrase was entered', async () => {
+    const sync = await readyStore([host('a')]);
+    sync.passphrase = '';
+    useSettingsStore().syncSelectedHosts = ['a'];
+
+    await sync.syncNow();
+
+    expect(syncApi.pull).not.toHaveBeenCalled();
+    expect(syncApi.push).not.toHaveBeenCalled();
+    expect(sync.message?.text).toBe('Enter your sync passphrase.');
+  });
+
   it('pushes ONLY the ticked hosts, on the pulled version', async () => {
     syncApi.pull.mockResolvedValue({
       kind: 'ok',

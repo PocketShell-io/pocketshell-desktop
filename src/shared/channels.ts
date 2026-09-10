@@ -17,6 +17,8 @@ export const ipc = {
    */
   win: {
     setTitle: 'win:setTitle',
+    /** Open or focus the dedicated Account & sync window. */
+    openAccount: 'win:openAccount',
     /**
      * Main -> renderer: the user pressed a zoom chord. Carries the INTENT
      * ('in' | 'out' | 'reset'), never a zoom value, because main deliberately
@@ -240,4 +242,3 @@ export const ipc = {
     open: 'update:open',
   },
 } as const;
-

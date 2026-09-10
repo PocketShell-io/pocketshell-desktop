@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // Settings: the renderer preferences screen, with host-scoped project roots.
+// Account & sync is intentionally a separate window (views/AccountView.vue),
+// so this overlay stays focused on local application preferences.
 //
 // WHERE THIS LIVES, AND WHY IT IS AN OVERLAY
 //
@@ -31,7 +33,6 @@ import { useProjectsStore } from '../stores/projects';
 import { useSessionsStore } from '../stores/sessions';
 import { useSettingsStore } from '../stores/settings';
 import { useUpdateStore } from '../stores/update';
-import { useSyncStore } from '../stores/sync';
 import { defaultHostStatus } from '../autoConnect';
 import { canonicalisePath } from '../sessionGrouping';
 import {
@@ -75,7 +76,6 @@ const projects = useProjectsStore();
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const updates = useUpdateStore();
-const sync = useSyncStore();
 
 /**
  * The host whose project roots this section edits.
@@ -95,10 +95,6 @@ onMounted(async () => {
   // the single source for the default-host choices, so ask for it when the
   // list is empty rather than rendering an empty select.
   if (!connection.hosts.length) await connection.loadHosts();
-  // The account state lives in main; the section renders nothing honest
-  // until it has been asked at least once. Re-asked on every mount, never
-  // assumed across mounts — sign-in can change out from under a cached copy.
-  void sync.refreshStatus();
   if (
     !connection.activeHost &&
     settings.defaultHost &&
@@ -926,123 +922,6 @@ function shellCostNote(spec: ShortcutSpec): { text: string; safe: boolean } | nu
       </div>
     </section>
 
-    <section class="group">
-      <h3 class="group-title">Account &amp; sync</h3>
-
-      <div class="row">
-        <div class="row-text">
-          <label class="row-label">Google account</label>
-          <p class="row-hint">
-            Optional. Signing in lets this machine put host entries YOU PICK
-            from your ~/.ssh/config into your account, encrypted on THIS
-            device — the server stores what it cannot read. Without an account
-            everything keeps working exactly as it does now.
-          </p>
-        </div>
-        <div class="control">
-          <template v-if="sync.status?.loggedIn">
-            <button class="btn-ghost" :disabled="sync.busy" @click="sync.logout()">
-              Sign out
-            </button>
-            <p class="row-hint">Signed in as {{ sync.status.email ?? 'your Google account' }}.</p>
-          </template>
-          <template v-else>
-            <button
-              class="btn-ghost"
-              :disabled="sync.busy || (sync.status !== null && !sync.status.keychainAvailable)"
-              @click="sync.login()"
-            >
-              {{ sync.busy ? 'Signing in…' : 'Sign in with Google' }}
-            </button>
-            <p class="row-hint" v-if="sync.status !== null && !sync.status.keychainAvailable">
-              No OS keychain is available, so sign-in tokens cannot be stored
-              safely and sync is disabled.
-            </p>
-          </template>
-          <p v-if="sync.message?.kind === 'error'" class="row-hint sync-error" role="alert">
-            {{ sync.message.text }}
-          </p>
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="row-text">
-          <label class="row-label">Sync passphrase</label>
-          <p class="row-hint">
-            Protects the SSH hosts you choose to sync. It is separate from
-            your Google password. PocketShell keeps it only in memory and
-            never sends it to the sync server. Use the same passphrase on each
-            device and save it in your password manager; without it, the copy
-            in your account cannot be decrypted.
-          </p>
-        </div>
-        <div class="control">
-          <input
-            class="control"
-            type="password"
-            autocomplete="off"
-            placeholder="passphrase"
-            :value="sync.passphrase"
-            :disabled="!sync.status?.loggedIn"
-            @input="sync.passphrase = ($event.target as HTMLInputElement).value"
-          />
-        </div>
-      </div>
-
-      <div v-if="sync.status?.loggedIn" class="row stacked">
-        <div class="row-main">
-          <div class="row-text">
-            <label class="row-label">Hosts to sync</label>
-            <p class="row-hint">
-              Tick the hosts to keep in your account. Unticked hosts never
-              leave this machine — not even encrypted. Hosts pulled from the
-              account tick themselves on, so syncing never silently drops
-              what another machine put there; removing one is untick + sync.
-              The tick marks are remembered on this machine.
-            </p>
-          </div>
-        </div>
-        <ul class="sync-hosts">
-          <li v-for="host in connection.hosts" :key="host.name">
-            <label class="sync-host">
-              <input
-                type="checkbox"
-                :checked="settings.syncSelectedHosts.includes(host.name)"
-                :disabled="sync.busy"
-                @change="sync.setSelected(host.name, ($event.target as HTMLInputElement).checked)"
-              />
-              <span class="sync-host-alias">{{ host.name }}</span>
-              <span class="sync-host-dest">{{ host.hostname }}</span>
-            </label>
-          </li>
-          <li v-if="connection.hosts.length === 0" class="row-hint">
-            No hosts found in ~/.ssh/config.
-          </li>
-        </ul>
-      </div>
-
-      <div class="row">
-        <div class="row-text">
-          <label class="row-label">Sync now</label>
-          <p class="row-hint">
-            Uploads the ticked hosts to your account (replacing what is
-            there) and adds any account host that ~/.ssh/config is missing.
-          </p>
-        </div>
-        <div class="control">
-          <button
-            class="btn-ghost"
-            :disabled="sync.busy || !sync.status?.loggedIn || settings.syncSelectedHosts.length === 0"
-            @click="sync.syncNow()"
-          >
-            {{ sync.busy ? 'Syncing…' : 'Sync now' }}
-          </button>
-          <p class="row-hint" :class="{ 'sync-error': sync.message?.kind === 'error' }">
-            {{ sync.message?.text ?? '' }}
-          </p>
-        </div>
-      </div>
-    </section>
 
     <section class="group">
       <h3 class="group-title">Updates</h3>
@@ -1498,50 +1377,9 @@ kbd {
 }
 /* The sync rows' outcome line. Same hint metric; an error tints the text so
    "decryption failed — wrong passphrase" is a colour apart from a count. */
-.sync-error {
-  color: var(--error);
-}
 /* The sync selection list: a scroller rather than an ever-growing stack —
    a config with thirty hosts must not stretch the settings panel. Two
    columns while there is room (aliases are short), one on a narrow panel. */
-.sync-hosts {
-  margin: 0;
-  padding: var(--sp-2);
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: var(--sp-1) var(--sp-4);
-  max-height: 11rem;
-  overflow-y: auto;
-  list-style: none;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
-}
-.sync-host {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  min-width: 0;
-  cursor: pointer;
-  font-size: var(--fs-300);
-  font-family: var(--font-ui);
-}
-.sync-host input[type='checkbox'] {
-  flex: none;
-  accent-color: var(--accent);
-}
-.sync-host-alias {
-  font-weight: var(--fw-medium);
-  color: var(--fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sync-host-dest {
-  color: var(--fg-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 /* Each sample sits on its surface's own ground at its surface's own size, so
    it answers the question the user is actually asking — "what will THIS look
    like" — rather than "what does this font look like on a settings panel".

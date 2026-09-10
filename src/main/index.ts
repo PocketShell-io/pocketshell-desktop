@@ -62,6 +62,7 @@ ssh.onCloseConnection((id) => {
 registerPreviewScheme();
 
 let mainWindow: BrowserWindow | null = null;
+let accountWindow: BrowserWindow | null = null;
 
 /**
  * The window icon, or undefined when the generated file is not present.
@@ -77,6 +78,18 @@ let mainWindow: BrowserWindow | null = null;
 function windowIcon(): string | undefined {
   const icon = join(__dir, '../../build/icon.png');
   return existsSync(icon) ? icon : undefined;
+}
+
+/** Load the renderer entry, optionally selecting a window-specific view. */
+function loadRenderer(win: BrowserWindow, query?: Record<string, string>): void {
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (devUrl) {
+    const url = new URL(devUrl);
+    for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
+    void win.loadURL(url.toString());
+  } else {
+    void win.loadFile(join(__dir, '../renderer/index.html'), query ? { query } : undefined);
+  }
 }
 
 function createWindow(): void {
@@ -144,6 +157,11 @@ function createWindow(): void {
   mainWindow.on('close', () => {
     if (mainWindow && process.env['POCKETSHELL_HEADLESS'] !== '1') writeWindowBounds(mainWindow);
   });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (accountWindow && !accountWindow.isDestroyed()) accountWindow.close();
+    accountWindow = null;
+  });
 
   // Electron has no true headless mode. "Headless" here means the window is
   // shown OFF-SCREEN and without focus, rather than not shown at all.
@@ -172,12 +190,47 @@ function createWindow(): void {
   applyChordDispatch(mainWindow.webContents, () => mainWindow?.close());
 
   // electron-vite: dev server URL in dev, built file in prod.
-  const devUrl = process.env['ELECTRON_RENDERER_URL'];
-  if (devUrl) {
-    void mainWindow.loadURL(devUrl);
-  } else {
-    void mainWindow.loadFile(join(__dir, '../renderer/index.html'));
+  loadRenderer(mainWindow);
+}
+
+/** Open the dedicated account surface, or focus the existing one. */
+function openAccountWindow(): void {
+  if (accountWindow && !accountWindow.isDestroyed()) {
+    if (accountWindow.isMinimized()) accountWindow.restore();
+    accountWindow.focus();
+    return;
   }
+
+  const win = new BrowserWindow({
+    width: 720,
+    height: 760,
+    minWidth: 560,
+    minHeight: 600,
+    show: false,
+    autoHideMenuBar: true,
+    title: 'Account & sync — PocketShell',
+    icon: windowIcon(),
+    webPreferences: {
+      preload: join(__dir, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      plugins: true,
+    },
+  });
+  accountWindow = win;
+
+  win.on('ready-to-show', () => {
+    if (!win.isDestroyed()) win.show();
+  });
+  win.on('closed', () => {
+    if (accountWindow === win) accountWindow = null;
+  });
+  applyLinkPolicy(win.webContents);
+  applyChordDispatch(win.webContents, () => {
+    if (!win.isDestroyed()) win.close();
+  });
+  loadRenderer(win, { window: 'account' });
 }
 
 // Ensure only one instance of the app runs.
@@ -243,6 +296,7 @@ if (!gotLock) {
         preview,
         syncAuth,
         sync,
+        openAccountWindow,
         getWindows: () => BrowserWindow.getAllWindows(),
       });
       createWindow();

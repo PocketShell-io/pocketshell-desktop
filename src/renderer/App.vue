@@ -25,8 +25,10 @@ import { isShortcut } from '../shared/shortcuts';
 import { deleteWordBackward } from '../shared/deleteWord';
 import DiagBanner from './components/DiagBanner.vue';
 import UpdateBanner from './components/UpdateBanner.vue';
+import AccountView from './views/AccountView.vue';
 
 const settings = useSettingsStore();
+const isAccountWindow = new URLSearchParams(window.location.search).get('window') === 'account';
 
 /**
  * Readline's `Ctrl+W` (`unix-word-rubout`) in the app's own text fields.
@@ -175,7 +177,8 @@ onBeforeUnmount(() => {
        (renderer/diag.ts). -->
   <DiagBanner />
   <UpdateBanner />
-  <router-view />
+  <AccountView v-if="isAccountWindow" />
+  <router-view v-else />
 </template>
 
 <style>

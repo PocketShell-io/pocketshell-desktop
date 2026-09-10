@@ -34,6 +34,8 @@ export interface IpcContext {
   syncAuth: GoogleAuth;
   /** The sync API client, speaking encrypted envelopes. */
   sync: SyncService;
+  /** Open or focus the separate Account & sync window. */
+  openAccountWindow: () => void;
   getWindows: () => BrowserWindow[];
   broadcast: (channel: string, payload: unknown) => void;
   tmuxClients: TmuxClientPool;

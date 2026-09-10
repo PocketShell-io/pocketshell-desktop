@@ -73,6 +73,9 @@ const api = {
       ipcRenderer.send(ipc.win.setTitle, title);
     },
 
+    /** Open or focus the dedicated Account & sync window. */
+    openAccount: (): Promise<void> => ipcRenderer.invoke(ipc.win.openAccount),
+
     /**
      * Scale the whole renderer. `factor` is a multiplier, 1 being unzoomed.
      *

@@ -28,7 +28,7 @@
 //   - A FAILED AUTO-CONNECT LEAVES THE DEFAULT ALONE. The error is shown on the
 //     picker; the setting stays set, because a host being down is not a reason
 //     to forget which host the user wants.
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useConnectionStore } from '../stores/connection';
 import { useSettingsStore } from '../stores/settings';
@@ -81,23 +81,20 @@ const defaultMissing = computed(
 
 const accountSignedIn = computed(() => sync.status?.loggedIn === true);
 const accountEmail = computed(() => sync.status?.email || 'Signed in');
-const accountUnavailable = computed(
-  () => sync.status !== null && sync.status !== undefined && !sync.status.keychainAvailable,
-);
 const accountAriaLabel = computed(() =>
   accountSignedIn.value
-    ? `Google account: ${accountEmail.value}. Open account and sync settings`
-    : sync.busy
-      ? 'Signing in with Google'
-      : 'Sign in with Google',
+    ? `Google account: ${accountEmail.value}. Open account and sync`
+    : 'Open account and sync',
 );
 
 function onAccountAction(): void {
-  if (accountSignedIn.value) {
-    settingsOpen.value = true;
-    return;
-  }
-  void sync.login();
+  void api.win.openAccount();
+}
+
+function refreshAccountStatus(): void {
+  void sync.refreshStatus().catch(() => {
+    // A status read failure leaves the safe, signed-out presentation in place.
+  });
 }
 
 /**
@@ -121,11 +118,11 @@ onMounted(async () => {
   // identity on it and deliberately does not reset it on unmount (mount order
   // during a route swap is not something to depend on).
   api.win.setTitle(windowTitle(null));
-  // The picker only needs the small account state. Detailed sync controls stay
-  // in Settings, but the header must know which compact action to show.
-  void sync.refreshStatus().catch(() => {
-    // A status read failure leaves the safe, signed-out presentation in place.
-  });
+  // The picker only needs the small account state. Detailed sync controls live
+  // in the separate Account window, but the header must know which compact
+  // action to show after that window signs in or out.
+  refreshAccountStatus();
+  window.addEventListener('focus', refreshAccountStatus);
   try {
     await connection.loadHosts();
   } catch {
@@ -144,6 +141,10 @@ onMounted(async () => {
     connected: connection.connectionId !== null,
   });
   if (decision.action === 'connect') await runAutoConnect(decision.host);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', refreshAccountStatus);
 });
 
 async function runAutoConnect(host: HostEntry): Promise<void> {
@@ -279,21 +280,6 @@ function onToggleDefault(host: HostEntry): void {
       <h1>PocketShell</h1>
       <div class="header-actions">
         <button
-          class="account-action"
-          :class="{ 'signed-in': accountSignedIn }"
-          :disabled="sync.busy || accountUnavailable"
-          :aria-busy="sync.busy"
-          :aria-label="accountAriaLabel"
-          :title="accountAriaLabel"
-          @click="onAccountAction"
-        >
-          <span class="account-status-dot" :class="{ 'signed-in': accountSignedIn }" aria-hidden="true" />
-          <span class="account-copy">
-            <span class="account-provider">Google</span>
-            <span class="account-state">{{ accountSignedIn ? accountEmail : 'Sign in' }}</span>
-          </span>
-        </button>
-        <button
           class="icon-btn"
           :disabled="reloadingHosts"
           :aria-busy="reloadingHosts"
@@ -306,12 +292,22 @@ function onToggleDefault(host: HostEntry): void {
         <button class="icon-btn" title="Settings" @click="settingsOpen = true">
           <AppIcon name="settings" />
         </button>
+        <button
+          class="account-action"
+          :class="{ 'signed-in': accountSignedIn }"
+          :aria-label="accountAriaLabel"
+          :title="accountAriaLabel"
+          @click="onAccountAction"
+        >
+          <span class="account-status-dot" :class="{ 'signed-in': accountSignedIn }" aria-hidden="true" />
+          <span class="account-copy">
+            <span class="account-provider">Google</span>
+            <span class="account-state">{{ accountSignedIn ? accountEmail : 'Sign in' }}</span>
+          </span>
+        </button>
       </div>
     </header>
     <main>
-      <p v-if="sync.message?.kind === 'error'" class="account-banner" role="alert">
-        {{ sync.message.text }}
-      </p>
       <!-- The escape hatch, for ANY dial — automatic or clicked. It sits
            above the list, and the list stays usable underneath, so a dial is
            something happening ON the picker rather than instead of it. It used
@@ -435,8 +431,8 @@ h1 {
   align-self: center;
 }
 /* The account action is the landing screen's one high-discoverability CTA.
-   Once signed in it becomes a quiet account chip that opens the detailed
-   Account & sync section in Settings rather than duplicating those controls. */
+   It opens the separate Account & sync window; the chip only mirrors the
+   signed-in identity so the destination remains obvious. */
 .account-action {
   display: inline-flex;
   align-items: center;
@@ -499,17 +495,6 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.account-banner {
-  margin: 0 0 var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: var(--error-soft);
-  color: var(--error);
-  font-size: var(--fs-200);
-  line-height: var(--lh-200);
-  overflow-wrap: anywhere;
 }
 /* Status strip above the list: the app is doing something, the list is still
    there, and the way out is in the same line as the message. */
