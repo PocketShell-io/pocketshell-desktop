@@ -995,7 +995,42 @@ async function onSend(): Promise<void> {
   else focusDraft();
 }
 
+/**
+ * Discard lives in the control row, behind a two-click arm. The reported trap
+ * that put it there: the button used to sit inside the error banner, so a user
+ * staring at "Attachment upload failed" read Discard as "remove the failed
+ * attachment" — and lost a dictated prompt for it. The banner now dismisses
+ * (the store's `dismissError`, message only), and the control that genuinely
+ * throws work away says so in the place actions live and asks twice. A dictated
+ * prompt is expensive to re-speak; one extra click to clear a stray character
+ * is not, so the arm is unconditional rather than gated on draft length.
+ */
+const DISCARD_ARM_MS = 5000;
+const discardArmed = ref(false);
+let disarmTimer: ReturnType<typeof setTimeout> | null = null;
+
+function disarmDiscard(): void {
+  discardArmed.value = false;
+  if (disarmTimer !== null) {
+    clearTimeout(disarmTimer);
+    disarmTimer = null;
+  }
+}
+
+function onDiscardClick(): void {
+  if (!discardArmed.value) {
+    discardArmed.value = true;
+    disarmTimer = setTimeout(disarmDiscard, DISCARD_ARM_MS);
+    return;
+  }
+  onDiscard();
+}
+
+/** Content or session moved under the armed click — what it aimed at is gone. */
+watch([() => state.value.draft, () => state.value.attachments.length, key], disarmDiscard);
+
 function onDiscard(): void {
+  disarmDiscard();
   composer.discard(key.value);
   focusDraft(0);
 }
@@ -1436,6 +1471,7 @@ onBeforeUnmount(() => {
   paneObserver?.disconnect();
   paneObserver = null;
   onDragEnd();
+  disarmDiscard();
 });
 
 defineExpose({
@@ -1536,12 +1572,13 @@ defineExpose({
         <div v-if="state.error" class="banner" role="alert">
           <span class="banner-text">{{ state.error }}</span>
           <button
-            v-if="state.draft.length || attachments.length"
-            class="discard"
+            class="banner-x"
             type="button"
-            @click="onDiscard"
+            title="Dismiss"
+            aria-label="Dismiss the error"
+            @click="composer.dismissError(key)"
           >
-            Discard
+            <AppIcon name="close" />
           </button>
         </div>
 
@@ -1603,6 +1640,16 @@ defineExpose({
         </div>
         <span class="spacer"></span>
         <span class="kbd-hint muted">Enter send &middot; Shift+Enter newline &middot; Ctrl+&uarr;&darr; history</span>
+        <button
+          v-if="state.draft.length || state.attachments.length"
+          :class="['discard', { armed: discardArmed }]"
+          type="button"
+          :title="discardArmed ? 'Click again to discard the draft and attachments' : 'Discard the draft (Ctrl+Shift+Backspace)'"
+          :aria-label="discardArmed ? 'Click again to discard the draft' : 'Discard the draft'"
+          @click="onDiscardClick"
+        >
+          {{ discardArmed ? 'Discard draft?' : 'Discard' }}
+        </button>
         <button
           class="send"
           type="button"
@@ -2046,21 +2093,50 @@ defineExpose({
   flex: 1;
   min-width: 0;
 }
+/* The banner's dismiss. Scoped to the message: the trap this replaces put
+   Discard inside the banner, and its click took the draft down with the
+   error text. */
+.banner-x {
+  flex: 0 0 auto;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.banner-x:hover {
+  background: var(--state-active);
+  color: var(--fg);
+}
+/* The control-row Discard, a ghost next to Send. Armed — after one click —
+   it wears the error colors, so the destructive click announces itself
+   before it fires. */
 .discard {
   flex: 0 0 auto;
-  height: var(--control-h-sm);
-  padding: 0 var(--sp-2);
+  height: var(--control-h);
+  padding: 0 var(--sp-3);
   background: transparent;
-  border: 1px solid var(--error);
-  border-radius: var(--r-sm);
-  color: var(--error);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--fg-secondary);
   font-family: var(--font-ui);
   font-size: var(--fs-200);
   font-weight: var(--fw-medium);
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .discard:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+.discard.armed {
   background: var(--error);
+  border-color: var(--error);
   color: var(--on-accent);
 }
 .uploading {

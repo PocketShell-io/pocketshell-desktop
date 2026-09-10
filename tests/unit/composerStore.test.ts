@@ -453,6 +453,46 @@ describe('discard (PromptComposerDiscardE2eTest.kt:160-226)', () => {
   });
 });
 
+describe('dismissError (the banner ×)', () => {
+  /**
+   * The reported trap: Discard used to BE the banner's button, and a user who
+   * read it as "remove the failed attachment" lost the whole draft. The × is
+   * the scoped replacement — an attachment failure leaves nothing behind to
+   * clean up (a refused file never staged), so dismissal may only ever clear
+   * the message.
+   */
+  it('clears the error and keeps the draft and tiles', async () => {
+    composer.setDraft(KEY, 'dictated prompt');
+    await attach(KEY, [A]);
+    stage.mockResolvedValueOnce({ ok: false, paths: [], failedCount: 1, error: 'too big' });
+    await composer.stage(KEY, {
+      connectionId: CONN,
+      scopeKey: 'main',
+      sources: [{ kind: 'file', path: 'oversize.bin' }],
+    });
+    expect(composer.states[KEY]?.error).not.toBeNull();
+
+    composer.dismissError(KEY);
+
+    const s = composer.states[KEY]!;
+    expect(s.error).toBeNull();
+    expect(s.draft).toBe('dictated prompt');
+    expect(s.attachments).toEqual([expect.objectContaining({ remotePath: A })]);
+  });
+
+  it('leaves a failed send recoverable — draft and notSent banner intact', () => {
+    composer.restoreFailedSend(KEY, 'the payload');
+    composer.dismissError(KEY);
+    expect(composer.states[KEY]?.draft).toBe('the payload');
+  });
+
+  it('is safe on a session with no error', () => {
+    composer.setDraft(KEY, 'untouched');
+    expect(() => composer.dismissError(KEY)).not.toThrow();
+    expect(composer.states[KEY]?.draft).toBe('untouched');
+  });
+});
+
 describe('visibility state machine', () => {
   it('defaults to docked', () => {
     expect(composer.mode).toBe('docked');
