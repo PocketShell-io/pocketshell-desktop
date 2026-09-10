@@ -966,11 +966,11 @@ function shellCostNote(spec: ShortcutSpec): { text: string; safe: boolean } | nu
         <div class="row-text">
           <label class="row-label">Sync passphrase</label>
           <p class="row-hint">
-            Encrypts your settings before they leave this machine. It is not
-            your Google password, it is never stored — not here, not on the
-            server — and it cannot be recovered: losing it means re-uploading
-            from scratch. The first sync sets it; every device must type the
-            same one.
+            Protects the SSH hosts you choose to sync. It is separate from
+            your Google password. PocketShell keeps it only in memory and
+            never sends it to the sync server. Use the same passphrase on each
+            device and save it in your password manager; without it, the copy
+            in your account cannot be decrypted.
           </p>
         </div>
         <div class="control">
