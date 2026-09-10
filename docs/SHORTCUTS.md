@@ -92,13 +92,32 @@ claiming them costs the shell no key. Anything matched in
 `before-input-event` is taken from the terminal *everywhere*, which is why
 that test is the entry requirement.
 
-### 1.8 Session creation — `SessionTree.vue`, `onWindowKeydown`
+### 1.8 Session creation — quick create in `FolderWorkspaceView.vue`, picker in `SessionTree.vue`, both `onWindowKeydown`
 
-`Ctrl+Shift+N` opens the panel's creation picker. The shifted letter encodes
-nothing at the terminal; `Ctrl+Shift+P` was refused, not skipped — it is a
-live rebind target the persistence guard already defends. Stands down inside
-a text field and while the picker is open; live whenever the panel is
-mounted, collapsed included.
+The `Ctrl+N` pair splits by how much the user already knows:
+
+| Chord | Does | Note |
+|---|---|---|
+| `Ctrl+N` | Starts a plain shell in the folder workspace in front — one press, no dialog — and puts the keyboard in the new pane | `FolderWorkspaceView` |
+| `Ctrl+Shift+N` | Opens the panel's creation picker — the folder-first dialog, caret in its filter | `SessionTree.vue` |
+
+The quick half is the app's one deliberate bare-Ctrl chord taken against a key
+the shell receives: `Ctrl+N` is `^N` — readline next-history, next-line in
+emacs and vi — and it is claimed at the user's word, because a quick create is
+what the unshifted chord is *for* and the shifted twin is already the dialog.
+The cost lives in the registry note beside the binding, and
+`terminalCanEncode` says it again in Settings. It stands down inside a text
+field and while a tab rename is open, refuses key repeat (a held chord would
+mint a session per repeat), and is live only while a folder workspace is
+mounted — with focus in any of its tabs, Files included. On the host list,
+where no folder is open, there is no "this folder" to create in and no
+handler is standing.
+
+The picker half takes nothing from the shell: the shifted letter encodes
+nothing at the terminal. `Ctrl+Shift+P` was refused, not skipped — it is a
+live rebind target the persistence guard already defends. Stands down inside a
+text field and while the picker is open; live whenever the panel is mounted,
+collapsed included.
 
 ---
 

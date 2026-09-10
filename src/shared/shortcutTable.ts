@@ -206,7 +206,16 @@ export const SHORTCUTS: readonly ShortcutSpec[] = [
     defaults: ['Ctrl+Shift+N'],
     owner: 'app',
     rebindable: true,
-    note: 'The session panel\'s `+`, on the keyboard: it opens the same picker the + opens, in the panel\'s first root, with the caret already in its filter - a palette in the VS Code shape. Ctrl+Shift+N for NEW, in the Ctrl+N family the app can actually take: bare Ctrl+N is readline next-history, and the shifted letter encodes nothing at the terminal, so no shell behavior is taken. Stands down inside a text field, and while the picker is already open; live whenever the panel is mounted, collapsed included - the panel is v-show\'d, not unmounted.',
+    note: 'The session panel\'s `+`, on the keyboard: it opens the same picker the + opens, in the panel\'s first root, with the caret already in its filter - a palette in the VS Code shape. The picker half of the Ctrl+N pair; `sessions.newInFolder` is the quick half. The shifted letter encodes nothing at the terminal, so no shell behavior is taken. Stands down inside a text field, and while the picker is already open; live whenever the panel is mounted, collapsed included - the panel is v-show\'d, not unmounted.',
+  },
+  {
+    id: 'sessions.newInFolder',
+    surface: 'workspace',
+    label: 'New shell session in this folder',
+    defaults: ['Ctrl+N'],
+    owner: 'app',
+    rebindable: true,
+    note: 'The quick half of the Ctrl+N pair, on the user\'s request: one press starts a plain shell in the folder workspace in front — the same create the workspace + makes, minus the agent dialog — and puts the keyboard in the new pane. Live only while a folder workspace is mounted. WHAT IT COSTS, stated rather than assumed: bare Ctrl+N is ^N at the shell — readline next-history, next-line in emacs and vi — so a real key is taken from programs that bind it. It is the first bare Ctrl+letter the app claims against a key the shell uses, claimed because the quick create is the whole point of the pair and Shift is what makes the twin a dialog. Stands down inside a text field and while a tab rename is open, and one press per press — key repeat is refused, or a held chord mints sessions.',
   },
 
   // --- Terminal -----------------------------------------------------------

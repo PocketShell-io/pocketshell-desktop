@@ -450,3 +450,110 @@ describe('the folder workspace + menu creates a session', () => {
     expect(terminalFocusCalls).toEqual(['git-x', 'git-x']);
   });
 });
+
+/**
+ * `Ctrl+N` — the quick half of the creation pair: a plain shell in THIS
+ * folder, one press, no dialog. `Ctrl+Shift+N` is the picker and stays with
+ * SessionTree's tests; what is pinned here is that the quick chord runs the
+ * SAME create the launch dialog confirms into, and the guards that keep a
+ * keyboard chord from doing host work by accident:
+ *
+ *   1. **one press, one session, in this folder** — `projects.startSession`
+ *      with the `unique` policy, the new tab selected, the keyboard in it.
+ *   2. **the keystroke is cancelled** — `preventDefault` and
+ *      `stopPropagation`, so the event never reaches xterm's textarea, where
+ *      Ctrl+N is ^N and readline would answer it with next-history. Asserted
+ *      through `dispatchEvent`'s return, which is `defaultPrevented` made
+ *      observable.
+ *   3. **it stands down in a text field** — prose being typed must not mint
+ *      sessions (the terminal is deliberately not in that set; that is what
+ *      makes the chord fire with focus in the pane).
+ *   4. **key repeat is refused** — a held chord would otherwise mint a
+ *      session per repeat, each one a real create on the host.
+ *   5. **a rename keeps the keyboard** — the tab's rename field owns
+ *      Enter/Escape, and Ctrl+N must not create a folder underneath an edit
+ *      that is still open.
+ */
+describe('the Ctrl+N quick create (sessions.newInFolder)', () => {
+  /** A Ctrl+N keydown on [target], reported through `dispatchEvent`. */
+  function pressQuickCreate(target: EventTarget = window): boolean {
+    // Cancelable, like every real keydown — it is what makes the
+    // `defaultPrevented` half of the contract observable at all.
+    return target.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, cancelable: true, bubbles: true }),
+    );
+  }
+
+  it('starts a shell in this folder and lands in the new tab', async () => {
+    sessionsList.mockResolvedValue([row('git-x'), row('git-x-2', 2)]);
+    startSession.mockResolvedValue(started('git-x-2'));
+
+    const wrapper = await openWorkspace();
+    expect(tabLabels(wrapper)).toEqual(['git-x']);
+
+    pressQuickCreate();
+    await flush(8);
+
+    expect(startSession).toHaveBeenCalledTimes(1);
+    expect(startSession).toHaveBeenCalledWith('conn-1', {
+      folder: '~/git/x',
+      namePolicy: 'unique',
+    });
+    expect(tabLabels(wrapper)).toEqual(['git-x', 'git-x-2']);
+    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('git-x-2');
+    expect(barError(wrapper)).toBeNull();
+    // The keyboard follows the create, exactly as the dialog path's does.
+    expect(terminalFocusCalls).toEqual(['git-x', 'git-x-2']);
+  });
+
+  it('cancels the keystroke so it never reaches the pane', async () => {
+    sessionsList.mockResolvedValue([row('git-x')]);
+    startSession.mockResolvedValue(started('git-x-2'));
+
+    await openWorkspace();
+    // `false` is jsdom's answer when the event was defaultPrevented.
+    expect(pressQuickCreate()).toBe(false);
+    await flush(4);
+  });
+
+  it('stands down while the user is typing in a field', async () => {
+    sessionsList.mockResolvedValue([row('git-x')]);
+    await openWorkspace();
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    pressQuickCreate(input);
+    await flush(4);
+    expect(startSession).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it('refuses key repeat', async () => {
+    sessionsList.mockResolvedValue([row('git-x'), row('git-x-2', 2)]);
+    startSession.mockResolvedValue(started('git-x-2'));
+
+    const wrapper = await openWorkspace();
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, repeat: true, bubbles: true }),
+    );
+    await flush(8);
+
+    expect(startSession).not.toHaveBeenCalled();
+    expect(tabLabels(wrapper)).toEqual(['git-x']);
+  });
+
+  it('stands down while a tab rename is open', async () => {
+    sessionsList.mockResolvedValue([row('git-x')]);
+    const wrapper = await openWorkspace();
+    await wrapper.find('nav.tabs button').trigger('dblclick');
+    expect(wrapper.find('input.rename-input').exists()).toBe(true);
+
+    // Fired on `window` rather than on the field, so this exercises the
+    // rename guard and not merely the text-field one.
+    pressQuickCreate();
+    await flush(4);
+
+    expect(startSession).not.toHaveBeenCalled();
+    expect(wrapper.find('input.rename-input').exists()).toBe(true);
+  });
+});

@@ -973,6 +973,27 @@ function onWindowKeydown(e: KeyboardEvent): void {
     );
     const target = index === null ? null : (tabs.value[index]?.id ?? null);
     if (target !== null) goToTab(target);
+    return;
+  }
+
+  // `Ctrl+N`: a plain shell in THIS folder — the workspace `+`'s create with
+  // the dialog taken out. `createSession(null)` is the same function the
+  // launch dialog confirms into, so the quick path cannot drift from the
+  // clicked one: unique name walk, pending row, new tab, keyboard in the pane,
+  // and a refusal lands in the strip like any other.
+  //
+  // This is the app's one bare-Ctrl chord taken against a key the shell
+  // receives (^N, readline next-history) — claimed at the user's word, with
+  // the cost recorded in the registry entry. `e.repeat` is refused because a
+  // held chord would mint a session per repeat; one press, one session.
+  // Not in a text field, and not during a rename — the same stands-down as
+  // the tab chords, which the early return above already carries.
+  if (isShortcut(bindings, 'sessions.newInFolder', e)) {
+    if (editingTarget(e.target)) return;
+    if (e.repeat) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void createSession(null);
   }
 }
 
