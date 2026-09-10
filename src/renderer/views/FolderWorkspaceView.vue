@@ -62,7 +62,7 @@ import PopupMenu from '../components/PopupMenu.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import LaunchSessionDialog from '../components/LaunchSessionDialog.vue';
 import { pointAnchor, type Box } from '../../shared/popupPlacement';
-import type { ConnectionId } from '../../shared/types';
+import type { ConnectionId, SessionSummary } from '../../shared/types';
 import { composerAgentKind } from '../../shared/composerSend';
 import { agentMark } from '../../shared/agentBadge';
 import { isShortcut } from '../../shared/shortcuts';
@@ -307,8 +307,24 @@ const activeSession = computed(() =>
  * the line the user would open Files expecting the worktree and get the main
  * checkout, with nothing on screen to explain the difference.
  */
+/**
+ * This folder's own row for [name], or null.
+ *
+ * The one session lookup the workspace is allowed. A bare session name is NOT
+ * host-unique — an aplexer tag repeats across workspaces, so `main` is every
+ * workspace's default — and a lookup against the host-wide listing returns
+ * whoever is listed first: another folder's `main` lends this workspace its
+ * path and agent badge, which is how a Files tab came to be seeded at the
+ * folder the user had just left. Resolving through the same rows the tabs are
+ * built from keeps every answer here this workspace's own; a name with no row
+ * here has no answer, which `summary`'s null already renders honestly.
+ */
+function localRow(name: string | null): SessionSummary | null {
+  return (folder.value?.rows ?? []).find((row) => row.session.name === name)?.session ?? null;
+}
+
 function sessionTabTitle(session: string): string {
-  const row = sessions.sessions.find((s) => s.name === session);
+  const row = localRow(session);
   const lines = [session];
   const mark = agentMark(row?.agentKind);
   // The agent is named here as well as on the mark's own `<title>`, because the
@@ -327,15 +343,15 @@ function sessionTabTitle(session: string): string {
  * The mark a session tab wears, or null for a shell and for the common,
  * legitimate `unknown`.
  *
- * Looked up from the session store per tab rather than carried on the
- * `WorkspaceTab`. The tab model is the LAYOUT of the bar — what is called what,
- * in what order — and it is pure and unit-tested as such; the agent kind is a
- * live fact that the refresh timer changes underneath it, so folding it in
+ * Looked up from this folder's rows per tab (`localRow`) rather than carried on
+ * the `WorkspaceTab`. The tab model is the LAYOUT of the bar — what is called
+ * what, in what order — and it is pure and unit-tested as such; the agent kind
+ * is a live fact that the refresh timer changes underneath it, so folding it in
  * would make `buildWorkspaceTabs` recompute the whole bar every time a badge
  * moved.
  */
 function tabMark(session: string): ReturnType<typeof agentMark> {
-  return agentMark(sessions.sessions.find((s) => s.name === session)?.agentKind);
+  return agentMark(localRow(session)?.agentKind);
 }
 
 /** The session tab that is (or was last) showing — which pane is visible. */
@@ -405,14 +421,7 @@ const sessionPanes = computed(() =>
   ),
 );
 
-const summary = computed(() => {
-  // This folder's row first: a same-named tag in another folder must not lend
-  // this workspace its agent badge. The global lookup is the fallback for a
-  // tab whose row already left the listing.
-  const local = (folder.value?.rows ?? []).find((row) => row.session.name === terminalSession.value);
-  if (local) return local.session;
-  return sessions.sessions.find((s) => s.name === terminalSession.value) ?? null;
-});
+const summary = computed(() => localRow(terminalSession.value));
 
 /** This folder's address for the active session tab, for the composer's identity props. */
 const activeSessionMeta = computed(() =>
