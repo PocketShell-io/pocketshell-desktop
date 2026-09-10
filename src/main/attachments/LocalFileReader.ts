@@ -42,16 +42,14 @@ import { oversizeMessage } from '../../shared/byteSize.js';
 /**
  * Per-read ceiling for bytes crossing back to the renderer, 32 MiB.
  *
- * Deliberately well under {@link MAX_ATTACHMENT_BYTES}' 100 MiB, because
- * the two bound different things. That 100 MiB bounds a *streamed*
- * upload — `fastPut` never holds the file in memory — whereas a read is
- * buffered three times over on its way to a canvas: once as a Buffer
- * here, once as the structured clone the renderer receives, and once
- * more as the decoded bitmap, which at 4 bytes per pixel dwarfs the
- * encoded file (a 25 MB JPEG is comfortably a gigabyte decoded). 32 MiB
- * still clears any camera photo, scanned page or 8K screenshot the
- * doodle editor will realistically be handed, and a file above it is not
- * an image someone meant to annotate.
+ * A read-back buffers the bytes three times over on their way to a
+ * canvas: once as a Buffer here, once as the structured clone the
+ * renderer receives, and once more as the decoded bitmap, which at 4
+ * bytes per pixel dwarfs the encoded file (a 25 MB JPEG is comfortably
+ * a gigabyte decoded). 32 MiB still clears any camera photo, scanned
+ * page or 8K screenshot the doodle editor will realistically be
+ * handed, and a file above it is not an image someone meant to
+ * annotate.
  *
  * `sftp:readBinary` is the cousin, not a copy: its ceiling lives in
  * `ipc.ts` (`MAX_SFTP_READ_BYTES`, 128 MiB — a remote document may
@@ -63,14 +61,13 @@ import { oversizeMessage } from '../../shared/byteSize.js';
  * about what that excludes, because the obvious reading is wrong.
  * Attaching a file does not come through here: the composer hands
  * `attachments:stage` the picked path and {@link AttachmentStager}
- * streams it to the host with `fastPut`, bounded by
- * {@link MAX_ATTACHMENT_BYTES}' 100 MiB. So an hour-long recording or a
- * scanned PDF far over 32 MiB attaches to a prompt perfectly well; what
- * it cannot do is become a doodle backdrop, which is the correct
- * outcome for a file that has no pixels. Raising this number is
- * therefore never the way to make a large non-image attach — that path
- * is already open, and the bitmap arithmetic above still governs this
- * one.
+ * streams it to the host with `fastPut` — uncapped, since the bytes
+ * never live in this process. So an hour-long recording or a scanned
+ * PDF far over 32 MiB attaches to a prompt perfectly well; what it
+ * cannot do is become a doodle backdrop, which is the correct outcome
+ * for a file that has no pixels. Raising this number is therefore
+ * never the way to make a large non-image attach — that path is
+ * already open, and the bitmap arithmetic above still governs this one.
  */
 export const MAX_IMAGE_READ_BYTES = 32 * 1024 * 1024;
 

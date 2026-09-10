@@ -41,12 +41,14 @@ export const SUBMIT_KEY = '\r';
  * Enter must never race the TUI's ingestion of the paste.
  *
  * `sendTimeoutMs`: SEND_TIMEOUT_MS (PromptComposerViewModel.kt:2535).
- * `uploadTimeoutMs`: ATTACHMENT_UPLOAD_TIMEOUT_MS (:2521).
+ * The Android `ATTACHMENT_UPLOAD_TIMEOUT_MS` (:2521) has no counterpart
+ * here: uploads are unbounded — a big pick streams for as long as it
+ * streams, and the SSH keepalive turns a dead connection into the
+ * rejection the timeout existed to produce.
  */
 export const composerTiming = {
   submitDelayMs: 250,
   sendTimeoutMs: 12_000,
-  uploadTimeoutMs: 90_000,
 };
 
 /** True when the payload must be bracketed — i.e. it contains a line break. */

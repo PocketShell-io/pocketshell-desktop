@@ -1,11 +1,11 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   AttachmentStager,
-  MAX_ATTACHMENT_BYTES,
+  MAX_IN_MEMORY_ATTACHMENT_BYTES,
   REMOTE_DIRECTORY,
   composeAttachmentName,
   formatAttachmentTimestamp,
@@ -298,6 +298,28 @@ describe('AttachmentStager.stage', () => {
     expect(remote.uploads.values().next().value?.toString('utf8')).toBe('# hello');
   });
 
+  it('streams a picked file of ANY size — the in-memory ceiling does not apply', async () => {
+    const remote = fakeRemote();
+    const localPath = join(dir, 'export.zip');
+    // Truncate up to a sparse 101 MiB: `stat` reports a size over the
+    // in-memory branch's ceiling without those bytes existing on disk.
+    const handle = await open(localPath, 'w');
+    await handle.truncate(101 * 1024 * 1024);
+    await handle.close();
+
+    const result = await stagerFor(remote).stage('conn-1', 'main', [
+      { kind: 'file', path: localPath },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(result.paths).toEqual([
+      `~/${REMOTE_DIRECTORY}/main/20260824-101500-01-export.zip`,
+    ]);
+    expect(remote.uploads.has(
+      `${HOME}/${REMOTE_DIRECTORY}/main/20260824-101500-01-export.zip`,
+    )).toBe(true);
+  });
+
   it('gives pastes and picked files an identical remote layout', async () => {
     const remote = fakeRemote();
     const localPath = join(dir, 'twin.txt');
@@ -361,12 +383,12 @@ describe('AttachmentStager.stage', () => {
     expect(remote.uploads.size).toBe(0);
   });
 
-  it('rejects an oversized file through the per-file path', async () => {
+  it('rejects an oversized paste through the per-file path', async () => {
     const remote = fakeRemote();
     const oversized: AttachmentSource = {
       kind: 'bytes',
       // Fake the length rather than allocating 100 MiB in a unit test.
-      data: { byteLength: MAX_ATTACHMENT_BYTES + 1 } as unknown as Uint8Array,
+      data: { byteLength: MAX_IN_MEMORY_ATTACHMENT_BYTES + 1 } as unknown as Uint8Array,
       name: 'huge.bin',
     };
 

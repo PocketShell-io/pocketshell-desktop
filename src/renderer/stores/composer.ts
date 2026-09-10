@@ -172,9 +172,12 @@ function blankState(): ComposerSessionState {
  * will answer it anyway, having never seen the image.
  *
  * So the batch now carries a promise that settles when staging is finished, and
- * `send` awaits it. It settles on EVERY exit — success, partial failure, the
- * upload timeout, a thrown IPC — because a send parked on a promise that never
- * resolves is a composer that has silently stopped working.
+ * `send` awaits it. It settles on EVERY exit — success, partial failure, a
+ * thrown IPC — because a send parked on a promise that never resolves is a
+ * composer that has silently stopped working. There is deliberately no wall
+ * clock on the wait: a big file takes as long as it takes, and a dead
+ * connection surfaces as an SFTP error through the SSH transport's keepalive
+ * rather than as a timer.
  */
 interface Batch {
   cancel: null | 'discard';
@@ -410,6 +413,19 @@ function persistNow(): void {
     schedulePersist();
   }
 
+  /**
+   * The banner's dismiss: "get this out of my face", scoped to the MESSAGE.
+   * An attachment failure leaves nothing behind to clean up — a refused file
+   * never staged, so there is no tile — and a failed send must keep the draft
+   * it failed to deliver, so the only thing dismissal may ever clear is
+   * `error` itself. The reported trap this retires: Discard used to be the
+   * button IN the banner, and a user who read it as "remove the failed
+   * attachment" lost the dictated prompt along with the message.
+   */
+  function dismissError(key: string): void {
+    ensure(key).error = null;
+  }
+
   // -------------------------------------------------------------------------
   // Sent-prompt history
   //
@@ -592,24 +608,20 @@ function persistNow(): void {
       previews?: (string | undefined)[];
     },
   ): Promise<void> {
-    const result = await withTimeout(
-      api.attachments.stage({
-        connectionId: payload.connectionId,
-        scopeKey: payload.scopeKey,
-        sources: payload.sources,
-      }),
-      composerTiming.uploadTimeoutMs,
-    );
+    // No wall clock here on purpose: a multi-gigabyte pick streams for as
+    // long as it streams, and the failures a timer would catch are caught
+    // better by the transport — the SSH keepalive rejects a dead connection
+    // and fastPut rejects with it, settling the batch either way.
+    const result = await api.attachments.stage({
+      connectionId: payload.connectionId,
+      scopeKey: payload.scopeKey,
+      sources: payload.sources,
+    });
 
     removeBatch(batch);
     // Cancelled batches land silently: no tiles, no banner. See `Batch`.
     if (batch.cancel !== null) return;
     s.uploadingCount = 0;
-
-    if (result === null) {
-      s.error = COMPOSER_STRINGS.attachmentFailed('upload timed out');
-      return;
-    }
 
     // The stager returns paths in source order, so previews line up by index.
     const previews = new Map<string, string>();
@@ -703,7 +715,8 @@ function persistNow(): void {
     // than a new one.
     //
     // The batch always settles (see `Batch.done`), so there is no arm of this
-    // that parks forever — the upload's own timeout is the bound.
+    // that parks forever — staging rejects when the transfer does, and the
+    // SSH keepalive turns a dead connection into that rejection.
     const batch = batches.get(key);
     if (batch) {
       s.sendInFlight = true;
@@ -1025,6 +1038,7 @@ function persistNow(): void {
     seedPrompt,
     prefillCommand,
     discard,
+    dismissError,
     recordSent,
     recallOlder,
     recallNewer,

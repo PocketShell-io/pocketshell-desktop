@@ -6,7 +6,6 @@ import {
   LocalFileReader,
   MAX_IMAGE_READ_BYTES,
 } from '@main/attachments/LocalFileReader';
-import { MAX_ATTACHMENT_BYTES } from '@main/attachments/AttachmentStager';
 
 /**
  * `attachments:readLocal` is the one filesystem read the renderer gets.
@@ -16,10 +15,12 @@ import { MAX_ATTACHMENT_BYTES } from '@main/attachments/AttachmentStager';
  */
 
 describe('MAX_IMAGE_READ_BYTES', () => {
-  it('is well under the streamed-upload ceiling', () => {
-    // The upload cap bounds a fastPut that never buffers; this one bounds
-    // a Buffer + a structured clone + a decoded bitmap.
-    expect(MAX_IMAGE_READ_BYTES).toBeLessThan(MAX_ATTACHMENT_BYTES);
+  it('bounds a doodle read-back, not an attach — it stands alone', () => {
+    // This ceiling buffers three times: a Buffer + a structured clone +
+    // a decoded bitmap that dwarfs the encoded file. The stager's picked
+    // path streams with fastPut and carries no size cap at all, so there
+    // is no upload ceiling for this number to sit under — the bitmap
+    // arithmetic is the whole reason it exists.
     expect(MAX_IMAGE_READ_BYTES).toBe(32 * 1024 * 1024);
   });
 
@@ -32,7 +33,6 @@ describe('MAX_IMAGE_READ_BYTES', () => {
     // never happen because it is not an image.
     const anHourOfSpokenAudio = 48 * 1024 * 1024;
     expect(anHourOfSpokenAudio).toBeGreaterThan(MAX_IMAGE_READ_BYTES);
-    expect(anHourOfSpokenAudio).toBeLessThan(MAX_ATTACHMENT_BYTES);
   });
 });
 

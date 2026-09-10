@@ -39,15 +39,25 @@ import { RemoteAttachmentPruner } from './AttachmentRetentionPolicy.js';
 export const REMOTE_DIRECTORY = '.pocketshell/attachments';
 
 /**
- * Per-file size ceiling, 100 MiB.
+ * Ceiling for the IN-MEMORY branch only, 100 MiB.
  *
- * Pasted screenshots are kilobytes; a picked file is not bounded by
- * anything, and both a huge structured-clone across the IPC boundary
- * and a multi-minute `fastPut` would look like a wedged composer. A
- * file over the limit fails through the normal per-file path (issue
- * #570 semantics) so its siblings still attach.
+ * Two kinds of source reach the stager, with different physics:
+ *
+ *  - A picked file arrives as a PATH and is streamed to the host by
+ *    `fastPut`, which never holds the bytes in this process. Its size
+ *    is bounded by the remote disk, not by us, so that branch carries
+ *    no cap on purpose: a multi-gigabyte pick uploads for as long as
+ *    it uploads, and a mid-air failure (full remote disk, dropped
+ *    channel) fails through the normal per-file path (issue #570
+ *    semantics) so its siblings still attach.
+ *  - Clipboard bytes and pathless drops arrive fully materialised: the
+ *    payload already sat in the renderer, crosses the IPC boundary as
+ *    a structured clone (so it exists twice), is adopted as a Buffer
+ *    here and drained to a temp file. THIS branch is what the number
+ *    bounds — pasted screenshots are kilobytes, and a paste big enough
+ *    to threaten the process is refused rather than copied.
  */
-export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+export const MAX_IN_MEMORY_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
 /** The slice of {@link SshService} the stager needs. */
 export interface StagerSsh {
@@ -212,7 +222,9 @@ export class AttachmentStager {
     if (source.kind === 'file') {
       const info = await stat(source.path);
       if (!info.isFile()) throw new Error(`Not a regular file: ${source.path}`);
-      assertWithinSizeLimit(info.size, sourceLabel(source));
+      // Deliberately no size check on this branch: fastPut streams, so
+      // memory never holds the file. See MAX_IN_MEMORY_ATTACHMENT_BYTES
+      // for why the two branches are bounded differently.
       await this.sftp.upload(connectionId, source.path, remotePath);
       return;
     }
@@ -332,8 +344,8 @@ export function sanitiseSource(source: AttachmentSource): SanitisedName {
 }
 
 function assertWithinSizeLimit(size: number, label: string): void {
-  if (size > MAX_ATTACHMENT_BYTES) {
-    throw new Error(oversizeMessage(size, MAX_ATTACHMENT_BYTES, label));
+  if (size > MAX_IN_MEMORY_ATTACHMENT_BYTES) {
+    throw new Error(oversizeMessage(size, MAX_IN_MEMORY_ATTACHMENT_BYTES, label));
   }
 }
 

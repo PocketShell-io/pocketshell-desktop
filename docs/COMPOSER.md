@@ -270,7 +270,7 @@ session*. Only the second group is keyed by `targetKey` (§15).
 Two rungs, first match wins: slash dropdown open → close the dropdown only
 (Escape closes what you opened last); otherwise close the composer and hand
 focus back to the terminal. Discard is the only control that throws work
-away (§4.3) — with one deliberate exception that MOVES work rather than
+away (§15.1) — with one deliberate exception that MOVES work rather than
 destroying it:
 
 **The short-draft hand-off.** A user close with a draft of fewer than five
@@ -367,6 +367,30 @@ and never re-clamped: a window briefly made small must not permanently
 rewrite the user's layout; the component clamps for display instead
 (§21.1).
 
+### 15.1 Discard, and dismissing the banner
+
+The banner's only button is a dismiss `×` — it clears the MESSAGE and
+nothing else. An attachment failure leaves nothing behind to clean up (a
+refused file never staged, so there is no tile), and a failed send must
+keep the draft it failed to deliver. The reported trap that fixed this
+shape: the banner used to hold the Discard button, a user staring at
+"Attachment upload failed" read it as "remove the failed attachment", and
+lost a dictated prompt for it.
+
+Discard itself lives in the control row beside Send, behind a two-click
+arm: the first click arms it (`Discard draft?`, in error colors), the
+second destroys. Anything that moves the target out from under the armed
+click disarms it — an edit to the draft, a tile added or removed, a
+session switch — as does five seconds of inaction; the
+`Ctrl+Shift+Backspace` chord keeps its one-stroke semantics, deliberate
+modifiers being their own confirmation. The arm is unconditional rather
+than gated on draft length: an extra click to clear a stray character is
+cheap, and a re-dictated prompt is not.
+
+`discard()` cancels any in-flight upload, then clears draft, tiles and
+error; `dismissError()` clears `error` only. The header `×` and Escape
+(§12.2) still never destroy work.
+
 ## 16. Send path
 
 ### 16.0 An upload in flight is waited for, not abandoned
@@ -377,9 +401,11 @@ a prompt ABOUT that image, so cancelling would deliver a question with its
 subject missing. What makes the wait safe rather than a hang: `sendInFlight`
 goes up BEFORE the wait (Send disables; single-flight guards; click-outside
 cannot dismiss a prompt parked on its own picture); the batch always
-settles (`Batch.done` resolves on every exit including a throw, bounded by
-the upload timeout); the payload is composed AFTER the wait; and a failed
-upload does not send — banner and intact draft, like every other refusal.
+settles (`Batch.done` resolves on every exit including a throw — a dead
+connection arrives as an SFTP error via the SSH keepalive, and there is
+deliberately no wall clock that could fire first); the payload is composed
+AFTER the wait; and a failed upload does not send — banner and intact
+draft, like every other refusal.
 
 ### 16.1 Sequence
 
@@ -388,7 +414,7 @@ compose (§16.0) → `sendInFlight = true`, error cleared, **draft and tiles
 stay on screen** (#745) → deliver (§16.2) under a 12s timeout → delivered:
 clear draft + tiles, keep the card open and focused (§12.3); failed or
 timed out: composed payload back in the draft, tiles dropped, banner with
-Discard (§4.2).
+a dismiss — the banner never holds Discard (§4.2, §15.1).
 
 ### 16.2 Transport, and the bracketed-paste requirement
 
@@ -429,14 +455,22 @@ affordance belongs in a snippet-style surface outside the composer.
 
 The upload backend is `src/main/attachments/AttachmentStager.ts` over
 `attachments:stage` / `attachments:pickFiles`; the composer only consumes
-it. The contract that matters: **when a stage result is `ok === false` but
-`paths` is non-empty, attach those paths anyway and show the error** (#570
-— never throw survivors away). De-duplicate by remote path; single-flight
-while a batch runs (attach button disabled; typing and text-only Send stay
-live); 90s timeout; removing a tile never touches the draft; after a failed
-send the tiles are gone and their paths live in the draft text — the resend
-must not re-append them. Staging is EAGER — bytes upload when the file is
-attached, not when the prompt is sent (§27.7 relies on this).
+it. Size policy is a branch split: a **picked file has no size cap** — it
+streams to the host with `fastPut` and its bytes never live in this
+process, so a multi-gigabyte attach takes as long as it takes — while
+clipboard bytes and pathless drops arrive fully materialised and are
+capped at 100 MiB (`MAX_IN_MEMORY_ATTACHMENT_BYTES`). Staging carries **no
+wall clock** either: the Android `ATTACHMENT_UPLOAD_TIMEOUT_MS` (90s)
+existed to turn a dead connection into a settled batch, and here the SSH
+transport's keepalive does that job by rejecting the SFTP transfer
+instead. The contract that matters: **when a stage result is `ok === false`
+but `paths` is non-empty, attach those paths anyway and show the error**
+(#570 — never throw survivors away). De-duplicate by remote path;
+single-flight while a batch runs (attach button disabled; typing and
+text-only Send stay live); removing a tile never touches the draft; after
+a failed send the tiles are gone and their paths live in the draft text —
+the resend must not re-append them. Staging is EAGER — bytes upload when
+the file is attached, not when the prompt is sent (§27.7 relies on this).
 
 ## 18. Slash commands (desktop)
 
@@ -602,11 +636,12 @@ asserted end-to-end in `tests/e2e/composer.spec.ts`.
 The contracts live in `tests/unit/`: `composerText` (§14),
 `composerSend` (§16.2–16.3), `composerAttachments`, `composerGeometry`
 (§21.1), `composerStore` (the §4/§12 state rules), `composerOutsideClick`
-(§12.2 guards), `composerHistoryRecall` (§28), `DoodleCanvas` /
-`doodleGeometry` (§27); `tests/e2e/composer.spec.ts` drives the composed
-surface. The integration invariant: compose a two-line prompt with one
-staged attachment, send it, and assert with `tmux capture-pane` that the
-pane received **one** submission containing both lines and the `Attached
+(§12.2 guards), `composerDiscardControls` (§15.1), `composerHistoryRecall`
+(§28), `DoodleCanvas` / `doodleGeometry` (§27); `tests/e2e/composer.spec.ts`
+drives the composed surface. The integration invariant: compose a two-line
+prompt with one staged attachment, send it, and assert with `tmux
+capture-pane` that the pane received **one** submission containing both
+lines and the `Attached
 files:` block — the bracketed-paste proof (§16.2).
 
 ## 25. Dependencies, settled
