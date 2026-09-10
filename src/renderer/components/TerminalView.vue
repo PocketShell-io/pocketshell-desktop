@@ -94,10 +94,11 @@ const props = defineProps<{
    */
   interceptTyping?: boolean;
   /**
-   * The tmux session to display. Falls back to {@link sessionKey}, which is
-   * the session name at every current call site; the separate prop exists so a
-   * caller whose key is not a session name can say so rather than having main
-   * try to `switch-client` to something that is not a session.
+   * The tmux session to display. Falls back to {@link sessionKey}. The
+   * separate prop exists for the caller whose key is not a session name — the
+   * folder workspace keys its panes by the workspace-qualified identity, so
+   * main must not be asked to `switch-client` to something that is not a
+   * session.
    */
   sessionName?: string;
   /**

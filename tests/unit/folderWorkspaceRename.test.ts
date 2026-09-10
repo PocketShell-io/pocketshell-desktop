@@ -542,8 +542,9 @@ describe('a rename onto a name with a leftover pane record inherits nothing', ()
     expect(wrapper.findAll('.stub-terminal').length).toBe(2);
 
     // `git-y` leaves the bar out-of-band — stopped on the host, not through
-    // this workspace's Stop. Its tab goes; its pane record stays by design,
-    // filtered out of the v-for and rendering nothing.
+    // this workspace's Stop. The identity prune retires a session that is not
+    // on the bar, record and mounted pane with it, so nothing is left for a
+    // rename onto `git-y` to inherit.
     sessionsList.mockResolvedValue([row('git-x')]);
     useSessionsStore().sessions = [row('git-x')] as never;
     await flush();
