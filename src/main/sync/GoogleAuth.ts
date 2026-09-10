@@ -112,6 +112,21 @@ function tokenBody(values: Record<string, string>): URLSearchParams {
   return body;
 }
 
+async function tokenError(response: Response): Promise<string> {
+  const raw = (await response.text()).trim();
+  if (raw === '') return 'no error details returned';
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown; error_description?: unknown };
+    const code = typeof parsed.error === 'string' ? parsed.error : null;
+    const description = typeof parsed.error_description === 'string' ? parsed.error_description : null;
+    if (code && description) return `${code}: ${description}`;
+    if (code) return code;
+  } catch {
+    // Keep the bounded raw response below when Google returns non-JSON text.
+  }
+  return raw.slice(0, 400);
+}
+
 interface StoredAuth extends GoogleIdentity {
   idTokenEnc: string;
   /** Absent when Google did not hand one out — then expiry means re-login. */
@@ -195,7 +210,7 @@ export class GoogleAuth {
         client_id: GOOGLE_CLIENT_ID,
       }),
     });
-    if (!res.ok) throw new Error(`token refresh failed (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`token refresh failed (HTTP ${res.status}): ${await tokenError(res)}`);
     const tokens = (await res.json()) as TokenResponse;
     // A refresh response carries no new refresh token; the old one stands.
     this.store(tokens, refreshToken, stored);
@@ -361,7 +376,7 @@ export class GoogleAuth {
         client_id: GOOGLE_CLIENT_ID,
       }),
     });
-    if (!res.ok) throw new Error(`token exchange failed (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`token exchange failed (HTTP ${res.status}): ${await tokenError(res)}`);
     const tokens = (await res.json()) as TokenResponse;
     if (!tokens.id_token) throw new Error('token exchange returned no ID token');
     return tokens;
