@@ -561,6 +561,14 @@ function bindShellStream(): void {
   unsubscribeExit = api.shell.onExited(({ shellId: id }) => {
     if (id === shellId && term) {
       shellGone = true;
+      // A dead PTY must stop answering registry lookups. Everything that aims
+      // bytes at this pane by key — the agent launch above all — reads
+      // `shellIdFor`, and an entry left pointing at a closed channel makes the
+      // next launch for a recreated same-named session fire into the corpse:
+      // main drops the write for an id it no longer tracks, and the launch is
+      // gone without a trace. Passing the id keeps a newer registration (a
+      // re-join that raced this event) untouched — the store no-ops then.
+      if (registeredKey !== null) shells.unregister(registeredKey, id);
       paneWrite('\r\n\x1b[90m[process exited]\x1b[0m\r\n');
     }
   });
