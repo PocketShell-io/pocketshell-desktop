@@ -43,6 +43,13 @@
 // so a tab switch cannot cost a draft. It follows the ACTIVE SESSION TAB — its
 // per-session record is keyed on the session name, so switching session tabs
 // swaps the draft and switching back restores it.
+//
+// The bar itself — the strip, the rename field, the drag, the `+` and the tab
+// menu — is components/WorkspaceTabBar.vue, with its styles carried alongside.
+// The script clusters moved the same way: the tab model, panes, identities,
+// selection and Files tabs to useWorkspaceTabs, and the window chords to
+// useWorkspaceChords; the workspace memory, rename, launch, stop and reveal
+// were already composables of their own.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type VNode } from 'vue';
 import { useRoute } from 'vue-router';
 import { registerWorkspaceFocus, unregisterWorkspaceFocus } from '../workspaceFocus';
@@ -57,28 +64,12 @@ import AppIcon from '../components/AppIcon.vue';
 import TerminalView from '../components/TerminalView.vue';
 import PromptComposer from '../components/PromptComposer.vue';
 import FilesView from './FilesView.vue';
-import PopupMenu from '../components/PopupMenu.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import LaunchSessionDialog from '../components/LaunchSessionDialog.vue';
-import { pointAnchor, type Box } from '../../shared/popupPlacement';
-import type { SessionSummary } from '../../shared/types';
+import WorkspaceTabBar from '../components/WorkspaceTabBar.vue';
+import type { Box } from '../../shared/popupPlacement';
 import { composerAgentKind } from '../../shared/composerSend';
-import { agentMark } from '../../shared/agentBadge';
-import { isShortcut } from '../../shared/shortcuts';
 import { normalisePart } from '../../shared/sessionNameParts';
-import { adjacentIndex } from '../../shared/listNavigation';
-import { editingTarget } from '../editingTarget';
-import {
-  buildWorkspaceTabs,
-  applyTabOrder,
-  canDropTabAt,
-  pushMru,
-  reorderTabs,
-  tabAfterClose,
-  type WorkspaceTab,
-} from '../../shared/workspaceTabs';
-import { sessionIdentityKey } from '../sessionIdentity';
-import { prunePanes, upsertPane, type SessionPaneRecord } from '../sessionPanes';
 import { UNTRACKED_PATH } from '../sessionGrouping';
 import { useFolderTree } from '../folderTree';
 import { useWorkspaceMemory } from '../useWorkspaceMemory';
@@ -86,7 +77,8 @@ import { useSessionRename } from '../useSessionRename';
 import { useSessionLaunch } from '../useSessionLaunch';
 import { useSessionStop } from '../useSessionStop';
 import { useWorkspaceReveal } from '../useWorkspaceReveal';
-import { useStripDrag } from '../useStripDrag';
+import { useWorkspaceTabs } from '../useWorkspaceTabs';
+import { useWorkspaceChords } from '../useWorkspaceChords';
 
 const route = useRoute();
 const connection = useConnectionStore();
@@ -112,16 +104,7 @@ const hostAlias = computed(() => String(route.params['name'] ?? ''));
  * The state and its why-comments live in useWorkspaceMemory.ts; the bar below
  * derives from these refs.
  */
-const {
-  filesTabs,
-  selected,
-  mru,
-  tabOrder,
-  writeTabOrder,
-  loadFolderState,
-  persist,
-  pruneAgainst,
-} = useWorkspaceMemory({
+const memory = useWorkspaceMemory({
   folderKey,
   hostAlias,
   routedTab: () => route.query['tab'] as string | undefined,
@@ -130,6 +113,7 @@ const {
   getActiveTab: () => activeTab.value,
   focusActiveTab,
 });
+const { selected, mru, tabOrder, writeTabOrder, loadFolderState, persist } = memory;
 
 /**
  * The folder node this workspace is showing, out of the same grouping the
@@ -152,273 +136,43 @@ const folderPath = computed(() => {
   return path === UNTRACKED_PATH ? null : path;
 });
 
-const tabs = computed<WorkspaceTab[]>(() =>
-  // Derived first, then the user's own arrangement on top. The order of the two
-  // steps IS the resolution of the two instructions: the automatic order is
-  // what a tab gets until the user moves it, and a manual position wins once
-  // there is one.
-  applyTabOrder(
-    buildWorkspaceTabs(
-      (folder.value?.rows ?? []).map((row) => ({
-        name: row.session.name,
-        created: row.session.created,
-      })),
-      // `path: null` means "this tab was never given a seed", which resolves
-      // to the folder.
-      filesTabs.value.map((tab) => ({ id: tab.id, path: tab.path ?? folderPath.value })),
-    ),
-    tabOrder.value,
-  ),
-);
-
-/** The selected tab, falling back to the first one the bar has. */
-const activeTab = computed<WorkspaceTab | null>(() => {
-  const found = tabs.value.find((tab) => tab.id === selected.value);
-  return found ?? tabs.value[0] ?? null;
+/**
+ * The tab model — the bar, the panes behind the session tabs, the identities
+ * that key them, selection, and the Files tabs — moved whole, comments and
+ * all, to ../useWorkspaceTabs.ts.
+ */
+const {
+  tabs,
+  activeTab,
+  activeSession,
+  sessionTabTitle,
+  tabMark,
+  terminalSession,
+  terminalIdentity,
+  openPanes,
+  sessionPanes,
+  summary,
+  activeSessionMeta,
+  sessionMeta,
+  aplexerRefFor,
+  identityFor,
+  terminalRefs,
+  setTerminalRef,
+  selectTab,
+  goToTab,
+  selectAfterClose,
+  addFilesTab,
+  onOpenInNewTab,
+  closeFilesTab,
+} = useWorkspaceTabs({
+  folder,
+  folderKey,
+  folderPath,
+  sessions,
+  files,
+  memory,
+  focusActiveTab,
 });
-
-/** The session the composer and the terminal are pointed at, if any. */
-const activeSession = computed(() =>
-  activeTab.value?.kind === 'session' ? activeTab.value.session : null,
-);
-
-/**
- * A session tab's tooltip.
- *
- * It names the session, and — when the session is not standing in the folder
- * the tab is filed under — it names where it IS. That second line exists
- * because grouping and location came apart deliberately
- *: a git worktree files under its repository, so a tab
- * under `dtc-website` may be running in `~/git/merry-sniffing-token`. Without
- * the line the user would open Files expecting the worktree and get the main
- * checkout, with nothing on screen to explain the difference.
- */
-/**
- * This folder's own row for [name], or null.
- *
- * The one session lookup the workspace is allowed. A bare session name is NOT
- * host-unique — an aplexer tag repeats across workspaces, so `main` is every
- * workspace's default — and a lookup against the host-wide listing returns
- * whoever is listed first: another folder's `main` lends this workspace its
- * path and agent badge, which is how a Files tab came to be seeded at the
- * folder the user had just left. Resolving through the same rows the tabs are
- * built from keeps every answer here this workspace's own; a name with no row
- * here has no answer, which `summary`'s null already renders honestly.
- */
-function localRow(name: string | null): SessionSummary | null {
-  return (folder.value?.rows ?? []).find((row) => row.session.name === name)?.session ?? null;
-}
-
-function sessionTabTitle(session: string): string {
-  const row = localRow(session);
-  const lines = [session];
-  const mark = agentMark(row?.agentKind);
-  // The agent is named here as well as on the mark's own `<title>`, because the
-  // marks are arbitrary (src/shared/agentBadge.ts) and this is the tooltip a
-  // user actually lands on — the icon is 12px and hovering it precisely is not
-  // a thing to require of anyone.
-  if (mark) lines.push(mark.label);
-  const path = row?.path ?? null;
-  if (path && path !== folderPath.value) lines.push(`running in ${path}`);
-  if (row?.pathInferred) lines.push('folder inferred from the session name, not reported by tmux');
-  lines.push('double-click to rename, right-click for more');
-  return lines.join('\n');
-}
-
-/**
- * The mark a session tab wears, or null for a shell and for the common,
- * legitimate `unknown`.
- *
- * Looked up from this folder's rows per tab (`localRow`) rather than carried on
- * the `WorkspaceTab`. The tab model is the LAYOUT of the bar — what is called
- * what, in what order — and it is pure and unit-tested as such; the agent kind
- * is a live fact that the refresh timer changes underneath it, so folding it in
- * would make `buildWorkspaceTabs` recompute the whole bar every time a badge
- * moved.
- */
-function tabMark(session: string): ReturnType<typeof agentMark> {
-  return agentMark(localRow(session)?.agentKind);
-}
-
-/** The session tab that is (or was last) showing — which pane is visible. */
-const terminalSession = ref<string | null>(null);
-/** The identity of that tab — which mounted pane is visible, by `v-show`. */
-const terminalIdentity = ref<string | null>(null);
-/**
- * Every session tab that has been visited, one mounted TerminalView each, for
- * as long as this workspace is open.
- *
- * A record rather than a bare name, and the reason is the RENAME. A pane's Vue
- * key has to survive its session getting a new name: a tab's id IS the session
- * name, so a name-keyed v-for reads a committed rename as "one pane gone,
- * another appeared" — unmounting the old TerminalView (closing its SSH shell)
- * and mounting a fresh one that pays a full re-join, which is the reconnect a
- * rename used to cost. The record's `id` is minted when the pane is opened and
- * never changes; `session` is the name the pane is pointed at RIGHT NOW, and a
- * rename rewrites it in place, so the diff keeps the instance and only the
- * props move — and the pool, which the rename re-keyed on the host side,
- * answers the re-point with the SAME PTY and no host work at all.
- *
- * `identity` is the workspace-qualified join key, and it is what every pane
- * MATCH reads — the dedupe, the visibility `v-show`, the ref map, the prune.
- * The matches used to read the bare name, and under aplexer that was a real
- * bug: a tag repeats across workspaces, so navigating from a folder whose
- * `main` was mounted straight into a folder with its own `main` found the
- * leftover record and reused it — the tab showed the PREVIOUS workspace's
- * session, and the new workspace's pane was never mounted at all, because
- * TerminalView re-points only on a session-key change and the key had not
- * changed. `aplexer:<workspace>:<tag>` cannot answer for another workspace's
- * same-named tag; the leftover is a foreign identity and is pruned like any
- * other session that is not on the bar.
- *
- * Append-only while the workspace lives — unmounting a pane closes its SSH
- * shell, and coming back would pay a full join (1.5–2 s on the user's host) —
- * but the workspace's lifetime is THIS folder's visit, not the component
- * instance's: vue-router reuses this component folder-to-folder, and the pane
- * of the folder just left is not the arrived-at folder's pane however
- * same-named it looks. The identity prune in the `tabs` watcher retires those
- * records on the switch, along with sessions killed out-of-band. Main bounds
- * the channels underneath independently — the pool evicts its least recently
- * used client when a connection runs out of SSH channels, and a pane whose
- * shell was evicted re-joins itself when it is next looked at.
- */
-const openPanes = ref<SessionPaneRecord[]>([]);
-let nextPaneId = 1;
-
-/**
- * The identities on this workspace's bar right now.
- *
- * The one live-set every pane filter reads — the render filter below and the
- * prune in the `tabs` watcher — so the two cannot disagree about what "still
- * on the bar" means. Resolved through `identityFor`, the same function that
- * minted the panes' identities, so a rename's rewrite (pane and row in one
- * tick) reads as the pane never having left.
- */
-const liveIdentities = computed(() => {
-  const live = new Set<string>();
-  for (const tab of tabs.value) {
-    if (tab.kind === 'session') live.add(identityFor(tab.session));
-  }
-  return live;
-});
-
-/**
- * The session tabs that currently have a mounted pane, in visit order.
- *
- * The panes are filtered against the live identities rather than trusted, so a
- * session that was killed on the host — or left behind on the folder the user
- * just navigated away from — stops rendering the moment it leaves the bar,
- * while a RENAME keeps the pane rendering straight through: the row and the
- * pane record are rewritten in the same tick, so from the filter's point of
- * view the pane's identity never stopped being on the bar.
- */
-const sessionPanes = computed(() =>
-  openPanes.value.filter((pane) => liveIdentities.value.has(pane.identity)),
-);
-
-const summary = computed(() => localRow(terminalSession.value));
-
-/** This folder's address for the active session tab, for the composer's identity props. */
-const activeSessionMeta = computed(() =>
-  activeSession.value ? sessionMeta.value.get(activeSession.value) : undefined,
-);
-
-/**
- * What the pool needs to address each of this folder's sessions, by name.
- *
- * Tabs are keyed by session name and names are unique within a folder, so a
- * name lookup is exact here. The backend decides the join the pane opens
- * (tmux vs `a attach`) and the key the pool holds the client under; the
- * workspace and id address an aplexer tag, which repeats across workspaces.
- * Read from the folder's own rows — the same projection the tabs are built
- * from — so the two cannot disagree about what a tab names.
- */
-const sessionMeta = computed(() => {
-  const meta = new Map<
-    string,
-    { backend: 'tmux' | 'aplexer'; workspace: string | null; aplexerId: string | null }
-  >();
-  for (const row of folder.value?.rows ?? []) {
-    const s = row.session;
-    meta.set(s.name, {
-      backend: s.backend ?? 'tmux',
-      workspace: s.workspace ?? null,
-      aplexerId: s.aplexerId ?? null,
-    });
-  }
-  return meta;
-});
-
-/**
- * The aplexer ref a kill/rename carries for [name], or undefined for a tmux
- * row. Undefined is not "unknown" — it is the tmux address, which is the bare
- * name — so callers pass the result straight through.
- */
-function aplexerRefFor(
-  name: string,
-): { backend: 'tmux' | 'aplexer'; workspace?: string; aplexerId?: string } | undefined {
-  const m = sessionMeta.value.get(name);
-  if (!m || m.backend !== 'aplexer') return undefined;
-  return {
-    backend: 'aplexer',
-    ...(m.workspace ? { workspace: m.workspace } : {}),
-    ...(m.aplexerId ? { aplexerId: m.aplexerId } : {}),
-  };
-}
-
-/**
- * The registry identity for [name] — the key the shells map and the composer
- * store file it under.
- *
- * Resolved through this folder's rows, so an aplexer tag carries its
- * workspace and same-named tags in other folders do not collide. [like] names
- * the row to resolve through when [name] itself is not on the bar yet (the
- * target of a rename); otherwise the name resolves through its own row. A
- * name with no row falls back to itself — the tmux identity — which is the
- * only answer available for a tab whose session already left the listing.
- */
-function identityFor(name: string, like?: string): string {
-  const m = sessionMeta.value.get(like ?? name);
-  return sessionIdentityKey(name, { backend: m?.backend, workspace: m?.workspace ?? undefined });
-}
-
-/**
- * The active session's workspace-qualified identity, and the pane watcher
- * keyed on it.
- *
- * Keyed on the IDENTITY, not the name, because across a folder-to-folder
- * navigation the name can stay the same — `main` to `main`, every aplexer
- * workspace's default — and a name-keyed watcher never fires, leaving the
- * previous workspace's pane and state on screen. Identities cannot collide
- * that way: the same name in another workspace is a different identity, which
- * is the whole point of the key.
- *
- * `immediate`, as the pane opener this always was. Kept after `sessionMeta`
- * in the file because the immediate run resolves through it, and a source
- * read before its `const` initializes is a TDZ error, not a stale answer.
- * A null identity — no session tab in front, the Files tab's usual state —
- * changes nothing: the terminal refs and `summary`'s notion of "the session
- * that was last showing" survive a detour through Files.
- */
-const activeSessionIdentity = computed(() =>
-  activeSession.value ? identityFor(activeSession.value) : null,
-);
-watch(
-  activeSessionIdentity,
-  (identity) => {
-    const name = activeSession.value;
-    if (!identity || !name) return;
-    terminalSession.value = name;
-    terminalIdentity.value = identity;
-    const next = upsertPane(
-      openPanes.value,
-      { session: name, identity },
-      () => `pane-${nextPaneId++}`,
-    );
-    if (next !== openPanes.value) openPanes.value = next;
-  },
-  { immediate: true },
-);
 
 /**
  * The engine recorded host-side for the active session, narrowed to what the
@@ -426,76 +180,6 @@ watch(
  * shell never does.
  */
 const agentKind = computed(() => composerAgentKind(summary.value?.agentKind));
-
-/**
- * The MRU is fed from the RESOLVED active tab, not from the click handlers.
- *
- * There are six routes that change which tab is in front — a click, the two
- * chord families, creating a session, committing a rename, and closing a tab —
- * and a seventh that changes it without anyone asking: `activeTab` falls back
- * to the first tab whenever `selected` names a tab that is not on the bar, which
- * is what happens when the active session is killed from somewhere else. A push
- * per route would have to cover all seven and would silently miss the eighth.
- *
- * Watching the answer instead of the requests covers every one of them by
- * construction, and it records what the user is actually LOOKING at, which is
- * the only thing "most recently used" can honestly mean.
- *
- * Deliberately NOT `immediate`. An immediate run would fire during `setup`,
- * before `loadFolderState` has restored anything, and its `persist()` would
- * stamp the empty `filesTabs` of a component that has not loaded yet over the
- * memory entry it is about to read. {@link loadFolderState} seeds the stack
- * itself instead, at the point where every input to it is already correct.
- */
-watch(
-  () => activeTab.value?.id ?? null,
-  (id) => {
-    if (id === null) return;
-    // Already on top is the overwhelmingly common case; bailing keeps this from
-    // rewriting the memory map on every reactive tick.
-    if (mru.value[mru.value.length - 1] === id) return;
-    mru.value = pushMru(mru.value, id);
-    persist();
-  },
-);
-
-/**
- * Keep the MRU honest against the bar as it actually is.
- *
- * The stack must never be able to name a tab that is gone; the rule and its
- * reasoning live in `pruneAgainst`. Driven by the tabs rather than by the
- * close handlers, because a tab can leave the bar without anything here
- * closing it: killed from the user's own terminal, killed from the phone, or
- * the host restarted. Watching the tabs covers every one of those with one
- * rule instead of enumerating them.
- */
-watch(tabs, (list) => {
-  // Guarded on the HOST's session list having arrived, not on the bar being
-  // non-empty — and the guard must stand over BOTH remembered lists and the
-  // panes. A workspace whose sessions have not loaded yet — a deep link, a
-  // reload, and since the tabs persist, a relaunch, where the bar can hold its
-  // Files tabs alone for the first round trip — would have every session id
-  // pruned as dead before the session list that proves them alive ever landed.
-  // That was a harmless scratch when the MRU lived only in memory; persisted,
-  // it would be a wipe ON DISK. So the guard the manual order already carried
-  // now stands over the stack too.
-  if (sessions.sessions.length === 0) return;
-  pruneAgainst(list);
-  // The panes prune on the same authority and for the same class of reason.
-  // A pane whose identity is no longer on the bar retires here — the record
-  // and its mounted TerminalView with it — whether the session left out-of-band
-  // (killed on the host, stopped from the phone) or belongs to the folder the
-  // user just navigated away from: vue-router reuses this component across
-  // folders, and without the prune the previous workspace's panes would ride
-  // along, same-named aplexer tags answering for each other. Unmounting closes
-  // the pane's SSH shell; for a dead or left-behind session that is the honest
-  // teardown, and it is what stops a re-created same-named session from
-  // inheriting a pane still pointed at a dead PTY. The guard above covers this
-  // too: panes exist only once a session list has loaded, so the prune never
-  // runs against a bar that is merely waiting for its rows.
-  const keptPanes = prunePanes(openPanes.value, liveIdentities.value);
-  if (keptPanes.length !== openPanes.value.length) openPanes.value = keptPanes;
-});
 
 onMounted(async () => {
   loadFolderState();
@@ -537,246 +221,6 @@ useWorkspaceReveal({
   onOpenInNewTab,
   addFilesTab,
 });
-
-/** A click selects. The rename gesture is the tab's double-click (template). */
-function selectTab(tab: WorkspaceTab): void {
-  goToTab(tab.id);
-}
-
-/**
- * Make [id] the visible tab and put the keyboard in it.
- *
- * The ONE selection path. A click reaches it through {@link selectTab}, and the
- * tab chords reach it directly, so a chord cannot end up doing something subtly
- * different from a click — which is the specific way the two would drift, since
- * focus is the half that is easy to forget.
- */
-function goToTab(id: string): void {
-  if (id === activeTab.value?.id) return;
-  selected.value = id;
-  persist();
-  void focusActiveTab();
-}
-
-// ---------------------------------------------------------------------------
-// Dragging a tab to rearrange the bar
-// ---------------------------------------------------------------------------
-
-/**
- * The app's own drag flavour, so nothing else in the window mistakes a tab for
- * a payload it can accept.
- *
- * The composer takes file drops anywhere on its root, and the tab strip sits
- * directly above it — so a tab dragged past the composer used to light up its
- * "drop a file here" affordance. That is fixed on the composer's side by
- * testing for `Files` in `dataTransfer.types` (PromptComposer's `onDragOver`),
- * and this is the other half: a tab drag advertises a type nothing else claims,
- * so the two can never be confused in either direction without either of them
- * knowing about the other.
- */
-const TAB_DRAG_TYPE = 'application/x-pocketshell-tab';
-
-// The drag MECHANICS (payload, midpoint rule, drop-target marking) live in
-// useStripDrag; what stays here is the strip's own policy — when a drag may
-// start, where a tab may land, and what a landed drop commits.
-const { dragging, startDrag, gapFor, markDroppable, endDrag } = useStripDrag({
-  dragType: TAB_DRAG_TYPE,
-  axis: 'x',
-});
-/** The gap the drop indicator is sitting in; null means no indicator. */
-const dropGap = ref<number | null>(null);
-
-function onTabDragStart(tab: WorkspaceTab, e: DragEvent): void {
-  // A rename in progress owns the strip; dragging the field would be a drag of
-  // a text selection wearing a tab's clothes.
-  if (renaming.value !== null) return;
-  startDrag(tab.id, e);
-}
-
-function onTabDragOver(index: number, e: DragEvent): void {
-  const from = dragging.value;
-  if (from === null) return;
-  const gap = gapFor(index, e);
-  // REFUSED VISIBLY, not accepted and snapped back. A drag that appears to
-  // cross the session/files boundary and then undoes itself reads as a bug; a
-  // drag that shows no indicator and a `no-drop` cursor reads as a rule.
-  if (!canDropTabAt(tabs.value, from, gap)) {
-    dropGap.value = null;
-    return;
-  }
-  markDroppable(e);
-  dropGap.value = gap;
-}
-
-function onTabDrop(): void {
-  const from = dragging.value;
-  const gap = dropGap.value;
-  endDrag();
-  dropGap.value = null;
-  if (from === null || gap === null) return;
-  const next = reorderTabs(tabs.value, from, gap);
-  // Null for a no-op — a drag that ended where it started, which is most
-  // cancelled drags — and writing then would persist an order for nothing.
-  if (next) writeTabOrder(next);
-}
-
-function onTabDragEnd(): void {
-  endDrag();
-  dropGap.value = null;
-}
-
-// `nudgeActiveTab` — the keyboard counterpart of the drag — is GONE with the
-// chord that called it (`Ctrl+Shift+PageUp`/`PageDown`), removed at the user's
-// request: "Move the active tab left or right remove this too". The DRAG is
-// untouched and is now the only way to reorder;
-// `nudgeTabOrder` stays in the shared module, unused here, still pinned by
-// workspaceTabs.test.ts, because the ordering rule it encodes is the drag's
-// too.
-
-// ---------------------------------------------------------------------------
-// Tab chords
-// ---------------------------------------------------------------------------
-
-/**
- * `Ctrl+[` / `Ctrl+]` to step one tab left or right.
- *
- * ## Why this is a WINDOW listener and not the terminal's key handler
- *
- * The chord has to work with focus in the terminal, the Files tree or the
- * composer, and those are three different keyboard owners: xterm consults its
- * own custom handler, CodeMirror runs a keymap, and the composer's textarea is
- * an ordinary field. Routing the chord through each of them would be three
- * implementations of one gesture — and the third one added later would be the
- * one that forgot to `preventDefault`.
- *
- * A `keydown` in CAPTURE on `window` runs before ANY of them, whatever holds
- * focus, because capture descends from the window to the target. So there is
- * one handler and it cannot be reached around. It is the same shape the
- * composer's own `Ctrl+\`` uses (PromptComposer's `onGlobalKey`), deliberately.
- *
- * ## `preventDefault` AND `stopPropagation`, and why both are load-bearing
- *
- * `stopPropagation` is what stops the event ever reaching xterm's textarea, so
- * xterm never gets to encode it. `preventDefault` is what stops CHROMIUM acting
- * on it — Electron still has a browser underneath. Leaving either off is the
- * defect that has now landed three times in this app (bc86cf7's doubled first
- * letter, 3628090's doubled paste, and the Ctrl+V route after them): one
- * keystroke, two paths.
- *
- * ## The terminal is NOT a safe place to let this fall through
- *
- * The brief's premise was that a tab chord is affordable "because terminals
- * cannot encode it". Measured against the xterm this app ships (@xterm/xterm 6,
- * `evaluateKeyboardEvent`), that is not true for THIS chord either, which is why
- * TerminalView also declines it: **`Ctrl+[` is C0.ESC (`0x1B`)** — THE physical
- * escape of older keyboards and readline's meta-prefix — **and `Ctrl+]` is
- * C0.GS**. That is a real cost, in vim sessions most of all, and it is stated
- * rather than assumed; meta sequences remain reachable through Alt.
- *
- * ## What went, and what came back with it
- *
- * `Ctrl+1`..`Ctrl+9` (jump to the Nth tab), `Ctrl+Shift+PageUp`/`PageDown`
- * (move the active tab) and the CYCLE — `Ctrl+Tab` / `Ctrl+Shift+Tab` — were
- * removed at the user's request: "remove ctrl 1 2 3 hotkey", "Move the active
- * tab left or right remove this too", "remove these hotkeys let's keep only
- * ctrl left and ctrl right".
- *
- * Removing them GIVES KEYS BACK to the pane, which is the part worth writing
- * down: `Ctrl+3`..`Ctrl+8` are the C0 controls `ESC`, `FS`, `GS`, `RS`, `US`
- * and `DEL` (`Ctrl+3` is a widely used stand-in for Escape);
- * `Ctrl+Shift+PageUp`/`PageDown` reach xterm's own scrollback; and `Ctrl+Tab`
- * is C0.HT — completion at a shell prompt, since xterm ignores Ctrl on Tab —
- * while `Ctrl+Shift+Tab` is ESC [ Z, back-tab. All of them were being
- * swallowed for chords that no longer exist, so the declines in TerminalView
- * went with them (`nextWorkspaceTabId` went with the cycle).
- *
- * Moving a tab from the keyboard went with the chord. The drag
- * is unaffected and is still the way to reorder.
- *
- * ## What it deliberately does not touch
- *
- * Anything with Alt or Meta. `Ctrl+Alt` is how AltGr arrives on European
- * layouts, where `[` and `]` carry printable characters on several of them —
- * the same reason TerminalView's Ctrl+V branch demands `!e.altKey`. And a
- * rename in progress owns the keyboard: the field is a one-word edit with
- * Enter/Escape of its own, and stepping out of it would leave an orphaned edit
- * on a tab the user can no longer see.
- */
-function onWindowKeydown(e: KeyboardEvent): void {
-  if (!e.ctrlKey && !e.metaKey) return;
-  if (e.altKey) return;
-  if (renaming.value !== null) return;
-
-  // The chord is DATA (src/shared/shortcuts.ts). This copy and the decline
-  // branch in TerminalView's `onCustomKey` are the two that would otherwise
-  // drift; reading the same table is what keeps them saying the same thing.
-  const bindings = settings.shortcutBindings;
-
-  // The old hand-spelled `if (e.shiftKey) return;` went with the inline chords:
-  // it was a stand-in for "these are all Shift-free", which is now each chord's
-  // own business in the registry. Keeping it would silently refuse any rebinding
-  // that wears Shift.
-
-  // `Ctrl+[` / `Ctrl+]`: the tab to the left, the tab to the right.
-  //
-  // First carried by `Ctrl+←`/`Ctrl+→`, moved here at the user's word —
-  // "ctrl+left and right conflicts with jumping over words". The original ask
-  // stands underneath: step left / step right within THIS workspace, while
-  // `Ctrl+↑`/`Ctrl+↓` walks workspaces, which `HostWorkspaceView` owns. The
-  // horizontal axis is the tab bar and the vertical one is the panel down the
-  // side, which is where those two things actually sit on screen.
-  //
-  // THEY CLAMP, and that is deliberate (see `adjacentIndex`). A direction, not
-  // a cycle: landing at the opposite end of the bar is not what "further left"
-  // asks for.
-  //
-  // WHAT IT COSTS is stated rather than assumed: `Ctrl+[` is Escape at a shell
-  // prompt and `Ctrl+]` is GS (see the registry note). Vim users lose the
-  // bracket escape inside panes of this workspace; meta chords keep working
-  // through Alt.
-  //
-  // Still not in a real text field — see `editingTarget`. No editing gesture
-  // rides these keys, but prose being typed should not be interrupted by
-  // navigation either. The direction reads off `e.key`: which HALF of the pair
-  // fired, and only the registry knows that pair exists.
-  if (isShortcut(bindings, 'tabs.stepLeftRight', e)) {
-    if (editingTarget(e.target)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const index = adjacentIndex(
-      tabs.value.length,
-      tabs.value.findIndex((t) => t.id === activeTab.value?.id),
-      e.key === ']' ? 1 : -1,
-    );
-    const target = index === null ? null : (tabs.value[index]?.id ?? null);
-    if (target !== null) goToTab(target);
-    return;
-  }
-
-  // `Ctrl+N`: a plain shell in THIS folder — the workspace `+`'s create with
-  // the dialog taken out. `createSession(null)` is the same function the
-  // launch dialog confirms into, so the quick path cannot drift from the
-  // clicked one: unique name walk, pending row, new tab, keyboard in the pane,
-  // and a refusal lands in the strip like any other.
-  //
-  // This is the app's one bare-Ctrl chord taken against a key the shell
-  // receives (^N, readline next-history) — claimed at the user's word, with
-  // the cost recorded in the registry entry. `e.repeat` is refused because a
-  // held chord would mint a session per repeat; one press, one session.
-  // Not in a text field, and not during a rename — the same stands-down as
-  // the tab chords, which the early return above already carries.
-  if (isShortcut(bindings, 'sessions.newInFolder', e)) {
-    if (editingTarget(e.target)) return;
-    if (e.repeat) return;
-    e.preventDefault();
-    e.stopPropagation();
-    void createSession(null);
-  }
-}
-
-
-onMounted(() => window.addEventListener('keydown', onWindowKeydown, { capture: true }));
-onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown, { capture: true }));
 
 /**
  * Put the keyboard where the user just looked.
@@ -834,17 +278,6 @@ onBeforeUnmount(() => unregisterWorkspaceFocus(requestFocus));
 // The field state, the commit, and adoptRenamedSession's one-tick move live in
 // useSessionRename.ts. What stays here is the field's DOM: focusing it once on
 // mount, and the live character normalisation on input.
-
-/**
- * The mounted-pane handles, keyed by the pane's own identity — what rename
- * re-keys and what focus and Redraw look up.
- */
-const terminalRefs = new Map<string, TerminalPane>();
-interface TerminalPane {
-  focus: () => void;
-  /** Re-assert geometry and repaint — see TerminalView's `resyncDisplay`. */
-  resyncDisplay: () => void;
-}
 
 const {
   renaming,
@@ -932,7 +365,6 @@ function onRenameInput(event: Event): void {
  * nothing. See src/shared/popupPlacement.ts for the measurement.
  */
 const addAnchor = ref<Box | null>(null);
-const addButtonEl = ref<HTMLElement | null>(null);
 
 const { launching, createError, openLaunchDialog, cancelPendingLaunch, createSession } =
   useSessionLaunch({
@@ -950,6 +382,13 @@ const { launching, createError, openLaunchDialog, cancelPendingLaunch, createSes
     focusActiveTab,
     addAnchor,
   });
+
+/**
+ * The window chords — `Ctrl+[` / `Ctrl+]` and `Ctrl+N` — moved whole, comments
+ * and all, to ../useWorkspaceChords.ts; the listener registers itself here for
+ * the mount's lifetime, exactly where the view's handler used to.
+ */
+useWorkspaceChords({ renaming, tabs, activeTab, settings, goToTab, createSession });
 
 /**
  * What the strip under the tab bar shows: the rename's refusal when there is
@@ -986,99 +425,31 @@ function dismissBarError(): void {
   renameError.value = null;
 }
 
-function toggleAddMenu(): void {
+/**
+ * The `+`'s click, relayed from the bar with the button's measured rect. The
+ * open/close decision stays in this file because the anchor state does — the
+ * launch composable closes the menu through the same ref.
+ */
+function toggleAddMenu(box: Box | null): void {
   if (addAnchor.value) {
     addAnchor.value = null;
     return;
   }
-  const box = addButtonEl.value?.getBoundingClientRect();
   if (box) addAnchor.value = { left: box.left, top: box.top, width: box.width, height: box.height };
 }
 
-// Monotonic within the workspace, never a length-derived index: closing tab 2
-// and adding one would otherwise reuse its id and inherit its directory.
-// The counter rides behind Date.now() because tab ids persist to
-// workspaceState: a bare counter restarts with the app and could collide with
-// a restored id, while two tabs minted inside the SAME millisecond (a scripted
-// drop, a double action) would collide on the timestamp alone and the second
-// would silently replace the first in `filesTabs`.
-let filesTabSeq = 0;
-
 /**
- * Another Files tab, with its own directory memory.
- *
- * [seed] is where it opens. It defaults to the ACTIVE SESSION's own working
- * directory when there is one, falling back to the folder. That distinction is
- * not pedantry now that worktrees group under their repository
- *: a session in `~/git/dtc-website-decisions` shows up
- * under the `dtc-website` folder, and "open a file browser" while looking at
- * that session must mean the worktree the session is actually standing in, not
- * the main checkout.
+ * The bar menu's Redraw, relayed: the pane handles live in this file's
+ * `terminalRefs`, keyed by the identity the menu resolved while the row stood.
  */
-function addFilesTab(seed?: string | null): void {
+function redrawFromIdentity(identity: string): void {
+  terminalRefs.get(identity)?.resyncDisplay();
+}
+
+/** "New Files tab" from the `+` menu: shut the menu, then mint the tab. */
+function addFilesFromMenu(): void {
   addAnchor.value = null;
-  const next = {
-    id: `${folderKey.value}::files:${Date.now()}:${++filesTabSeq}`,
-    path: seed ?? summary.value?.path ?? folderPath.value,
-  };
-  filesTabs.value = [...filesTabs.value, next];
-  selected.value = next.id;
-  persist();
-}
-
-/**
- * Open [path] in a NEW Files tab — the file tree's "open in a new tab" action.
- *
- * Routed through the workspace rather than done inside FilesView because a
- * Files tab is a WORKSPACE-level thing: the tree can say "open this somewhere
- * else", but only the tab bar can create the somewhere.
- *
- * A DIRECTORY seeds the tab and that is all. A FILE seeds the tab at its PARENT
- * and then rides the existing reveal channel to open the file itself — the same
- * path a clicked file link in the terminal takes, so there is one implementation
- * of "land in a directory and open this thing" rather than two.
- *
- * Order matters and is the one subtle line here. `selected` is set BEFORE the
- * reveal is requested, so that by the time the `files.reveal` watcher below
- * runs, the active tab is already the new Files tab and the watcher declines to
- * redirect the request at some other tab.
- */
-function onOpenInNewTab(path: string, kind: 'dir' | 'file'): void {
-  if (kind === 'dir') {
-    addFilesTab(path);
-    return;
-  }
-  const parent = path.slice(0, path.lastIndexOf('/')) || '/';
-  addFilesTab(parent);
-  files.requestReveal(path);
-}
-
-/**
- * A tab has gone: choose what is selected now.
- *
- * Written to hold for EITHER kind, because it now serves both — a Files tab
- * closed with its `×`, and a session tab whose session was just killed — and
- * because the two must not answer the question differently. The decision itself
- * is `tabAfterClose` in `shared/workspaceTabs.ts`, where it is a table with a
- * unit test rather than three branches inside a handler.
- *
- * Called with the bar as it still IS, before the tab is removed, so the
- * adjacency fallback can see where the closed tab sat.
- */
-function selectAfterClose(id: string): void {
-  const next = tabAfterClose(tabs.value, id, activeTab.value?.id ?? null, mru.value);
-  // Popped, not merely filtered on read. The stack is persisted, so a dead
-  // entry left in it would outlive this workspace visit.
-  mru.value = mru.value.filter((entry) => entry !== id);
-  selected.value = next;
-  persist();
-  if (next !== null) void focusActiveTab();
-}
-
-function closeFilesTab(id: string): void {
-  selectAfterClose(id);
-  filesTabs.value = filesTabs.value.filter((tab) => tab.id !== id);
-  persist();
+  addFilesTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -1086,51 +457,9 @@ function closeFilesTab(id: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * The tab a right-click opened a menu on, with the box to hang it off.
- *
- * A measured POINT rather than the tab's rect, because a context menu belongs
- * under the cursor. `PopupMenu` is reused rather than a second menu written
- * here for the same reason it exists at all: the tab strip is
- * `overflow-x: auto`, which per CSS makes `overflow-y` compute to `auto` too,
- * so an `absolute` menu inside it is laid out exactly at the clip edge and is
- * invisible. That is the bug the `+` menu shipped with. PopupMenu teleports to
- * `body` and positions from a measured viewport rect, which is exactly what a
- * menu on a scrolling strip needs.
- */
-const tabMenu = ref<{ session: string; identity: string; label: string; anchor: Box } | null>(
-  null,
-);
-
-function openTabMenu(tab: WorkspaceTab, e: MouseEvent): void {
-  if (tab.kind !== 'session') return;
-  // A right-click does not select. The menu's items name the tab they came
-  // from, so acting on a background tab is unambiguous — and selecting first
-  // would mean a right-click that the user then dismisses had already moved
-  // them, and moved the composer's key with it.
-  addAnchor.value = null;
-  // The pane's identity is resolved NOW, while the row stands; Redraw reaches
-  // the ref map through it.
-  tabMenu.value = {
-    session: tab.session,
-    identity: identityFor(tab.session),
-    label: tab.label,
-    anchor: pointAnchor(e.clientX, e.clientY),
-  };
-}
-
-/** Start a rename from the menu — the double-click's discoverable sibling. */
-function renameFromMenu(): void {
-  const target = tabMenu.value;
-  tabMenu.value = null;
-  if (!target) return;
-  const tab = tabs.value.find((t) => t.kind === 'session' && t.session === target.session);
-  if (tab) beginRename(tab);
-}
-
-/**
  * The kill machinery — the named confirmation, the busy latch, and
  * confirmStop's three-piece teardown — lives in useSessionStop.ts. The menu
- * and the `×` only ever arm it; see their doc comments below.
+ * and the `×` (in the bar component) only ever arm it.
  */
 const { stopping, stopBusy, confirmStop } = useSessionStop({
   connection,
@@ -1144,94 +473,6 @@ const { stopping, stopBusy, confirmStop } = useSessionStop({
   createError,
   selectAfterClose,
 });
-
-/**
- * "Redraw" from the tab menu: put this pane and the far end back in agreement.
- *
- * The reported picture is tmux's status line drawn in the middle of the pane
- * with stale rows beneath it — the far end working to a smaller screen than we
- * have. The pane's own `resyncDisplay` explains why that state is unreachable
- * from this side once it starts (another tmux client became "latest" and shrank
- * the window; nothing here moved, so nothing here re-sends) and why the lever is
- * manual rather than a timer.
- *
- * It sits in the tab menu with Rename and Stop, and its position in that list is
- * the point: it is the only NON-destructive item, so it goes above the
- * separator, next to the other thing that changes nothing you can lose.
- *
- * Only a session tab has a pane to redraw. The menu is opened from a Files tab
- * too, and the item is simply not rendered there — an item that greys out on
- * half the tabs teaches the eye to skip the whole menu.
- */
-function redrawFromMenu(): void {
-  const target = tabMenu.value;
-  tabMenu.value = null;
-  if (target) terminalRefs.get(target.identity)?.resyncDisplay();
-}
-
-function askStop(): void {
-  const target = tabMenu.value;
-  tabMenu.value = null;
-  if (target) stopping.value = target.session;
-}
-
-/**
- * The `×` on a session tab: {@link askStop} for a tab the user is pointing at
- * directly instead of one they right-clicked.
- *
- * It arms the same {@link stopping} ref, so the same named and confirmed
- * dialog opens and the kill itself stays in `confirmStop` — the `×`
- * is a handle on the destructive action, never the action. The `+` menu is
- * dismissed here for the reason `openTabMenu` dismisses it: the strip's
- * `click.stop` keeps the event from reaching the menu's own outside-click
- * close, so a menu left standing would outlive the click that should have
- * dismissed it.
- */
-function askStopTab(tab: Extract<WorkspaceTab, { kind: 'session' }>): void {
-  addAnchor.value = null;
-  stopping.value = tab.session;
-}
-
-// ---------------------------------------------------------------------------
-// Terminal / composer plumbing — unchanged from the per-session workspace
-// ---------------------------------------------------------------------------
-/**
- * The panes, by session identity, so the composer's Escape ladder can un-focus
- * the one on screen.
- *
- * A MAP rather than a template ref, because there is now a pane per visited
- * session tab. A `v-for` with a plain string `ref` collects an ARRAY in DOM
- * order, which would have to be indexed by position and would silently point at
- * the wrong pane the moment a tab appeared or disappeared; a session identity
- * cannot drift like that — and it has to be the identity rather than the bare
- * name, because a name repeats across workspaces and a map keyed on it would
- * hand one workspace's pane to another. The map's keys move with the pane
- * record: a rename re-keys it, the prune drops it.
- *
- * `el` is `unknown` for the same reason the old ref named only the method it
- * called: `*.vue` is declared as a `DefineComponent<…, any>` in env.d.ts, so
- * naming the instance type here would collapse the call site to `any` instead
- * of checking anything.
- */
-function setTerminalRef(identity: string, el: unknown): void {
-  if (el) terminalRefs.set(identity, el as TerminalPane);
-  else terminalRefs.delete(identity);
-}
-/** Same reasoning for the composer, whose `typeInto` the terminal feeds. */
-const composerRef = ref<{
-  typeInto: (text: string) => void;
-  pasteFromSystemClipboard: () => Promise<void>;
-  acceptDroppedFiles: (files: File[]) => Promise<void>;
-} | null>(null);
-/**
- * The Files pane, for {@link focusActiveTab}.
- *
- * Optional `focus` in the type rather than required: this is a `.vue` default
- * export, so the instance type is `any` at the call site and a required member
- * would be checked against nothing anyway. Written as optional so the call
- * reads as what it is — an ask, which the pane may decline.
- */
-const filesRef = ref<{ focus?: () => void } | null>(null);
 
 /**
  * Whether the terminal should withhold printable keystrokes instead of sending
@@ -1295,216 +536,54 @@ function onFocusTerminal(): void {
   if (identity) terminalRefs.get(identity)?.focus();
 }
 
+/** Same reasoning as `terminalRefs`, for the composer, whose `typeInto` the terminal feeds. */
+const composerRef = ref<{
+  typeInto: (text: string) => void;
+  pasteFromSystemClipboard: () => Promise<void>;
+  acceptDroppedFiles: (files: File[]) => Promise<void>;
+} | null>(null);
+/**
+ * The Files pane, for {@link focusActiveTab}.
+ *
+ * Optional `focus` in the type rather than required: this is a `.vue` default
+ * export, so the instance type is `any` at the call site and a required member
+ * would be checked against nothing anyway. Written as optional so the call
+ * reads as what it is — an ask, which the pane may decline.
+ */
+const filesRef = ref<{ focus?: () => void } | null>(null);
+
 </script>
 
 <template>
   <div class="folder-workspace">
-    <!-- ONE row of chrome, and now only one thing in it: the tabs and the `+`.
-
-         The folder's NAME and a `×` that deselected it used to trail here. The
-         user circled that end of the strip and said "no need for this part",
-         and they are right on both counts.
-
-         The name was the same fact three times over. The selected folder is
-         already the highlighted row in the session panel beside this, and the
-         window title already carries the host — so a label here named a thing
-         the eye had just come from. This app has removed that redundancy twice
-         before: from session rows in b841362, and from the merged identity
-         header in 38bf971, whose reasoning ("one fact twice") is the same
-         reasoning as this. An earlier request to expand the leaf into a full
-         `~/git/red-stamp` path is superseded rather than reversed: it was an
-         attempt to make this element earn its space, and the user has since
-         decided it does not have any to earn.
-
-         The `×` deselected the folder and returned the right pane to its
-         placeholder. No way out is lost with it: the session panel is
-         persistent, so another folder row switches workspace directly, and the
-         panel's own back arrow leaves the host. What is no longer reachable is
-         the placeholder state ITSELF once a folder has been picked — a pane
-         that says "select a folder" while a folder is selected, which is not a
-         destination anyone navigates to on purpose. -->
-    <header class="folder-bar">
-      <nav class="tabs" @dragend="onTabDragEnd">
-        <template v-for="(tab, i) in tabs" :key="tab.id">
-          <!-- The rename field REPLACES the tab in place rather than opening a
-               dialog: the thing being renamed is the thing under the cursor,
-               and a modal for a one-word edit is a heavier promise than the
-               edit deserves. -->
-          <span v-if="renaming?.id === tab.id" class="tab renaming">
-            <input
-              class="rename-input"
-              :value="renameText"
-              :title="renameError ?? 'Enter to rename, Escape to cancel'"
-              :class="{ invalid: renameError }"
-              @vue:mounted="onRenameFieldMounted"
-              @input="onRenameInput"
-              @keydown.enter.prevent="commitRename"
-              @keydown.esc.prevent="cancelRename"
-              @blur="commitRename"
-            />
-          </span>
-          <button
-            v-else
-            :class="[
-              'tab',
-              {
-                active: tab.id === activeTab?.id,
-                files: tab.kind === 'files',
-                dragging: dragging === tab.id,
-                'drop-before': dropGap === i,
-                'drop-after': dropGap === tabs.length && i === tabs.length - 1,
-              },
-            ]"
-            :title="tab.kind === 'session' ? sessionTabTitle(tab.session) : 'File browser'"
-            draggable="true"
-            @click="selectTab(tab)"
-            @dblclick="beginRename(tab)"
-            @contextmenu.prevent="openTabMenu(tab, $event)"
-            @dragstart="onTabDragStart(tab, $event)"
-            @dragover="onTabDragOver(i, $event)"
-            @drop.prevent="onTabDrop"
-          >
-            <!-- The double-click is the rename gesture (the browser/VS Code
-                 contract), and it belongs on the TAB rather than in selectTab:
-                 a single click must never open an editor, and the first click
-                 of a double-click would fire selectTab before dblclick — so a
-                 click-again rule and this gesture could not coexist. Files tabs
-                 have no name on the host; beginRename declines them. -->
-            <!-- The agent mark, and NOTHING when the kind is unknown or a plain
-                 shell (src/shared/agentBadge.ts). A badge on every tab saying
-                 "we don't know" would cost the same 12px and teach the eye to
-                 skip the slot; a sparse one means something by being there. -->
-            <AppIcon
-              v-if="tab.kind === 'session' && tabMark(tab.session)"
-              :name="tabMark(tab.session)!.icon"
-              :size="12"
-              :title="tabMark(tab.session)!.label"
-              class="tab-agent"
-            />
-            {{ tab.label }}
-            <!-- Every tab wears an `×`, but the two kinds do not mean the same
-                 thing by it, and neither one kills directly.
-
-                 A FILES tab's `×` closes the view and nothing else, and
-                 every one of them has it — the first included. The old rule
-                 spared the first tab because closing it would leave the
-                 workspace no way to look at the folder, and that reason is
-                 gone: `+` re-opens a Files tab in two clicks, and a file link
-                 clicked in the terminal with none standing opens its own (the
-                 reveal watcher below).
-
-                 A SESSION tab's `×` is the context menu's Stop, one click
-                 closer. It opens the SAME named, confirmed dialog the menu
-                 does rather than killing on the click, because the tab bar's argument
-                 survives the affordance: the thing behind the tab is a live
-                 process on another machine, and the control that can destroy
-                 it must say so and ask. The tooltip says Stop, never Close —
-                 the one word this app reserves for the kill — and the
-                 click stops here, so a background tab's `×` does not also
-                 move the user to it, the same rule the right-click obeys. -->
-            <span
-              v-if="tab.kind === 'session'"
-              class="tab-close"
-              title="Stop this session"
-              @click.stop="askStopTab(tab)"
-              @dblclick.stop
-            >
-              <AppIcon name="close" :size="12" />
-            </span>
-            <span
-              v-else
-              class="tab-close"
-              title="Close this Files tab"
-              @click.stop="closeFilesTab(tab.id)"
-              @dblclick.stop
-            >
-              <AppIcon name="close" :size="12" />
-            </span>
-          </button>
-        </template>
-      </nav>
-
-      <!-- The `+` sits OUTSIDE the scrolling strip, which is both a fix and an
-           improvement: inside it, a folder with many tabs scrolled its own
-           "new tab" button off the end. Its menu is teleported (PopupMenu), so
-           the strip's clipping cannot reach it either way. -->
-      <div class="add-wrap">
-        <button
-          ref="addButtonEl"
-          class="tab add"
-          :class="{ active: addAnchor !== null }"
-          title="New session or Files tab"
-          aria-haspopup="menu"
-          :aria-expanded="addAnchor !== null"
-          @click="toggleAddMenu"
-        >
-          <AppIcon name="plus" :size="14" />
-        </button>
-        <!-- Two items, and the asymmetry between them is deliberate.
-             "New session…" opens a dialog because a launch has real choices
-             behind it (engine, permissions, profile) and creates something on
-             the host. "New Files tab" stays a DIRECT action: it creates
-             nothing, configures nothing, and a dialog would make a free action
-             feel expensive.
-
-             Still a menu rather than the folder-first NewSessionDialog: that
-             dialog exists to CHOOSE a folder, and inside a folder workspace
-             the folder is already chosen. -->
-        <PopupMenu
-          v-if="addAnchor"
-          :anchor="addAnchor"
-          :ignore="[addButtonEl]"
-          label="New session or Files tab"
-          @close="addAnchor = null"
-        >
-          <ul>
-            <li>
-              <button class="menu-item" @click="openLaunchDialog">New session…</button>
-            </li>
-            <li class="menu-sep" />
-            <li>
-              <button class="menu-item" @click="addFilesTab()">New Files tab</button>
-            </li>
-          </ul>
-        </PopupMenu>
-      </div>
-
-      <!-- Right-clicking a session tab. Two items, and the gap between them is
-           the point: Rename is here because click-to-rename is real but
-           undiscoverable, and Stop is here because the user asked for it and
-           because a live tmux session is not something to put behind a `×`.
-           They are separated and Stop is tinted, so the one thing in this menu
-           that can lose work does not look like the one that cannot. -->
-      <PopupMenu
-        v-if="tabMenu"
-        :anchor="tabMenu.anchor"
-        :label="`Actions for ${tabMenu.session}`"
-        @close="tabMenu = null"
-      >
-        <ul>
-          <li class="menu-head">{{ tabMenu.session }}</li>
-          <li>
-            <button class="menu-item" @click="renameFromMenu">Rename…</button>
-          </li>
-          <li>
-            <!-- No ellipsis: it acts immediately and asks nothing, which is
-                 exactly what the ellipsis on its neighbours promises is NOT the
-                 case for them. -->
-            <button
-              class="menu-item"
-              title="Tell the host our size again and repaint the whole pane"
-              @click="redrawFromMenu"
-            >
-              Redraw
-            </button>
-          </li>
-          <li class="menu-sep" />
-          <li>
-            <button class="menu-item danger" @click="askStop">Stop session…</button>
-          </li>
-        </ul>
-      </PopupMenu>
-    </header>
+    <!-- The bar — strip, rename field, drag, the `+` menu and the tab menu —
+         is WorkspaceTabBar.vue, styles carried with it. Everything it renders
+         announces through events; everything it needs arrived as props. -->
+    <WorkspaceTabBar
+      :tabs="tabs"
+      :active-tab-id="activeTab?.id ?? null"
+      :renaming="renaming"
+      :rename-text="renameText"
+      :rename-error="renameError"
+      :add-anchor="addAnchor"
+      :session-tab-title="sessionTabTitle"
+      :tab-mark="tabMark"
+      :identity-for="identityFor"
+      @select="selectTab"
+      @begin-rename="beginRename"
+      @commit-rename="commitRename"
+      @cancel-rename="cancelRename"
+      @rename-field-mounted="onRenameFieldMounted"
+      @rename-input="onRenameInput"
+      @stop="stopping = $event"
+      @close-files="closeFilesTab"
+      @launch="openLaunchDialog"
+      @add-files="addFilesFromMenu"
+      @add-toggle="toggleAddMenu"
+      @add-menu-close="addAnchor = null"
+      @redraw="redrawFromIdentity"
+      @reorder="writeTabOrder"
+    />
 
     <!-- Create and rename refusals share this one strip; see `barError` in the
          script for why. The dismiss is the app's ghost `.icon-btn sm` register
@@ -1667,188 +746,6 @@ function onFocusTerminal(): void {
      relationship with the composer, and custom properties inherit, so
      PromptComposer reads the same number without being handed it. */
   --composer-inset: var(--sp-3);
-}
-/* ---- one row of chrome ---------------------------------------------------
- * Identity and tabs used to be two full-height bars, 72px of chrome above every
- * terminal. Merged they cost --topbar-h and nothing else.
- *
- * The row has no vertical padding on purpose. The tabs are full-height children
- * of it, which is what lets the active tab's 2px underline sit exactly on the
- * row's own bottom border — the treatment the session bar uses.
- */
-.folder-bar {
-  display: flex;
-  align-items: stretch;
-  gap: var(--sp-3);
-  height: var(--topbar-h);
-  flex: 0 0 auto;
-  padding: 0 var(--sp-3) 0 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-/* Underline tabs, not Android's filled segmented control: a solid cyan
-   segment at 13px is heavy for a mouse UI. 
-   The bar scrolls rather than wrapping: a second row of tabs would change the
-   terminal's height, which is a remote tmux reflow (see .tab-body). */
-.tabs {
-  display: flex;
-  align-items: stretch;
-  gap: var(--sp-1);
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 0 0 0 var(--sp-3);
-}
-.tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  background: transparent;
-  border: none;
-  /* The 2px underline lands on the bar's bottom border because the button is
-     the bar's full height; the -1px pulls it over that hairline instead of
-     stacking a second line under it. */
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  color: var(--fg-secondary);
-  padding: 0 var(--sp-3);
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: var(--font-ui);
-  font-size: var(--fs-300);
-  font-weight: var(--fw-medium);
-  transition:
-    color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease);
-}
-.tab:hover {
-  color: var(--fg);
-}
-/* ---- dragging a tab -----------------------------
- *
- * The tab being carried fades but STAYS IN PLACE, rather than being removed
- * from the flow. Removing it would reflow every tab after it the moment the
- * drag began, so the strip the user is aiming at would move under the cursor at
- * exactly the wrong moment — and on a scrolling strip it can also change which
- * tabs are visible.
- *
- * The landing place is a 2px rule in the gap, drawn as a border on the tab
- * beside it. An indicator is worth the effort here: without one a reorder is
- * "let go and find out", and the two rules the drag obeys — the midpoint flip
- * and the group boundary — are both invisible unless something draws them.
- * When the drop is refused NOTHING is drawn, which is the refusal.
- */
-.tab.dragging {
-  opacity: var(--disabled-opacity);
-}
-.tab.drop-before {
-  box-shadow: inset 2px 0 0 0 var(--accent);
-}
-.tab.drop-after {
-  box-shadow: inset -2px 0 0 0 var(--accent);
-}
-.tab.active {
-  color: var(--fg);
-  font-weight: var(--fw-semibold);
-  border-bottom-color: var(--accent);
-}
-/* Files tabs are the same control at a lower tone, so the eye can find the
-   session half of the bar without reading it. */
-.tab.files {
-  font-family: var(--font-ui);
-  color: var(--fg-muted);
-}
-.tab.files.active {
-  color: var(--fg);
-}
-/*
- * The agent mark. Muted by default and taking the tab's own colour when the tab
- * is active, so it reads as part of the label rather than as a status light
- * competing with it — the mark says WHICH agent, and the underline already says
- * which tab. It is never tinted per kind: four hues on a 12px outline is a
- * palette nobody can learn, and the mark's shape is the distinguishing feature
- * (src/shared/agentBadge.ts).
- */
-.tab-agent {
-  color: var(--fg-muted);
-}
-.tab.active .tab-agent {
-  color: var(--accent);
-}
-.tab-close {
-  display: inline-flex;
-  align-items: center;
-  color: var(--fg-muted);
-  border-radius: var(--r-sm);
-  /* A 12px glyph is under the fair-hit-target floor, and one of these buttons
-     now fronts the stop confirmation — the padding buys the hover square some
-     aim without widening the tab's own label row. */
-  padding: 2px;
-}
-.tab-close:hover {
-  color: var(--fg);
-  background: var(--state-hover);
-}
-/* The field takes the tab's own box, so committing a rename does not make the
-   bar jump: the tab it replaces was the same height and roughly the same
-   width. */
-.tab.renaming {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--sp-2);
-  border-bottom: 2px solid var(--accent);
-  margin-bottom: -1px;
-}
-.rename-input {
-  width: 10ch;
-  min-width: 6ch;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: var(--fs-300);
-  padding: 0 var(--sp-1);
-}
-.rename-input.invalid {
-  border-color: var(--error);
-}
-/* A sibling of the scrolling strip, not a child of it, so the `+` stays put
-   while the tabs scroll under it. `position: relative` is deliberately NOT set:
-   the menu is teleported and positioned from a measured viewport rect, so this
-   element is not a containing block for anything. */
-.add-wrap {
-  display: flex;
-  align-items: stretch;
-  flex: 0 0 auto;
-}
-.tab.add {
-  color: var(--fg-muted);
-}
-.tab.add.active {
-  color: var(--fg);
-  background: var(--state-hover);
-}
-/* The menu itself is PopupMenu.vue — teleported to <body>, so it has no styles
-   here and cannot be clipped by the strip. All that is left is the button. */
-/*
- * The one menu item that can lose work, and it has to LOOK like it.
- *
- * `:deep` because PopupMenu's items arrive through its slot and so carry this
- * component's scope id rather than the menu's — the same reason PopupMenu
- * publishes `.menu-item` with `:deep` from its side.
- *
- * Tinted rather than separated-only: the separator says "different group", the
- * colour says "different KIND of thing". The hover fill is the error tint at
- * low alpha rather than the ordinary hover grey, so the row confirms what it is
- * at the moment the cursor lands on it and before it is clicked.
- */
-.popup-menu :deep(.menu-item.danger) {
-  color: var(--error);
-}
-.popup-menu :deep(.menu-item.danger:hover) {
-  background: var(--error-soft);
 }
 /* The confirm sheet. `sm` OverlayPanel, two paragraphs and two buttons — the
    dialog is short because the decision is, and a longer one would bury the
