@@ -129,7 +129,7 @@ describe('design gates', () => {
     /** Over-limit files, each with the extraction queue that retires it. */
     const EXEMPT: Record<string, string> = {
       'views/FolderWorkspaceView.vue':
-        'tab/pane orchestration; rename, create/launch, reveal and stop clusters remain to move out',
+        'tab model, pane wiring, chords, drag and files-tabs plumbing; template split pending',
       'components/PromptComposer.vue':
         'composer UI; its pipelines are already extracted (composerSend, AttachmentStager) — template split pending',
       'components/SessionTree.vue':
