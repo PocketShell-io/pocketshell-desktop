@@ -136,8 +136,6 @@ describe('design gates', () => {
         'template/style-heavy session tree; subcomponent split pending',
       'components/NewSessionDialog.vue':
         'three-route creation form; subcomponent split pending',
-      'views/SettingsView.vue':
-        'settings panels; per-section component split pending',
     };
     const offenders = vueFiles(RENDERER)
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
