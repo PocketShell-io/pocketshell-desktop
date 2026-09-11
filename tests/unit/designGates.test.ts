@@ -142,8 +142,6 @@ describe('design gates', () => {
         'canvas and palette UI; drawing math already in doodleGeometry.ts',
       'views/FilesView.vue':
         'five viewer states; per-viewer component extraction pending',
-      'components/FileTree.vue':
-        'tree rows, keyboard and menu logic; extraction pending',
     };
     const offenders = vueFiles(RENDERER)
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
