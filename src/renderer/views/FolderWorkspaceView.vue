@@ -73,7 +73,6 @@ import {
   buildWorkspaceTabs,
   applyTabOrder,
   canDropTabAt,
-  pruneTabIds,
   pushMru,
   reorderTabs,
   renamedSessionName,
@@ -86,14 +85,7 @@ import { prunePanes, upsertPane, type SessionPaneRecord } from '../sessionPanes'
 import { UNTRACKED_PATH } from '../sessionGrouping';
 import { useFolderTree } from '../folderTree';
 import { parkedAgentLaunch, takeAgentLaunch } from '../pendingAgentLaunch';
-import {
-  readWorkspaceMemory,
-  workspaceMemoryKey,
-  writeLastFolder,
-  writeWorkspaceMemory,
-  type FilesTabRecord,
-  type WorkspaceMemoryRecord,
-} from '../workspaceState';
+import { useWorkspaceMemory } from '../useWorkspaceMemory';
 import {
   buildLaunchCommand,
   KIND_LABELS,
@@ -114,137 +106,37 @@ const shells = useShellsStore();
 const { folders } = useFolderTree();
 
 /**
- * Per-workspace UI state that must survive leaving and coming back: which
- * Files tabs are open, and which tab was selected.
- *
- * Module-scoped rather than a Pinia store, deliberately. It is view state with
- * exactly one reader — this component — and no action anywhere else in the app
- * needs to read or write it. A store would buy nothing but a file, and the
- * thing that genuinely IS shared (each Files tab's browsing position) already
- * lives in the files store, keyed by the tab id this map hands out.
- *
- * Keyed by the HOST ALIAS and the folder, so one host's tabs cannot appear on
- * another — and so an entry outlives a reconnect, which a connection-id key
- * cannot do: a re-dial mints a fresh connection id, but it is the same host
- * and the same tmux sessions, so the workspace should come back as it was. The
- * alias is also what the persisted copy in ../workspaceState keys on, which is
- * why a relaunch can find this map's contents on disk at all. It is never
- * pruned: an entry is two small strings, and the alternative is a teardown
- * hook that has to guess when a workspace will not be revisited.
- *
- * The record's shape — what a Files tab carries, why the MRU is a stack — is
- * documented with `WorkspaceMemoryRecord` in ../workspaceState, which is the
- * same shape at a longer lifetime: `persist()` writes the map entry to
- * localStorage verbatim, and `remembered()` seeds a missing entry from it.
+ * The folder key from the route — `~/git/dtc-website`.
  */
-type FilesTabState = FilesTabRecord;
-type WorkspaceMemory = WorkspaceMemoryRecord;
-const memory = new Map<string, WorkspaceMemory>();
-
-/** The folder key from the route — `~/git/dtc-website`. */
 const folderKey = computed(() => String(route.params['folder'] ?? ''));
 
 /** The host alias from the route — the stable identity the tab state keys on. */
 const hostAlias = computed(() => String(route.params['name'] ?? ''));
 
-const memoryKey = computed(() => `${hostAlias.value}/${folderKey.value}`);
-
-function remembered(): WorkspaceMemory {
-  const existing = memory.get(memoryKey.value);
-  if (existing) return existing;
-  // Nothing in memory for this workspace — its first visit in this window.
-  // What a previous window persisted seeds it, so a relaunch opens the folder
-  // with the tabs it closed with; a first visit ever finds nothing on disk
-  // and starts bare.
-  const restored = readWorkspaceMemory(workspaceMemoryKey(hostAlias.value, folderKey.value));
-  // No Files tab to start with. A workspace opens showing its sessions, and a
-  // Files tab appears only when something asks for one: "New Files tab" on the
-  // `+` menu, "open in a new tab" from the file tree, or a path clicked in the
-  // terminal — the reveal watcher below opens one when none is standing.
-  const fresh: WorkspaceMemory = restored ?? { filesTabs: [], activeTab: null, mru: [] };
-  memory.set(memoryKey.value, fresh);
-  return fresh;
-}
-
-const filesTabs = ref<FilesTabState[]>([]);
-/** Which tab id is selected. Null means "the first one", resolved on read. */
-const selected = ref<string | null>(null);
-/** Selection history for {@link selectAfterClose}. See {@link WorkspaceMemory.mru}. */
-const mru = ref<string[]>([]);
-
-// ---------------------------------------------------------------------------
-// The manual tab order, and where it lives
-// ---------------------------------------------------------------------------
-
 /**
- * `localStorage` key for one folder's hand-arranged tab order.
- *
- * Two decisions in one string.
- *
- * **`localStorage`, not the settings store**, following the precedent the
- * session panel's width and the file tree's width already set: the settings
- * store is for preferences a user sets BY NAME in the Settings overlay, and an
- * arrangement you reach by dragging until it looks right is not one of those.
- * It is raw layout state, and raw layout state has been going here.
- *
- * **Keyed on the HOST ALIAS and the folder, never on the connection id.** A
- * connection id is an opaque handle minted per connect, so a key built from it
- * would be a fresh key on every launch and the order would never survive a
- * restart — and even within one window a re-dial mints a new id, which would
- * orphan the arrangement. The route's `:name` is the `~/.ssh/config` alias,
- * which is exactly as stable as the folder path beside it; the workspace's own
- * memory map and its persisted copy key on the same alias for the same reason.
- * Same reasoning as the port panel's preference keys, which key on the alias
- * too.
+ * The remembered tab state — Files tabs, selection, selection history, the
+ * hand-arranged order — and the persistence and restore machinery behind it.
+ * The state and its why-comments live in useWorkspaceMemory.ts; the bar below
+ * derives from these refs.
  */
-function tabOrderKey(): string {
-  return `ps.tabOrder.${String(route.params['name'] ?? '')}.${folderKey.value}`;
-}
-
-/**
- * The stored order for this workspace, or `[]` when the user has arranged
- * nothing.
- *
- * Empty is a real and common answer, not a missing one: it means "use the
- * derived order", which is what `applyTabOrder` does with it.
- */
-const tabOrder = ref<string[]>([]);
-
-function loadTabOrder(): void {
-  tabOrder.value = readTabOrder(tabOrderKey());
-}
-
-function readTabOrder(key: string): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return [];
-    const parsed: unknown = JSON.parse(raw);
-    // Validated rather than trusted. This is user-writable JSON on disk, and a
-    // non-array (or an array of objects) would otherwise reach `applyTabOrder`
-    // and rank tabs by whatever `Map` made of it.
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id): id is string => typeof id === 'string');
-  } catch {
-    return [];
-  }
-}
-
-function writeTabOrder(next: string[]): void {
-  tabOrder.value = next;
-  if (typeof localStorage === 'undefined') return;
-  try {
-    // An empty order is REMOVED rather than stored as `[]`. "The user has
-    // arranged nothing" and "there is no entry" are the same state, and keeping
-    // one spelling of it means a workspace whose tabs were all closed does not
-    // leave a key behind forever.
-    if (next.length === 0) localStorage.removeItem(tabOrderKey());
-    else localStorage.setItem(tabOrderKey(), JSON.stringify(next));
-  } catch {
-    // Quota, or a locked profile. Losing a tab arrangement on restart beats
-    // throwing out of a drop handler.
-  }
-}
+const {
+  filesTabs,
+  selected,
+  mru,
+  tabOrder,
+  writeTabOrder,
+  loadFolderState,
+  persist,
+  pruneAgainst,
+} = useWorkspaceMemory({
+  folderKey,
+  hostAlias,
+  routedTab: () => route.query['tab'] as string | undefined,
+  // Lazy by contract: only the commands read these, never setup — the bar they
+  // resolve through is derived from the refs this call returns.
+  getActiveTab: () => activeTab.value,
+  focusActiveTab,
+});
 
 /**
  * The folder node this workspace is showing, out of the same grouping the
@@ -543,68 +435,6 @@ watch(
 const agentKind = computed(() => composerAgentKind(summary.value?.agentKind));
 
 /**
- * Load this folder's remembered tabs into the live refs.
- *
- * Called from `onMounted` AND from a watch on the folder key, because
- * vue-router REUSES this component instance when only the `:folder` param
- * changes — `onMounted` does not fire on a folder-to-folder navigation, and
- * without the watch the second folder would inherit the first one's Files tabs
- * and selection.
- */
-function loadFolderState(): void {
-  const state = remembered();
-  // BEFORE the refs the tab list is derived from, so `tabs` is never computed
-  // once with this folder's sessions and the previous folder's arrangement.
-  loadTabOrder();
-  filesTabs.value = state.filesTabs;
-  selected.value = (route.query['tab'] as string | undefined) ?? state.activeTab;
-  mru.value = state.mru;
-  // Seed the stack with the tab that is actually in front, which the watcher
-  // below cannot do for us: on entry `activeTab` resolves without ever
-  // CHANGING, so nothing would record the tab the user landed on — and the
-  // first close would then find an empty stack and fall through to adjacency,
-  // which is the behaviour the MRU exists to replace. Read after the three
-  // assignments above, so the computed answers with this folder's state.
-  const active = activeTab.value?.id ?? null;
-  if (active !== null) mru.value = pushMru(mru.value, active);
-  persist();
-  // Every arrival at a folder is "take me to this workspace" — a row click in
-  // the panel, a `Ctrl+↑`/`Ctrl+↓` step, the session panel's `?tab=` hand-off,
-  // the first open from the empty state — and each one used to land with the
-  // keyboard wherever it had been, which is the same defect a tab click had
-  // (bc86cf7): the first keystrokes went nowhere the user was looking. So the
-  // keyboard goes to the pane in front. At a cold mount the bar is still empty
-  // and this no-ops — `focusActiveTab` finds no tab rather than trusting the
-  // first-tab fallback, so a boot restore never grabs focus on a guess.
-  void focusActiveTab();
-}
-
-/**
- * Write the tab state back.
- *
- * Called explicitly by the four things that change it rather than from a watch
- * on the refs. A watch would fire during a folder switch, between the key
- * changing and the refs being reloaded, and would stamp the OUTGOING folder's
- * tabs onto the incoming folder's memory entry.
- *
- * The record goes two places at once: the in-memory map, for the rest of this
- * window, and `localStorage`, for the next one — the same object, so the two
- * copies cannot disagree. `writeLastFolder` beside it is what lets a
- * relaunched app navigate here at all: without it a workspace would restore
- * faithfully but nothing would know to open it.
- */
-function persist(): void {
-  const record: WorkspaceMemory = {
-    filesTabs: filesTabs.value.map((tab) => ({ ...tab })),
-    activeTab: selected.value,
-    mru: [...mru.value],
-  };
-  memory.set(memoryKey.value, record);
-  writeWorkspaceMemory(workspaceMemoryKey(hostAlias.value, folderKey.value), record);
-  writeLastFolder(hostAlias.value, folderKey.value);
-}
-
-/**
  * The MRU is fed from the RESOLVED active tab, not from the click handlers.
  *
  * There are six routes that change which tab is in front — a click, the two
@@ -639,41 +469,25 @@ watch(
 /**
  * Keep the MRU honest against the bar as it actually is.
  *
- * The stack must never be able to name a tab that is gone — the brief's own
- * words, and the reason is sharper than "it would point at nothing": a session
- * tab's id IS its tmux session name, and `sessions create` derives that name
- * from the folder, so a killed session's name is very likely to come back
- * attached to a DIFFERENT session. A stale entry would then resurrect as a
- * live-looking target.
- *
- * Driven by the tabs rather than by the close handlers, because a tab can leave
- * the bar without anything here closing it: killed from the user's own
- * terminal, killed from the phone, or the host restarted. Watching the tabs
- * covers every one of those with one rule instead of enumerating them.
+ * The stack must never be able to name a tab that is gone; the rule and its
+ * reasoning live in `pruneAgainst`. Driven by the tabs rather than by the
+ * close handlers, because a tab can leave the bar without anything here
+ * closing it: killed from the user's own terminal, killed from the phone, or
+ * the host restarted. Watching the tabs covers every one of those with one
+ * rule instead of enumerating them.
  */
 watch(tabs, (list) => {
   // Guarded on the HOST's session list having arrived, not on the bar being
-  // non-empty — and guarding BOTH stored lists now. A workspace whose sessions
-  // have not loaded yet — a deep link, a reload, and since the tabs persist, a
-  // relaunch, where the bar can hold its Files tabs alone for the first round
-  // trip — would have every session id pruned as dead before the session list
-  // that proves them alive ever landed. That was a harmless scratch when the
-  // MRU lived only in memory; persisted, it would be a wipe ON DISK. So the
-  // guard the manual order already carried now stands over the stack too.
+  // non-empty — and the guard must stand over BOTH remembered lists and the
+  // panes. A workspace whose sessions have not loaded yet — a deep link, a
+  // reload, and since the tabs persist, a relaunch, where the bar can hold its
+  // Files tabs alone for the first round trip — would have every session id
+  // pruned as dead before the session list that proves them alive ever landed.
+  // That was a harmless scratch when the MRU lived only in memory; persisted,
+  // it would be a wipe ON DISK. So the guard the manual order already carried
+  // now stands over the stack too.
   if (sessions.sessions.length === 0) return;
-  const pruned = pruneTabIds(mru.value, list);
-  if (pruned.length !== mru.value.length) {
-    mru.value = pruned;
-    persist();
-  }
-  // The manual order needs the identical treatment, and for a sharper reason
-  // than the MRU: a stored id that no longer names a tab is inert TODAY, but a
-  // session killed and re-created keeps its name (`sessions create` derives it
-  // from the folder), so an unpruned entry would silently re-pin a brand new
-  // session to the dead one's old position. Same rule, same function, one
-  // definition of "this id has died".
-  const keptOrder = pruneTabIds(tabOrder.value, list);
-  if (keptOrder.length !== tabOrder.value.length) writeTabOrder(keptOrder);
+  pruneAgainst(list);
   // The panes prune on the same authority and for the same class of reason.
   // A pane whose identity is no longer on the bar retires here — the record
   // and its mounted TerminalView with it — whether the session left out-of-band
