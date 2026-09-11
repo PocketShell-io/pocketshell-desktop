@@ -127,10 +127,7 @@ describe('design gates', () => {
   it('has no .vue file over 1000 lines without a recorded exemption', () => {
     const MAX_LINES = 1000;
     /** Over-limit files, each with the extraction queue that retires it. */
-    const EXEMPT: Record<string, string> = {
-      'components/PromptComposer.vue':
-        'composer UI; its pipelines are already extracted (composerSend, AttachmentStager) — template split pending',
-    };
+    const EXEMPT: Record<string, string> = {};
     const offenders = vueFiles(RENDERER)
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
       .filter(({ file, lines }) => lines > MAX_LINES && !(file in EXEMPT))
