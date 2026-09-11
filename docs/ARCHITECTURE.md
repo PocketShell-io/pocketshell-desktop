@@ -173,12 +173,15 @@ box-gutter continuation, break at a hyphen or slash inside the token —
 each shape anchored on
 a tail token that is itself a path by the detector's standard (rooted,
 `file:///`, or a relative one with two or more slashes — one slash is
-`and/or` prose), so prose rows never glue together. The fit arithmetic ("the continuation would not have fitted") is
+`and/or` prose), read past a `KEY="…` assignment the way the matcher
+itself reads one, so prose rows never glue together. The fit arithmetic ("the continuation would not have fitted") is
 measured against the render width inferred from the fullest row of the
 surrounding block — blank rows bound the block, and fill-rule decoration
 drawn to the pane's width is refused — not against the pane's live width:
 tmux keeps rows painted at the width they were rendered at, so a resized
-window proves nothing about the margins those rows were written under.
+window proves nothing about the margins those rows were written under,
+and a CLI that wraps its block at its own narrower width leaves every
+continuation looking like it "had room" against the pane.
 The highlight is two layers: the hover underline from the link
 provider, and an at-rest block tint (`terminalPathHighlights.ts`) that
 re-derives decorations for every row the renderer touches, so a path —

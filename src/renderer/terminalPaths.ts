@@ -206,7 +206,7 @@ function matchToken(token: string, base: number): PathMatch | null {
   // claim it.)
   if (token.includes('://') && stripFileScheme(token) === null) return null;
 
-  let start = 0;
+  const start = leadingDecorationWidth(token);
   const end = token.length;
 
   // A markdown link `[label](target)`: the label is prose — often itself a
@@ -224,15 +224,6 @@ function matchToken(token: string, base: number): PathMatch | null {
     if (target !== null) return target;
   }
 
-  // `--output=tmp/a.mp3` — take the value, not the flag. The `=` only counts
-  // as an assignment when nothing before it looks like a path, so a file
-  // genuinely named `tmp/a=b/c.txt` is left whole rather than being cut at its
-  // own equals sign.
-  const eq = token.indexOf('=');
-  if (eq !== -1 && !token.slice(0, eq).includes('/')) start = eq + 1;
-
-  while (start < end && LEADING_NOISE.has(token.charAt(start))) start++;
-
   // Tool output often writes `Write(path)` without a space. Treat the
   // function-like wrapper as decoration, but only when the prefix is a plain
   // label and contains no slash. A path's own parenthesised filename remains
@@ -245,6 +236,28 @@ function matchToken(token: string, base: number): PathMatch | null {
   }
 
   return matchCandidate(token, base, start, end);
+}
+
+/**
+ * How much decoration sits in FRONT of a token: a `KEY=` assignment (the
+ * value is the candidate — `--output=tmp/a.mp3` is `tmp/a.mp3` speaking, and
+ * `PKG="/home/…` is a path wearing an assignment) and opening quotes and
+ * brackets. The `=` only counts as an assignment when nothing before it looks
+ * like a path, so a file genuinely named `tmp/a=b/c.txt` is left whole rather
+ * than being cut at its own equals sign.
+ *
+ * Shared with the join rules in terminalLinks.ts, whose tail gate must see
+ * through the same wrapper the matcher does: a `PKG="…/python3.12/` tail
+ * refused as "not a path" would leave the gutter continuation the CLI wrapped
+ * it into (`  │ site-packages/…`) unglued, even though row one is already
+ * underlined as the path-so-far.
+ */
+export function leadingDecorationWidth(token: string): number {
+  let start = 0;
+  const eq = token.indexOf('=');
+  if (eq !== -1 && !token.slice(0, eq).includes('/')) start = eq + 1;
+  while (start < token.length && LEADING_NOISE.has(token.charAt(start))) start++;
+  return start;
 }
 
 /**

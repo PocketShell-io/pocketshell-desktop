@@ -75,6 +75,17 @@
  *     read past a bounded indent (rule 1 stays column-0 — an indent is the
  *     renderer choosing where a row begins, which is the opposite of the
  *     overflow rule 1 reconstructs).
+ *   - the same family of TUIs wraps a command echo INSIDE a `KEY="…"`
+ *     assignment at a block width far narrower than the pane:
+ *     `PKG="/home/…/python3.12/` broke before `site-packages/linkedin_api`,
+ *     the continuation carrying the block's gutter. Two stale assumptions
+ *     refused it — the tail gate judged the raw token and hit the
+ *     assignment's quote (FORBIDDEN in a path), and the gutter rule measured
+ *     its fit against the pane's live width, where every head "had room".
+ *     The gate now reads the tail past its leading decoration (the same peel
+ *     the matcher applies — that is why row one was already underlined) and
+ *     the gutter rule measures against the inferred render width, like every
+ *     rule above it.
  *
  * Both rules are deliberately narrow, for the reason terminalPaths.ts's header
  * gives: joining two rows that were never one line can only invent a path that
@@ -150,7 +161,13 @@
  * runs regardless.
  */
 import type { IBuffer, IBufferCell, ILink, ILinkProvider, Terminal } from '@xterm/xterm';
-import { continuesPath, findPaths, HAS_EXTENSION, stripFileScheme } from './terminalPaths';
+import {
+  continuesPath,
+  findPaths,
+  HAS_EXTENSION,
+  leadingDecorationWidth,
+  stripFileScheme,
+} from './terminalPaths';
 import { findUrls } from './terminalUrls';
 import { useFilesStore } from './stores/files';
 import { useSessionsStore } from './stores/sessions';
@@ -375,7 +392,21 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
   // report's first-segment cut). The per-rule guards below still decide; the
   // slash keeps its stricter treatment, because `and/` is `and/or` prose and
   // not a break anyone's wrapper made.
-  if (!webSchemeTail && !tail.endsWith('-') && !continuesPath(asPath ?? tail)) return null;
+  //
+  // The tail is read past its leading decoration ({@link leadingDecorationWidth}),
+  // because a command echo's tail is often a path wearing an assignment —
+  // `PKG="/home/…/python3.12/` — and the matcher already underlines that
+  // path-so-far on its own row. Judged on the raw token, the quote the
+  // assignment carries is FORBIDDEN in a path and the gate refuses, so the
+  // gutter continuation the CLI wrapped it into never glued on and the
+  // underline stopped at `python3.12/` — the tenth report, verbatim.
+  if (
+    !webSchemeTail &&
+    !tail.endsWith('-') &&
+    !continuesPath(tail.slice(leadingDecorationWidth(tail)))
+  ) {
+    return null;
+  }
 
   const gutter = GUTTER.exec(next.text);
   if (gutter === null) {
@@ -522,17 +553,25 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
   //   - the continuation does not itself start with `/`. `…/` plus `/x` is not
   //     a path anyone wrote; it is two paths, and the second one is whole
   //     already.
-  //   - the continuation's first token WOULD NOT HAVE FIT on the row above.
-  //     This is the wrapper's own arithmetic, run backwards: if the token fit,
-  //     the row above did not end because it ran out of room, so the row below
-  //     is a new line that merely happens to carry the same gutter. It is what
-  //     stops `  │ created /tmp/out/` + `  │ done` from ever joining, since
-  //     `done` had eighty columns of room to sit in.
+  //   - the continuation's first token WOULD NOT HAVE FIT at the render width
+  //     ({@link inferWrapWidth}). That is the wrapper's own arithmetic run
+  //     backwards: if the token fit, the row above did not end because it ran
+  //     out of room, so the row below is a new line that merely happens to
+  //     carry the same gutter. It is what stops `  │ created /tmp/out/` +
+  //     `  │ done` from joining when the block's own wider rows prove `done`
+  //     had room — and the arithmetic runs against the INFERRED width, never
+  //     the pane's live width, which is the repair this rule shares with 1b:
+  //     the tenth report's CLI wraps its block at its own width inside a far
+  //     wider pane, and against the pane every continuation head "had room",
+  //     so no gutter wrap ever joined again. Where the block gives no wider
+  //     row, the estimate falls back to the block itself and this guard stops
+  //     constraining — the tail and head checks then carry the rule alone,
+  //     the same price rule 1b pays for surviving resizes.
   if (!tail.endsWith('/')) return null;
   const rest = next.text.slice(gutter[0].length);
   const head = /^\S+/.exec(rest)?.[0] ?? '';
   if (head === '' || head.startsWith('/')) return null;
-  if (prev.lastCol + 1 + head.length <= prev.width) return null;
+  if (prev.lastCol + 1 + head.length <= wrapWidth) return null;
   // The gutter is spaces and a narrow box-drawing character, so its string
   // length is also its cell count — no double-width correction needed.
   return gutter[0].length;

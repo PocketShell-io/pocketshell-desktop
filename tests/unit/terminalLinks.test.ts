@@ -785,6 +785,58 @@ describe('scanBufferLine — a relative path a TUI broke across two rows', () =>
 });
 
 /**
+ * The "PKG=" report, transcribed from the pane: an agent TUI echoes a shell
+ * command inside a `  │ ` block, the block wrapped at its own width inside a
+ * far wider pane, and the long path in the assignment broke after
+ * `python3.12/` onto a gutter continuation. Two stale assumptions refused
+ * the join: the tail gate judged the raw token `PKG="/home/…` and hit the
+ * quote an assignment carries (FORBIDDEN in a path — even though the matcher
+ * itself underlined that path-so-far on row one), and the gutter rule
+ * measured its fit against the pane's live width, where every continuation
+ * head "had room". The gate now reads past the assignment, and the fit runs
+ * against the inferred render width like every other rule's.
+ */
+describe('scanBufferLine — a command echo wrapped inside a KEY=" assignment', () => {
+  const ROW1 = '• Ran PKG="/home/alexey/.cache/uv/archive-v0/jxlQadaEgujN7Zj_8P0GJ/lib/python3.12/';
+  const ROW2 =
+    `  │ site-packages/linkedin_api"; sed -n '40,120p' "$PKG/linkedin.py"; echo ===CLIENT===;`;
+  const ROW3 = `  │ sed -n '1,80p' "$PKG/client.py"`;
+  const PATH =
+    '/home/alexey/.cache/uv/archive-v0/jxlQadaEgujN7Zj_8P0GJ/lib/python3.12/site-packages/linkedin_api';
+
+  /** The pane is 200 wide; the block renders at 87. That gap is the report. */
+  const term = (): Terminal => fakeScreen([ROW1, ROW2, ROW3], 200);
+
+  it('joins the gutter continuation, dropping gutter and assignment alike', () => {
+    // The join stops after ROW2: its own tail (`===CLIENT===;`) is no path
+    // so far, and the third row is a fresh statement, not a continuation.
+    expect(scanBufferLine(term(), 1).text.trimEnd()).toBe(
+      `${ROW1}${ROW2.slice(4)}`,
+    );
+  });
+
+  it('linkifies the whole path across the break, from either row', () => {
+    const fromRow1 = pathLinks(term(), 1, () => ({ sessionName: 'git-foo' }));
+    expect(fromRow1.map((l) => l.text)).toEqual([PATH]);
+    // From `/home` (after `• Ran PKG="`, cell 12) through `linkedin_api` —
+    // the `";` that closes the assignment stays outside the underline.
+    expect(fromRow1[0]?.range).toEqual({ start: { x: 12, y: 1 }, end: { x: 30, y: 2 } });
+
+    // Hovered on the continuation row: the same logical line.
+    expect(pathLinks(term(), 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      PATH,
+    ]);
+  });
+
+  it('opens the whole path, not the directory row one ended at', () => {
+    const files = useFilesStore();
+    pathLinks(term(), 1, () => ({ sessionName: 'git-foo' }))[0]?.activate(CLICK, PATH);
+    // Absolute, so the session cwd is ignored entirely.
+    expect(files.reveal).toBe(PATH);
+  });
+});
+
+/**
  * The other half of the joining rules, and the half that decides whether this
  * feature is trustworthy: two rows that merely follow one another must stay two
  * lines. A join that should not have happened invents a path nothing can open
@@ -883,9 +935,13 @@ describe('scanBufferLine — rows that must NOT be joined', () => {
 
   it('refuses a gutter row whose first token would have fitted above', () => {
     // Both rows carry the block's gutter and the row above ends at a directory,
-    // which is the exact shape rule 2 fires on — except that `done` had sixty
-    // columns of room, so the row above did not end because it was full.
-    expect(scan(['  │ created /tmp/out/', '  │ done'], 80)).toBe('  │ created /tmp/out/');
+    // which is the exact shape rule 2 fires on — except that `done` had room at
+    // the RENDER width, and the block's own fuller row is the proof: the guard
+    // measures against the inferred width (never the pane), and at 27 columns
+    // four more characters were never going to fit after column 21.
+    expect(
+      scan(['  │ created /tmp/out/', '  │ done', 'queued locks released today'], 27),
+    ).toBe('  │ created /tmp/out/');
   });
 
   it('refuses a gutter row when the path above is already finished', () => {
