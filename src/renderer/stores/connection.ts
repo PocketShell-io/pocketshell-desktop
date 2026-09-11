@@ -7,7 +7,8 @@ import type {
   ConnectionState,
   HostEntry,
 } from '../../shared/types';
-import { MAX_ATTEMPTS, ReconnectBackoff } from '../../shared/reconnectBackoff';
+import { MAX_ATTEMPTS } from '../../shared/reconnectBackoff';
+import { ReconnectLoop } from '../reconnectLoop';
 import { useFilesStore } from './files';
 import { useSessionsStore } from './sessions';
 import { useProjectsStore } from './projects';
@@ -24,17 +25,18 @@ import { errorMessage } from '../../shared/errors';
  * and the user was handed a button. The store now answers the drop itself,
  * with the schedule the port-forward work already chose (shared/
  * reconnectBackoff.ts — 5→10→20→40→60s, capped at MAX_ATTEMPTS so a host that
- * is actually gone is not hammered forever). The FSM lives HERE, not in main,
- * for the same reason the old supervisor was cut: this app keeps ONE dialler
- * per connection, and everything a reconnect has to revive — bootstrap,
- * session list, forwards — is already orchestrated from this file's
- * `connect()`. Main only reports the drop; it never redials.
+ * is actually gone is not hammered forever). The FSM lives HERE — in the
+ * renderer, not in main — for the same reason the old supervisor was cut:
+ * this app keeps ONE dialler per connection, and everything a reconnect has
+ * to revive — bootstrap, session list, forwards — is already orchestrated
+ * from this file's `connect()`. Main only reports the drop; it never redials.
+ * The curve-and-timer machinery itself is {@link ReconnectLoop}, a plain
+ * module this store drives; the decisions (when to begin, what a manual
+ * retry means) stay here.
  *
- * Countdown state (`autoRetry`, `retryIn`) is what the lost-link banner
- * renders; `retryNow()` lets the user skip the wait. A manual `reconnect()`
- * supersedes a pending schedule without discarding its attempt budget, and an
- * explicit `disconnect()` cancels the whole thing — nobody wants the app
- * re-dialling a host they just left.
+ * A manual `reconnect()` supersedes a pending schedule without discarding its
+ * attempt budget, and an explicit `disconnect()` cancels the whole thing —
+ * nobody wants the app re-dialling a host they just left.
  */
 export const useConnectionStore = defineStore('connection', () => {
   const hosts = ref<HostEntry[]>([]);
@@ -51,34 +53,27 @@ export const useConnectionStore = defineStore('connection', () => {
    */
   const lastKeyPath = ref<string | undefined>(undefined);
 
-  /** The pending automatic retry, or null when no FSM is mid-recovery. */
-  const autoRetry = ref<{ attempt: number; retryAt: number } | null>(null);
-  /** Seconds until the pending retry fires — the banner's countdown. */
-  const retryIn = ref(0);
-  /**
-   * True from the drop until recovery lands (or is cancelled). The banner
-   * reads this so it does not blink off during each dial: state sits at
-   * 'connecting' while a scheduled retry is on the wire, and a strip gated on
-   * `state === 'lost'` alone would disappear exactly when it says
-   * "Reconnecting…".
-   */
-  const recovering = ref(false);
-
-  let backoff: ReconnectBackoff | null = null;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
-  let countdownTimer: ReturnType<typeof setInterval> | null = null;
   /**
    * The old id while a reconnect is replacing it. The explicit close emits an
    * `idle` state asynchronously; ignore that stale event while the workspace
    * is still mounted on the old id, or it can hide the reconnect banner.
    */
   let replacingConnectionId: ConnectionId | null = null;
-  /**
-   * Bumped on every cancellation, so a dial that was already in flight when
-   * the user disconnected (or hit Retry now) cannot finish into state that no
-   * longer wants it — the same generation guard the auto-connect latch uses.
-   */
-  let generation = 0;
+
+  const loop = new ReconnectLoop({
+    hasTarget: () => activeHost.value != null,
+    dial: reconnect,
+    onDialFailed: () => {
+      // connect() lands a failed dial on 'idle' — the same value a fresh app
+      // has. The link is still gone, so put the state back where the banner
+      // and the next curve step expect it.
+      state.value = 'lost';
+    },
+    onGiveUp: () => {
+      state.value = 'lost';
+      error.value = `Could not reconnect after ${MAX_ATTEMPTS} attempts.`;
+    },
+  });
 
   /**
    * Learn when the transport drops.
@@ -113,7 +108,7 @@ export const useConnectionStore = defineStore('connection', () => {
     state.value = payload.state;
     if (payload.state === 'lost') {
       error.value = 'Connection lost';
-      startAutoReconnect();
+      loop.begin();
     }
   });
 
@@ -135,128 +130,10 @@ export const useConnectionStore = defineStore('connection', () => {
     if (state.value !== 'connected') return; // main's event beat us to it
     state.value = 'lost';
     error.value = 'Connection lost';
-    startAutoReconnect();
+    loop.begin();
     // No reason to make the user wait out the first 5s: the resume IS the
     // likely recovery moment (laptop opened, network back), so dial now.
     await retryNow();
-  }
-
-  /**
-   * Begin the automatic recovery: fresh curve, first retry in 5s.
-   *
-   * Idempotent — main's keepalive and the wake probe can both report the same
-   * dead link, and only one loop may own the schedule.
-   */
-  function startAutoReconnect(): void {
-    if (backoff || !activeHost.value) return;
-    backoff = new ReconnectBackoff();
-    recovering.value = true;
-    const gen = ++generation;
-    scheduleRetry(gen);
-  }
-
-  /** Wait out the next step of the curve, then dial. */
-  function scheduleRetry(gen: number): void {
-    const plan = backoff?.next();
-    if (!plan) {
-      giveUp(gen);
-      return;
-    }
-    autoRetry.value = { attempt: plan.attempt, retryAt: plan.retryAtEpochMs };
-    startCountdown(plan.retryAtEpochMs);
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      stopCountdown();
-      autoRetry.value = null;
-      void dialRecovered(gen);
-    }, plan.delayMs);
-  }
-
-  /** One dial inside the recovery loop. */
-  async function dialRecovered(gen: number): Promise<void> {
-    if (gen !== generation || !activeHost.value) return;
-    const ok = await reconnect();
-    if (gen !== generation) return;
-    if (!ok) {
-      // connect() lands a failed dial on 'idle' — the same value a fresh app
-      // has. The link is still gone, so put the state back where the banner
-      // and the next curve step expect it, and wait again.
-      state.value = 'lost';
-      scheduleRetry(gen);
-    }
-  }
-
-  /**
-   * The budget is spent: stop dialling and say so. The state stays 'lost' so
-   * the banner keeps standing — recovery is still available, but now it is the
-   * user's button, not a timer.
-   */
-  function giveUp(gen: number): void {
-    if (gen !== generation) return;
-    backoff = null;
-    autoRetry.value = null;
-    recovering.value = false;
-    stopCountdown();
-    state.value = 'lost';
-    error.value = `Could not reconnect after ${MAX_ATTEMPTS} attempts.`;
-  }
-
-  /** Stop the countdown ticker; safe to call when it is not running. */
-  function stopCountdown(): void {
-    if (countdownTimer) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-    }
-    retryIn.value = 0;
-  }
-
-  /** The auto-reconnect countdown label ticks once a second. */
-const COUNTDOWN_TICK_MS = 1_000;
-function startCountdown(retryAt: number): void {
-    stopCountdown();
-    const tick = (): void => {
-      retryIn.value = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
-    };
-    tick();
-    countdownTimer = setInterval(tick, COUNTDOWN_TICK_MS);
-  }
-
-  /**
-   * Tear down the automatic schedule — a user disconnect means it. The
-   * generation bump also orphanes a dial already on the wire, whose success
-   * would otherwise revive a connection the user just closed.
-   */
-  function cancelAutoReconnect(): void {
-    generation += 1;
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
-    }
-    stopCountdown();
-    backoff = null;
-    autoRetry.value = null;
-    recovering.value = false;
-  }
-
-  /**
-   * Skip the wait: dial now, under the running FSM's budget.
-   *
-   * With no FSM running this is a plain `reconnect()` — the button's old
-   * behaviour, which is what the banner falls back to once the budget is
-   * spent.
-   */
-  async function retryNow(): Promise<void> {
-    if (!backoff) {
-      await reconnect();
-      return;
-    }
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
-    }
-    stopCountdown();
-    autoRetry.value = null;
-    await dialRecovered(generation);
   }
 
   async function loadHosts(): Promise<void> {
@@ -281,7 +158,7 @@ function startCountdown(retryAt: number): void {
     // A manual dial supersedes a pending automatic one. The backoff keeps its
     // attempt position: a user pressing the button 4s into a 5s wait is saying
     // "now", not "start the curve over" — the schedule only resets on success.
-    cancelPendingRetryTimer();
+    loop.clearPendingStep();
     const previousConnectionId = connectionId.value;
     if (previousConnectionId) {
       replacingConnectionId = previousConnectionId;
@@ -292,24 +169,25 @@ function startCountdown(retryAt: number): void {
     const ok = await connect(host, lastKeyPath.value, previousConnectionId ?? undefined);
     if (ok && connectionId.value) {
       replacingConnectionId = null;
-      backoff?.reset();
-      backoff = null;
-      autoRetry.value = null;
-      recovering.value = false;
-      stopCountdown();
+      loop.succeeded();
       await recoverSurfaces(connectionId.value);
     }
     return ok;
   }
 
-  /** Clear a not-yet-fired schedule step. See {@link reconnect}. */
-  function cancelPendingRetryTimer(): void {
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
+  /**
+   * Skip the wait: dial now, under the running curve's budget.
+   *
+   * With no curve running this is a plain `reconnect()` — the button's old
+   * behaviour, which is what the banner falls back to once the budget is
+   * spent.
+   */
+  async function retryNow(): Promise<void> {
+    if (!loop.running) {
+      await reconnect();
+      return;
     }
-    stopCountdown();
-    autoRetry.value = null;
+    await loop.skipWait();
   }
 
   /**
@@ -423,7 +301,7 @@ function startCountdown(retryAt: number): void {
   async function disconnect(): Promise<void> {
     // First, not last: it must also orphan a recovery dial already on the
     // wire, whose success would otherwise undo the disconnect.
-    cancelAutoReconnect();
+    loop.cancel();
     if (connectionId.value) {
       // Drop this host's browsing state BEFORE the id is forgotten. The files
       // store is a singleton keyed by connection, and this is the guarantee
@@ -450,9 +328,9 @@ function startCountdown(retryAt: number): void {
     error,
     bootstrap,
     activeHost,
-    autoRetry,
-    retryIn,
-    recovering,
+    autoRetry: loop.autoRetry,
+    retryIn: loop.retryIn,
+    recovering: loop.recovering,
     loadHosts,
     connect,
     reconnect,
