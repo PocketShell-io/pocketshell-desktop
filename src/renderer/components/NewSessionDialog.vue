@@ -184,7 +184,6 @@ const {
   onRoot,
 } = useNewSessionFolders({ projects, connection, route, busy, commit });
 </script>
-
 <template>
   <!-- Step two, INSTEAD of step one rather than on top of it. See `agentStep`.
        It is handed the PREDICTED folder, which is what lets it be answered
