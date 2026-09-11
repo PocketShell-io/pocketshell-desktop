@@ -84,7 +84,10 @@ changed the code.
 goes into composables (`usePaneWidth`, `useStripDrag`); cross-component state
 lives in stores; a component over ~1000 lines is flagged for extraction with
 the specific sections named. Templates
-do not compute; computeds do not mutate.
+do not compute; computeds do not mutate. The flag is mechanical:
+`tests/unit/designGates.test.ts` fails any renderer `.vue` over 1000 lines
+unless the file is exempted there with its extraction queue named — the
+exemption list is the follow-up queue, not a licence.
 
 ---
 

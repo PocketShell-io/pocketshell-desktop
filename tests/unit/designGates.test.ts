@@ -112,4 +112,43 @@ describe('design gates', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * Gate 3 — component size. CLEAN_CODE rule 12: a component over ~1000
+   * lines is flagged for extraction with the specific sections named. The
+   * flag is this gate; an over-limit file must be listed in EXEMPT with the
+   * extraction queue that will bring it under, and a NEW file over the line
+   * fails here rather than quietly joining the list.
+   *
+   * The eight exemptions are the recorded queue, not a licence: TerminalView
+   * (was 1846) and the stores' logic already left through this door, and the
+   * remaining files shrink the same way — logic first, then template splits.
+   */
+  it('has no .vue file over 1000 lines without a recorded exemption', () => {
+    const MAX_LINES = 1000;
+    /** Over-limit files, each with the extraction queue that retires it. */
+    const EXEMPT: Record<string, string> = {
+      'views/FolderWorkspaceView.vue':
+        'tab/pane orchestration; rename, create/launch, reveal and stop clusters remain to move out',
+      'components/PromptComposer.vue':
+        'composer UI; its pipelines are already extracted (composerSend, AttachmentStager) — template split pending',
+      'components/SessionTree.vue':
+        'template/style-heavy session tree; subcomponent split pending',
+      'components/NewSessionDialog.vue':
+        'three-route creation form; subcomponent split pending',
+      'views/SettingsView.vue':
+        'settings panels; per-section component split pending',
+      'components/DoodleCanvas.vue':
+        'canvas and palette UI; drawing math already in doodleGeometry.ts',
+      'views/FilesView.vue':
+        'five viewer states; per-viewer component extraction pending',
+      'components/FileTree.vue':
+        'tree rows, keyboard and menu logic; extraction pending',
+    };
+    const offenders = vueFiles(RENDERER)
+      .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
+      .filter(({ file, lines }) => lines > MAX_LINES && !(file in EXEMPT))
+      .map(({ file, lines }) => `${file} (${lines} lines)`);
+    expect(offenders).toEqual([]);
+  });
 });
