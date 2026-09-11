@@ -59,9 +59,14 @@ import, `preload/` is the bridge. Two `tsconfig.json`s:
 The non-obvious residents, by name: `renderer/parseStall.ts` +
 `xtermWriteBuffer.ts` are the xterm stall watchdog and write-loop repair
 (§9.1); `terminalPaths.ts` / `terminalLinks.ts` are terminal path detection
-and click-to-Files; `TmuxClientPool.ts` keeps the per-tab PTY clients; the
-`helper/` client speaks `pocketshell <cmd>` over exec channels and probes
-and installs itself on a host missing it.
+and click-to-Files; `terminalPane.ts` is the terminal pane's PTY-lifecycle
+controller (§3's join model as code — the component decides when a PTY
+opens, the controller does how); `reconnectLoop.ts` is the reconnect FSM's
+schedule machinery, driven by the connection store (§9); `remotePaths.ts`
+resolves printed or typed paths for the SFTP channel; `useWorkspaceMemory.ts`
+holds the folder workspace's remembered tab state; `TmuxClientPool.ts` keeps
+the per-tab PTY clients; the `helper/` client speaks `pocketshell <cmd>` over
+exec channels and probes and installs itself on a host missing it.
 
 ---
 
@@ -246,12 +251,34 @@ channel. The env panel layers that secret-via-stdin safety on for the
 
 ## 7. State management
 
-Pinia stores in the renderer hold **view state only** — never secrets — one
-per domain (`connection`, `sessions`, `shells`, `projects`, `files`,
-`agents`, `composer`, `forwards`, `settings`, `update`); the names are the
-directories. Streams (terminal bytes, tail lines, forward bytes) are pushed
-from main to renderer over IPC events keyed by id; the stores subscribe and
-the components render.
+The renderer is layered; each layer talks only to the one below:
+
+- **Components** (`views/`, `components/`) render. Templates do not compute;
+  input policy, gestures and focus are theirs.
+- **Composables and controllers** (`usePaneWidth`, `useStripDrag`,
+  `useWorkspaceMemory`, `terminalPane.ts`) own reusable reactive logic and
+  per-surface machinery.
+- **Pinia stores** (`stores/`) hold cross-component state — never secrets —
+  one per domain (`connection`, `sessions`, `shells`, `projects`, `files`,
+  `agents`, `composer`, `forwards`, `settings`, `sync`, `update`). Stores
+  orchestrate their domain: the connection store drives the reconnect loop
+  (§9), the files store runs the open/save pipelines over the SFTP bridge.
+- **Plain TS modules** hold the extractable logic — `reconnectLoop.ts`,
+  `remotePaths.ts`, `terminalLinks.ts`, `sessionTree.ts` and the rest — which
+  is what keeps it unit-testable without Pinia and out of both stores and
+  views.
+
+Everything crosses to main through the one typed bridge: components import
+`window.api` only as `src/renderer/ipc.ts`, whose type is the preload's
+`Api`. A view or pane MAY call `api` directly for a self-contained concern no
+other surface shares (UpdateBanner's open-the-release actions, a tree's
+one-shot probe); anything two surfaces need goes through a store. Streams
+(terminal bytes, tail lines, forward bytes) are pushed from main to renderer
+over IPC events keyed by id; the stores subscribe and the components render.
+
+The layering has teeth: CLEAN_CODE.md rule 12 is executed by
+`tests/unit/designGates.test.ts`, which fails any component over 1000 lines
+whose exemption is not recorded there with its extraction queue.
 
 ---
 
