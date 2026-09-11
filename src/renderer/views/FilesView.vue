@@ -16,28 +16,17 @@
 // `worker-src` falls back to it), which is exactly what Monaco's language
 // services need — the dev-works/packaged-dies failure. See the header of
 // components/CodeEditor.vue for the probe output.
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref } from 'vue';
 import { useConnectionStore } from '../stores/connection';
 import { useFilesStore } from '../stores/files';
 import { hasPreview, isEditable } from '../fileKind';
-import { formatBytes } from '../../shared/byteSize';
 import { useSettingsStore } from '../stores/settings';
-import { resolveTheme } from '../themes';
 import { isShortcut } from '../../shared/shortcuts';
-import {
-  fitPercent,
-  formatImageZoom,
-  IMAGE_ZOOM_MAX,
-  IMAGE_ZOOM_MIN,
-  overflowsPane,
-  sliderToZoom,
-  stepImageZoom,
-  zoomToSlider,
-} from '../imageZoom';
 import FileTree from '../components/FileTree.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import EnvPanelView from './EnvPanelView.vue';
-import { usePaneWidth } from '../usePaneWidth';
+import { useFilesPane } from '../useFilesPane';
+import { useImageViewer } from '../useImageViewer';
 
 /**
  * Loaded on demand. CodeMirror is ~680 KB of the renderer, and a workspace
@@ -74,169 +63,53 @@ const files = useFilesStore();
 const settings = useSettingsStore();
 const connId = computed(() => connection.connectionId);
 
-// ---------------------------------------------------------------------------
-// Tree pane width
-// ---------------------------------------------------------------------------
-/**
- * The file tree used to be CONTENT-sized — `min-width: 260px` over an `auto`
- * flex basis — so it grew to the longest filename in whatever directory was
- * open and shrank again on the way back out. Browsing therefore moved the
- * editor beside it on nearly every click, which is what the user objected to.
- *
- * It is a definite basis now, and drag-resizable, because a fixed width that is
- * wrong for your filenames is a different complaint of the same shape. The
- * mechanism is the session panel's, deliberately: same clamp, same
- * clamp-on-READ as well as on write, same one-write-per-drag. See
- * HostWorkspaceView.vue, which explains why the read is clamped too — a stored
- * value can predate a change to the clamp, and a hand-edited or corrupt entry
- * must not be able to strand the pane.
- *
- * ## Why localStorage and not the settings store
- *
- * Because it is a pixel width of a pane in this window, which is what the
- * session panel's width is, and that one lives in localStorage. The settings
- * store is for preferences the user sets in the Settings overlay and reasons
- * about by name; a number you arrive at by dragging until it looks right is not
- * one of those.
- *
- * ## Why it is shared by every Files tab, not stored per tab
- *
- * A Files TAB remembers its own DIRECTORY, because where you are browsing is a
- * fact about that tab. How wide the pane is, is a fact about how you like to
- * look at files — and per-tab widths would mean the pane jumping as you moved
- * between two Files tabs, which is the original complaint wearing a hat. It is
- * app-level for the same reason the composer's geometry is (stores/composer.ts:
- * "PREFERENCES ABOUT THE TOOL").
- */
-const MIN_TREE_WIDTH = 180;
-const MAX_TREE_WIDTH = 640;
-const DEFAULT_TREE_WIDTH = 260;
-// The origin is measured at drag START from the pane's own left edge rather
-// than from `clientX` directly: this view is inside the workspace, which is
-// inside the session panel's splitter, so `clientX` is not the tree's width.
-// HostWorkspaceView can use `clientX` because its panel starts at x=0.
-const { style: treeStyle, onDragStart: onTreeDragStart } = usePaneWidth({
-  storageKey: 'pocketshell.filesTreeWidth',
-  min: MIN_TREE_WIDTH,
-  max: MAX_TREE_WIDTH,
-  defaultWidth: DEFAULT_TREE_WIDTH,
-  measureOrigin: (e) =>
-    (e.currentTarget as HTMLElement).parentElement?.getBoundingClientRect().left ?? 0,
-});
-// `flex: 0 0 <n>px` (the composable's style) and not `width`, because the tree
-// is a flex item: a `width` would still be overridden by `flex-shrink` the
-// moment the editor beside it wanted room, and the pane would go back to
-// moving on its own.
-
-onMounted(async () => {
-  if (connId.value) await files.open(connId.value, props.startPath, props.sessionKey);
-  // AFTER `open()`, never before: `open()` restores the remembered directory
-  // and resets the open file, so a reveal applied first would be undone by the
-  // very mount that was triggered to show it.
-  await applyReveal();
+// The pane's model — tree width, open/reveal lifecycle, env overlay, actions,
+// and the open document's presentation sentences — is useFilesPane.ts; the
+// image viewer's zoom, pan and backdrop are useImageViewer.ts. Both carry
+// their own decision records.
+const {
+  treeStyle,
+  onTreeDragStart,
+  envOpen,
+  openName,
+  sizeLabel,
+  previewSandbox,
+  previewNote,
+  onOpenFile,
+  onSave,
+  onDownload,
+  onReloadPreview,
+} = useFilesPane({
+  connection,
+  files,
+  settings,
+  startPath: () => props.startPath,
+  sessionKey: () => props.sessionKey,
 });
 
-/**
- * Show a path someone clicked in the terminal.
- *
- * Two entry points because the tab may or may not already be mounted when the
- * request lands. Clicking a path in the terminal is the unmounted case — the
- * workspace switches tabs, this view mounts, and `onMounted` above takes the
- * request. The watch covers a request that arrives while Files is already on
- * screen. `takeReveal()` clears the request, so whichever fires first wins and
- * a path is never opened twice.
- */
-async function applyReveal(): Promise<void> {
-  const target = files.takeReveal();
-  if (target == null || !connId.value) return;
-  await files.revealPath(connId.value, target);
-}
-
-watch(
-  () => files.reveal,
-  async (next) => {
-    if (next != null) await applyReveal();
-  },
-);
-
-// The session's working directory can arrive AFTER this view mounts — the
-// sessions store is refreshed lazily, so a workspace opened by deep link (or
-// straight after creating a session) renders with `startPath` undefined and
-// only learns the real directory a moment later. Without this watch the tab
-// stays wherever it landed, which is the login home, and looks for all the
-// world like the session really is in `~`. Re-opening is safe because the
-// store prefers a remembered position, so a user who has already navigated
-// somewhere is not yanked back.
-watch(
-  () => props.startPath,
-  async (next, prev) => {
-    if (!connId.value || next === prev || !next) return;
-    await files.open(connId.value, next, props.sessionKey);
-  },
-);
-
-// Deliberately NO `files.clear()` on unmount. The Files tab lives behind a
-// `v-if`, so switching to Terminal unmounts it — and clearing here is what
-// made the user lose their place every time they looked at the terminal. The
-// guarantee `clear()` exists for (one connection's listing must never be
-// shown for another) is kept by clearing on DISCONNECT instead.
-
-// ---------------------------------------------------------------------------
-// The env editor (FEATURES.md F16)
-// ---------------------------------------------------------------------------
-/**
- * The server-side env panel for the folder being browsed. The TREE decides
- * when to offer it (it sees the listing, so `.env` / `.envrc` visibility is
- * free there) and this view owns the overlay — same division as `openInNewTab`,
- * where the tree says "somewhere else" and the parent builds it. The panel
- * edits `files.cwd`'s env: whichever directory this tab is standing in, which
- * is exactly "the folder being browsed" that F16 names.
- */
-const envOpen = ref(false);
-
-async function onOpenFile(name: string): Promise<void> {
-  if (!connId.value) return;
-  await files.openFile(connId.value, name);
-}
-
-async function onSave(): Promise<void> {
-  if (!connId.value) return;
-  await files.save(connId.value);
-}
-
-async function onDownload(): Promise<void> {
-  if (!connId.value) return;
-  await files.download(connId.value);
-}
-
-async function onReloadPreview(): Promise<void> {
-  if (!connId.value) return;
-  await files.reloadPreview(connId.value);
-}
-
-/**
- * Re-render an open markdown preview when the theme changes.
- *
- * The frame is a separate document on a separate origin, so the app's tokens
- * do not cascade into it and nothing inside it can be told about a repaint —
- * the palette is baked in at mint time (see the store's `restylePreview`). A
- * markdown preview left over from the previous theme would sit there in the
- * old colours next to a repainted app, which is the sort of thing that reads
- * as a rendering bug rather than as a limitation.
- *
- * Watched on the RESOLVED record's id rather than on `settings.theme`, because
- * `system` is a rule rather than a theme: flipping Windows between light and
- * dark changes what is painted without changing the stored setting, and the
- * preview has to follow that too. Only markdown reacts — an HTML file brings
- * its own styling and is deliberately not themed by us.
- */
-watch(
-  () => resolveTheme(settings.theme).id,
-  async () => {
-    if (!connId.value) return;
-    await files.restylePreview(connId.value);
-  },
-);
+const {
+  imageNatural,
+  imagePaneEl,
+  imageZoomLabel,
+  zoomSliderValue,
+  isFit,
+  isActualSize,
+  canZoomIn,
+  canZoomOut,
+  imageStyle,
+  imageOverflows,
+  panning,
+  imageBgLight,
+  onImageLoad,
+  zoomIn,
+  zoomOut,
+  zoomActualSize,
+  zoomFit,
+  onZoomSlider,
+  onPanStart,
+  onPanMove,
+  onPanEnd,
+} = useImageViewer({ files });
 
 /**
  * Template ref on the tree, so the chord below can put the caret in its path
@@ -309,266 +182,6 @@ function focus(): void {
 // The workspace types its ref as `{ focus?: () => void }` and calls it
 // optionally; this is the other half of that contract.
 defineExpose({ focus });
-
-/** Basename of the open file, for the viewer headings. */
-const openName = computed(() => files.openPath?.split('/').pop() ?? '');
-const sizeLabel = computed(() => (files.openSize > 0 ? formatBytes(files.openSize) : ''));
-
-/**
- * The preview iframe's sandbox, per open document.
- *
- * EMPTY for HTML and SVG — the maximally restrictive sandbox, see the long
- * argument beside the frame. A MARKDOWN preview adds exactly one token,
- * `allow-popups`, and nothing else: markdown source may carry raw-HTML badge
- * links written with `target="_blank"`, and without the token such a click is
- * swallowed by the sandbox itself — no event, no navigation, nothing any
- * handler in main can see. With it, the click arrives at the main window's
- * `setWindowOpenHandler`, which allow-lists web URLs into the system browser
- * and denies every in-app window, so the popup document itself never exists.
- * That is one new capability, and it is the same one plain links already have
- * via `will-frame-navigate`: a click can hand a web URL to the OS. It runs no
- * code, opens no socket, and the frame stays scriptless either way.
- */
-const previewSandbox = computed(() =>
-  files.openMode === 'markdown' ? 'allow-popups' : '',
-);
-
-/**
- * What the preview toolbar says about the render, in the order the reader
- * needs it.
- *
- * This line is not decoration. A page missing its stylesheet and a page that
- * genuinely looks unstyled are IDENTICAL on screen, and shipping a preview
- * that cannot tell them apart is the specific failure this feature was not
- * allowed to have. So every reason a render might be incomplete gets a
- * sentence:
- *
- *   - unsaved edits, which the preview does not show at all (it renders the
- *     host's copy, and the buffer beside it says something else);
- *   - scripts, which never run — a page that builds itself at runtime is a
- *     shell here, and saying so is the difference between "degraded" and
- *     "broken";
- *   - resources on remote origins, which are refused so that rendering a
- *     page cannot tell a third party which file on which host is being
- *     inspected. This one is derived from the SOURCE rather than counted,
- *     and it has to be: the refusal happens inside this renderer, under the
- *     frame's own CSP, so the request never reaches main and main can never
- *     report it. Without the line, a page whose images all live on a CDN
- *     would say "0 blocked" beside a grid of broken-image icons;
- *   - assets refused for being outside the page's own folder, which is the
- *     one real limit of the scoping in HtmlPreviewService and the one a user
- *     can act on (open the page from its project root instead);
- *   - assets that were asked for and are not there, which is usually the
- *     page's own bug and is worth distinguishing from ours;
- *   - the budget cap, which means the render is knowingly partial.
- *
- * The counts come from main and arrive asynchronously as the frame loads, so
- * the line settles a moment after the page paints. That is the honest
- * ordering — we cannot know what a page will ask for until it asks.
- */
-const previewNote = computed(() => {
-  const parts: string[] = [];
-  if (files.dirty) parts.push('showing the saved copy — unsaved edits are not rendered');
-  // Raw HTML in a markdown file is passed through by the converter and is
-  // subject to exactly the same refusals as an HTML file's own markup, so a
-  // README containing a `<script>` gets the same sentence for the same reason.
-  if (files.openHasScripts) parts.push('scripts are not run');
-  if (files.openHasRemoteRefs) parts.push('remote resources are not loaded');
-  const stats = files.previewStats;
-  if (stats) {
-    if (stats.loaded > 0) parts.push(`${stats.loaded} asset${stats.loaded === 1 ? '' : 's'} loaded`);
-    if (stats.blocked > 0) {
-      parts.push(`${stats.blocked} outside this folder — not loaded`);
-    }
-    if (stats.missing > 0) parts.push(`${stats.missing} missing`);
-    if (stats.capped) parts.push('asset budget reached — render is partial');
-  }
-  return parts.join(' · ');
-});
-
-// ---------------------------------------------------------------------------
-// Image zoom
-// ---------------------------------------------------------------------------
-/**
- * The image viewer's zoom, shared by the −/+ pair, the slider and the
- * Fit / 100% buttons through ONE number: `zoomOverride` when the user has
- * named a percentage, otherwise the measured fit answer. Nothing stores Fit
- * — it is a function of the decoded size and the pane, so a stored value
- * would go stale the moment the tree splitter moved; it is recomputed and
- * the picture follows the pane.
- *
- * State lives HERE, not in the store, deliberately: it is inspection state
- * for the file on screen, not a preference and not browsing position. A new
- * `openUrl` (a different file, or close) resets to Fit, and so does leaving
- * the tab — the Files tab is behind a `v-if`, and what survives that is the
- * store's `RememberedPosition`, which is about WHERE you are, not how you
- * were looking.
- */
-/** Decoded size of the open image, from the `<img>` load event. */
-const imageNatural = ref<{ w: number; h: number } | null>(null);
-/** CSS size of the pane the image sits in, from a ResizeObserver. */
-const imagePane = ref<{ w: number; h: number } | null>(null);
-/** Manual zoom in percent of natural size; null = Fit mode. */
-const zoomOverride = ref<number | null>(null);
-
-const imageFit = computed(() => {
-  const n = imageNatural.value;
-  const p = imagePane.value;
-  if (!n || !p) return null;
-  return fitPercent(n.w, n.h, p.w, p.h);
-});
-const imageZoom = computed(() => zoomOverride.value ?? imageFit.value);
-const imageZoomLabel = computed(() =>
-  imageZoom.value == null ? '' : formatImageZoom(imageZoom.value),
-);
-const zoomSliderValue = computed(() =>
-  imageZoom.value == null ? 0 : zoomToSlider(imageZoom.value),
-);
-const isFit = computed(() => zoomOverride.value === null);
-const isActualSize = computed(() => zoomOverride.value === 100);
-const canZoomIn = computed(() => imageZoom.value != null && imageZoom.value < IMAGE_ZOOM_MAX);
-const canZoomOut = computed(() => imageZoom.value != null && imageZoom.value > IMAGE_ZOOM_MIN);
-
-/**
- * Explicit pixel width — the one style the image needs in every mode, which
- * is why the old `max-width`/`max-height` CSS is gone: a manual zoom has to
- * be allowed to EXCEED the pane (and scroll), and a constraint that only
- * shrinks cannot express that. Height follows the aspect ratio.
- */
-const imageStyle = computed(() => {
-  const n = imageNatural.value;
-  if (!n || imageZoom.value == null) return undefined;
-  return { width: `${(n.w * imageZoom.value) / 100}px` };
-});
-
-function onImageLoad(e: Event): void {
-  const img = e.target as HTMLImageElement;
-  imageNatural.value = img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null;
-}
-
-function zoomIn(): void {
-  if (imageZoom.value != null) zoomOverride.value = stepImageZoom(imageZoom.value, 1);
-}
-function zoomOut(): void {
-  if (imageZoom.value != null) zoomOverride.value = stepImageZoom(imageZoom.value, -1);
-}
-function zoomActualSize(): void {
-  zoomOverride.value = 100;
-}
-function zoomFit(): void {
-  zoomOverride.value = null;
-}
-function onZoomSlider(e: Event): void {
-  zoomOverride.value = sliderToZoom(Number((e.target as HTMLInputElement).value));
-}
-
-// A new URL is a new file: the decoded size and the zoom are about the old
-// one. (Fit mode is the default, so resetting the override alone is not
-// enough — the stale natural size must not size the next image.)
-watch(
-  () => files.openUrl,
-  () => {
-    zoomOverride.value = null;
-    imageNatural.value = null;
-  },
-);
-
-/**
- * Drag-to-pan. Once a manual zoom lets the picture exceed the pane, the
- * native scrollbars are joined by the gesture every image viewer shares:
- * the cursor becomes a hand, and a held drag moves the picture — scrollLeft/
- * scrollTop against the pointer delta, nothing more. The overflow test is
- * the pure `overflowsPane` (same measured inputs as Fit), so the hand
- * appears and disappears with the splitter and the zoom slider; at Fit it
- * never appears, because there the pane holds the whole picture and there
- * is nothing to pan into.
- *
- * The drag is pointer events with capture, not mouse events, so a drag that
- * leaves the pane keeps panning and a lost pointer (button up outside the
- * window, alt-tab) ends it through `pointercancel` rather than sticking.
- */
-const imageOverflows = computed(() => {
-  const n = imageNatural.value;
-  const p = imagePane.value;
-  if (!n || !p || imageZoom.value == null) return false;
-  return overflowsPane(n.w, n.h, imageZoom.value, p.w, p.h);
-});
-const panDrag = ref<{
-  id: number;
-  startX: number;
-  startY: number;
-  left: number;
-  top: number;
-} | null>(null);
-const panning = computed(() => panDrag.value != null);
-
-function onPanStart(e: PointerEvent): void {
-  if (!imageOverflows.value || e.button !== 0) return;
-  const el = imagePaneEl.value;
-  if (!el) return;
-  e.preventDefault();
-  panDrag.value = {
-    id: e.pointerId,
-    startX: e.clientX,
-    startY: e.clientY,
-    left: el.scrollLeft,
-    top: el.scrollTop,
-  };
-  el.setPointerCapture?.(e.pointerId);
-}
-function onPanMove(e: PointerEvent): void {
-  const d = panDrag.value;
-  const el = imagePaneEl.value;
-  if (!d || !el || e.pointerId !== d.id) return;
-  el.scrollLeft = d.left - (e.clientX - d.startX);
-  el.scrollTop = d.top - (e.clientY - d.startY);
-}
-function onPanEnd(e: PointerEvent): void {
-  if (panDrag.value?.id !== e.pointerId) return;
-  panDrag.value = null;
-}
-
-/**
- * The ground the picture is inspected on: the terminal surface it has always
- * sat on, or white. A drawing authored against one reads wrongly on the
- * other — dark-stroked line art vanishes into the dark ground, white-backed
- * art haloes against white — and which ground is wrong is a fact about the
- * picture, so the viewer offers both.
- *
- * Component state like the zoom, and for the same reason: a fact about
- * LOOKING, not a preference to name in Settings. Unlike the zoom it is NOT
- * reset when a new file opens — the zoom is derived from the file and goes
- * stale, this says nothing about the file at all — so a run of pictures can
- * be checked against the same backdrop. It dies with the tab, as the zoom
- * does.
- */
-const imageBgLight = ref(false);
-
-/**
- * The pane is MEASURED, not assumed: `fitPercent` needs the scroll area's
- * CSS box, which changes under the splitter drag, a window resize and the
- * tree pane's own width. The observer is (re)bound by watching the template
- * ref — the element exists only while an image is open, and a watcher on a
- * ref fires exactly when Vue assigns it.
- *
- * The `typeof` guard is for jsdom, which has no ResizeObserver; the tests
- * stub one, but a bare import-time `new` would still be the wrong place —
- * the element can simply not be there yet.
- */
-const imagePaneEl = ref<HTMLElement | null>(null);
-let imagePaneObserver: ResizeObserver | null = null;
-watch(imagePaneEl, (el) => {
-  imagePaneObserver?.disconnect();
-  imagePaneObserver = null;
-  imagePane.value = null;
-  if (!el || typeof ResizeObserver === 'undefined') return;
-  imagePaneObserver = new ResizeObserver((entries) => {
-    const box = entries[0]?.contentRect;
-    if (box) imagePane.value = { w: box.width, h: box.height };
-  });
-  imagePaneObserver.observe(el);
-});
-onUnmounted(() => imagePaneObserver?.disconnect());
 </script>
 
 <template>

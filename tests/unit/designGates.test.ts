@@ -140,8 +140,6 @@ describe('design gates', () => {
         'settings panels; per-section component split pending',
       'components/DoodleCanvas.vue':
         'canvas and palette UI; drawing math already in doodleGeometry.ts',
-      'views/FilesView.vue':
-        'five viewer states; per-viewer component extraction pending',
     };
     const offenders = vueFiles(RENDERER)
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
