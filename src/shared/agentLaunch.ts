@@ -367,8 +367,8 @@ export interface LaunchChoice {
  * - **`--dir` uses {@link shellQuoteRemotePath}**, not a plain quote. This is
  *   the one deliberate divergence from the phone, which single-quotes the
  *   directory flat. A desktop folder key can be a literal, unexpanded `~/git/x`
- *   — tmux reports cwds that way and `stripTilde` in stores/files.ts exists
- *   because of it — and `'~/git/x'` inside single quotes is four literal
+ *   — tmux reports cwds that way and `stripTilde` in renderer/remotePaths.ts
+ *   exists because of it — and `'~/git/x'` inside single quotes is four literal
  *   characters the shell will not expand, so the helper would look for a
  *   directory named `~`. `shellQuoteRemotePath` emits `$HOME/'git/x'`: the
  *   prefix expands, the rest is inert data, and a folder called

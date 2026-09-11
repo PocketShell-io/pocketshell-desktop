@@ -333,7 +333,7 @@ function isPath(p: string, hasPosition: boolean): boolean {
   // presence means the flattening picked up something that is not text.
   if (hasControlChar(p)) return false;
 
-  // `~/x` is our own home and `stripTilde` in the files store knows how to
+  // `~/x` is our own home and `stripTilde` in remotePaths.ts knows how to
   // resolve it. `~other/x` is somebody else's, which relative resolution would
   // silently get wrong — the same reason `stripTilde` refuses to touch it.
   if (p.startsWith('~') && !p.startsWith('~/')) return false;

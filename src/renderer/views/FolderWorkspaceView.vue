@@ -737,7 +737,7 @@ const rootPath = computed(() => rootHostPath(folderPath.value ?? folderKey.value
  * What `requestReveal` parks is what SFTP needs — either absolute, or relative
  * to the LOGIN HOME, because an SFTP session's relative root is that home. That
  * is why a `~/…` path printed by an agent opens correctly without anyone
- * expanding `$HOME` (see `resolveRemotePath`/`stripTilde` in stores/files.ts),
+ * expanding `$HOME` (see `resolveRemotePath`/`stripTilde` in remotePaths.ts),
  * and it is why this function exists only for the COMPARISON below: telling
  * inside-the-folder from outside is the one job that does need the home spelled
  * out. When the host has not reported one, there is no comparison to make.

@@ -18,7 +18,8 @@
 // components/CodeEditor.vue for the probe output.
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useConnectionStore } from '../stores/connection';
-import { useFilesStore, hasPreview, isEditable } from '../stores/files';
+import { useFilesStore } from '../stores/files';
+import { hasPreview, isEditable } from '../fileKind';
 import { formatBytes } from '../../shared/byteSize';
 import { useSettingsStore } from '../stores/settings';
 import { resolveTheme } from '../themes';

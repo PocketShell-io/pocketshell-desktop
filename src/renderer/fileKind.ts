@@ -101,6 +101,38 @@ export interface FileClass {
   mime: string | null;
 }
 
+/** How the open file is being presented. */
+export type OpenMode = FileKind;
+
+/**
+ * Kinds that have an editor behind them and can therefore be saved.
+ *
+ * One predicate rather than an `=== 'text'` at each site, because there are
+ * four of them — the Save button, the Ctrl+S chord, the store's `save()` and
+ * the dirty-buffer stash — and HTML becoming editable meant every one had to
+ * learn the same new fact. Three out of four would have been a Save button
+ * that works and a Ctrl+S that does nothing, which is precisely the kind of
+ * half-regression the brief warned about.
+ */
+export function isEditable(mode: OpenMode | null): boolean {
+  return mode === 'text' || mode === 'html' || mode === 'markdown' || mode === 'svg';
+}
+
+/**
+ * Kinds shown as BOTH a render and their source.
+ *
+ * The trio `html`, `markdown` and `svg` is not a coincidence: these are the
+ * formats whose whole point is what they look like when something renders
+ * them, and which are still ordinary text files that a person opens a file
+ * browser to fix a typo in. Everything else is one or the other. (This
+ * comment used to claim the pair was "not likely to grow"; SVG proved the
+ * shape — text source, visual render, renderable with no code of its own
+ * run — is the definition of the set, and it joined through the same door.)
+ */
+export function hasPreview(mode: OpenMode | null): boolean {
+  return mode === 'html' || mode === 'markdown' || mode === 'svg';
+}
+
 /**
  * Extensions that are text even though nothing in the mime table says so.
  *

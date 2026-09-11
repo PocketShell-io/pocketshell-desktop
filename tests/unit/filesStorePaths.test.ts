@@ -1,20 +1,12 @@
 //
-// The Files store's pure path helpers, on the suite's default `node`
-// environment. The sibling filesStore*.test.ts files keep a jsdom because
-// minting a preview resolves design tokens out of `getComputedStyle` and
-// opening a binary mints an object URL; nothing here opens state or mints —
-// these are string functions, and running them without a DOM keeps that
-// honest. The store module itself still has to be importable, and
-// `src/renderer/ipc` reads `window.api` at module scope, so the ipc mock is
-// registered even though no test ever calls it (see helpers/filesApi).
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('../../src/renderer/ipc', async () => ({
-  api: (await import('./helpers/filesApi')).api,
-}));
+// The renderer's remote-path resolution, on the suite's default `node`
+// environment. These are pure string functions (src/renderer/remotePaths.ts),
+// and running them without a DOM or an ipc mock keeps that honest — no test
+// here opens store state or mints anything.
+import { describe, expect, it } from 'vitest';
 
 const { resolveRemotePath, stripTilde, normaliseTypedPath } = await import(
-  '../../src/renderer/stores/files'
+  '../../src/renderer/remotePaths'
 );
 
 describe('stripTilde', () => {
