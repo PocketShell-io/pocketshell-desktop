@@ -77,7 +77,6 @@ import {
   tabAfterClose,
   type WorkspaceTab,
 } from '../../shared/workspaceTabs';
-import { rootHostPath } from '../sessionRoots';
 import { sessionIdentityKey } from '../sessionIdentity';
 import { prunePanes, upsertPane, type SessionPaneRecord } from '../sessionPanes';
 import { UNTRACKED_PATH } from '../sessionGrouping';
@@ -85,7 +84,8 @@ import { useFolderTree } from '../folderTree';
 import { useWorkspaceMemory } from '../useWorkspaceMemory';
 import { useSessionRename } from '../useSessionRename';
 import { useSessionLaunch } from '../useSessionLaunch';
-import { errorMessage } from '../../shared/errors';
+import { useSessionStop } from '../useSessionStop';
+import { useWorkspaceReveal } from '../useWorkspaceReveal';
 import { useStripDrag } from '../useStripDrag';
 
 const route = useRoute();
@@ -521,122 +521,22 @@ watch(folderKey, () => {
   loadFolderState();
 });
 
-/**
- * This folder's root as an ABSOLUTE host path, or null when there is not one to
- * be had.
- *
- * `rootHostPath` is the grouping's own inverse of `directoryKey`, reused rather
- * than re-derived: `~/git/foo` and `/home/alexey/git/foo` are one directory
- * everywhere else in the app precisely because that function decides it, and a
- * second expansion written here is how the two spellings drift apart again.
- *
- * Null has two causes and one meaning. The host's `$HOME` may not be resolved
- * yet (`projects.ensureHome` is asked for it on mount but a workspace opened by
- * deep link renders first), and the untracked pseudo-folder has no path at all.
- * Either way: no root, so nothing can be shown to be outside it.
- */
-const rootPath = computed(() => rootHostPath(folderPath.value ?? folderKey.value, projects.home));
-
-/**
- * A reveal target as an absolute host path, or null when it cannot be made one.
- *
- * What `requestReveal` parks is what SFTP needs — either absolute, or relative
- * to the LOGIN HOME, because an SFTP session's relative root is that home. That
- * is why a `~/…` path printed by an agent opens correctly without anyone
- * expanding `$HOME` (see `resolveRemotePath`/`stripTilde` in remotePaths.ts),
- * and it is why this function exists only for the COMPARISON below: telling
- * inside-the-folder from outside is the one job that does need the home spelled
- * out. When the host has not reported one, there is no comparison to make.
- */
-function absoluteRevealTarget(target: string): string | null {
-  if (target.startsWith('/')) return target;
-  const home = projects.home;
-  if (!home) return null;
-  const base = home.replace(/\/+$/, '');
-  return target === '.' ? base : `${base}/${target}`;
-}
-
-/** Is [abs] the directory [root] itself, or something under it? */
-function isUnder(abs: string, root: string): boolean {
-  return abs === root || abs.startsWith(`${root}/`);
-}
-
-/**
- * A path clicked in the terminal brings a Files tab forward.
- *
- * The store only PARKS the request; FilesView takes it in its own onMounted,
- * after `files.open()` has restored the remembered directory. Whichever Files
- * tab is already selected takes it, and when none is, the first one does —
- * revealing into the tab the user last used beats opening a new one for every
- * click.
- */
-watch(
-  () => files.reveal,
-  (target) => {
-    if (target == null) return;
-    if (openDedicatedRevealTab(target)) return;
-    if (activeTab.value?.kind === 'files') return;
-    const first = tabs.value.find((tab) => tab.kind === 'files');
-    if (first) {
-      selected.value = first.id;
-      persist();
-      return;
-    }
-    // Every Files tab is closable now, so "the first one" can be NONE of
-    // them — and the click must still land somewhere. `onOpenInNewTab` is
-    // already written to open a tab and hand it the reveal, ordering and
-    // all; this branch is why that helper, not `addFilesTab`, is the call.
-    onOpenInNewTab(target, 'file');
-  },
-);
-
-/**
- * A path OUTSIDE this folder gets a Files tab of its own. Returns true when it
- * took one.
- *
- * The user's report is the whole specification: "also note that this image is
- * outside of the current repo. I still want to see it. we can open it in a
- * separate new tab."
- *
- * Nothing ever stopped it OPENING. The files store browses by absolute path
- * over SFTP and has no notion of a root — `revealPath` realpaths, stats and
- * `goTo`s anywhere on the host. What it did was open it in the FOLDER's own
- * Files tab, and because every Files tab its own remembered
- * directory, that tab then stayed re-rooted in `~/.codex/generated_images/…`
- * the next time it was opened. Which is the complaint underneath the request.
- *
- * The tab is seeded at the target's PARENT rather than the target, which is
- * `onOpenInNewTab`'s answer to the same question and works for either kind:
- * a parent always lists, and `revealPath` then either opens the file in it or,
- * for a directory, walks the listing on into the directory itself.
- */
-function openDedicatedRevealTab(target: string): boolean {
-  const root = rootPath.value;
-  const abs = absoluteRevealTarget(target);
-  // Not knowing where the root is, or where the target is, is not evidence that
-  // they are apart. Falling back leaves the click doing what it did before
-  // rather than spraying tabs at a host whose `$HOME` never resolved.
-  if (root === null || abs === null) return false;
-  if (isUnder(abs, root)) return false;
-
-  const active = activeTab.value;
-  // A tab already standing over this directory serves the next click in it too.
-  // A folder of generated images gets looked at more than once and "a separate
-  // new tab" did not mean one tab per image. It is also what stops the re-park
-  // below from re-entering this branch.
-  if (active?.kind === 'files' && active.path != null && isUnder(abs, active.path)) return false;
-
-  // The order is `onOpenInNewTab`'s, for its reason: the new tab has to BE the
-  // selected one before the request is parked, so that the FilesView which
-  // mounts into it is the one that takes it. Re-parking cannot corrupt the
-  // path — `resolveRemotePath` is idempotent on its own output, returning an
-  // absolute path untouched and leaving a home-relative one alone when there is
-  // no base to join it to.
-  files.takeReveal();
-  addFilesTab(abs.slice(0, abs.lastIndexOf('/')) || '/');
-  files.requestReveal(target);
-  return true;
-}
+// The terminal-reveal half of the workspace: watching the files store's parked
+// request and routing it to the right Files tab, with a dedicated tab for a
+// target outside the folder. The decision records live in
+// useWorkspaceReveal.ts; the handlers it closes over are declared below.
+useWorkspaceReveal({
+  files,
+  projects,
+  folderKey,
+  folderPath,
+  tabs,
+  getActiveTab: () => activeTab.value,
+  selected,
+  persist,
+  onOpenInNewTab,
+  addFilesTab,
+});
 
 /** A click selects. The rename gesture is the tab's double-click (template). */
 function selectTab(tab: WorkspaceTab): void {
@@ -1228,26 +1128,22 @@ function renameFromMenu(): void {
 }
 
 /**
- * The session a confirmed Stop would kill, or null when nothing is being asked.
- *
- * **The only destructive action in this app.** The file tree's menu (c614e7e)
- * deliberately omits delete as "destructive-adjacent with no undo"; this was
- * asked for explicitly, so it ships — but a tmux session is usually an agent in
- * the middle of a task, and there is no undo of any kind: the scrollback, the
- * process tree and whatever was uncommitted in that shell all go at once.
- *
- * It has a sibling now: the session panel's folder row stops every session in a
- * folder in one confirm (SessionTree.vue). The two ask
- * the same question and must keep looking like one feature — same word (`Stop`,
- * never `Close`), same tinted item, same quiet-Cancel/error-fill sheet. Any
- * change to the wording here belongs there too.
- *
- * The dialog names the SESSION. With labels verbatim this is the same string
- * the tab shows — and it stays the full name, so a folder's tab reading `main`
- * never leaves the user guessing which workspace's `main` is being destroyed.
+ * The kill machinery — the named confirmation, the busy latch, and
+ * confirmStop's three-piece teardown — lives in useSessionStop.ts. The menu
+ * and the `×` only ever arm it; see their doc comments below.
  */
-const stopping = ref<string | null>(null);
-const stopBusy = ref(false);
+const { stopping, stopBusy, confirmStop } = useSessionStop({
+  connection,
+  projects,
+  sessions,
+  composer,
+  aplexerRefFor,
+  identityFor,
+  sessionMeta,
+  openPanes,
+  createError,
+  selectAfterClose,
+});
 
 /**
  * "Redraw" from the tab menu: put this pane and the far end back in agreement.
@@ -1294,91 +1190,6 @@ function askStop(): void {
 function askStopTab(tab: Extract<WorkspaceTab, { kind: 'session' }>): void {
   addAnchor.value = null;
   stopping.value = tab.session;
-}
-
-/**
- * Kill the session, then take down everything the DESKTOP keeps under its name.
- *
- * Three pieces, and they are the same three a rename has to move (61753d7);
- * this is the only other operation in the app that invalidates a session name,
- * so the two lists must stay in step:
- *
- *  1. **the pool's live tmux client and its PTY** — released main-side by the
- *     ipc handler through `TmuxClientPool.killed`, because that is where the
- *     pool is in scope;
- *  2. **the mounted terminal pane** — dropped from `openPanes` here.
- *     `sessionPanes` already filters against the live tabs, so the pane stops
- *     rendering the moment the row leaves the store; removing the entry as
- *     well is what stops a NEW session that reuses the name inheriting a pane
- *     that was never torn down (the folder-derived names make that reuse
- *     likely, not hypothetical);
- *  3. **the composer's per-session record** — `composer.forget`, the kill's
- *     counterpart to the rename's `composer.rekey`. A draft under a key nothing
- *     will ever ask for again would persist to `localStorage` forever and would
- *     be handed to the next session of that name.
- *
- * The store's row is the fourth piece and the one the others hang from: the
- * tab bar, the panel tree and `sessionMeta` all derive from it. It comes off
- * through `sessions.removeLocal` the moment the kill resolves rather than on
- * the refresh the call ends with, because the host's listing can lag the kill
- * by seconds — `a kill` answers ok when the worker ACCEPTS the stop, and the
- * record leaves the snapshot only when the worker has finished terminating
- * the workload — and inside that window a dead session that still looks live
- * keeps its tab on the bar above a pane that already says "[process exited]".
- * The ledger `removeLocal` files the identity into is what keeps the
- * follow-up refresh (and the panel's poll) from putting the corpse back.
- *
- * The selection moves through the SAME `selectAfterClose` a Files tab uses —
- * called while the bar still holds the closing tab, so its adjacency fallback
- * can see where the tab sat — so the MRU rule holds for a killed session tab
- * exactly as it does for a closed Files tab, and the focus lands in the newly
- * selected tab's surface.
- *
- * A session the host says is already gone (`not-found`) is treated as a
- * SUCCESS here, because the user's intent is satisfied and the state they asked
- * for is the state that exists. The tab bar refreshes on a timer, so the race is
- * ordinary rather than exotic.
- */
-async function confirmStop(): Promise<void> {
-  const session = stopping.value;
-  const connectionId = connection.connectionId;
-  if (!session || !connectionId) {
-    stopping.value = null;
-    return;
-  }
-  stopBusy.value = true;
-  try {
-    let result: Awaited<ReturnType<typeof projects.killSession>>;
-    try {
-      result = await projects.killSession(connectionId, session, aplexerRefFor(session));
-    } catch (e) {
-      // A rejected invoke is a failed kill like any other. Let it escape and
-      // `stopBusy` stays latched — the Stop button dead until remount.
-      createError.value = errorMessage(e);
-      return;
-    }
-    if (!result.ok && result.code !== 'not-found') {
-      createError.value = result.error ?? `Could not stop "${session}".`;
-      return;
-    }
-    selectAfterClose(session);
-    // Resolved BEFORE the row comes off the bar: the identity reads the row's
-    // workspace, and once the row is gone a lookup falls back to the bare
-    // name — which for an aplexer session is a different key, and the pane
-    // record and the composer draft below would be filed against a key
-    // nothing will ever match again.
-    const killedIdentity = identityFor(session);
-    // The row comes off the bar NOW, not when the refresh lands — the host's
-    // listing can still carry the session it is tearing down (doc comment
-    // above).
-    sessions.removeLocal(session, sessionMeta.value.get(session)?.workspace ?? undefined);
-    openPanes.value = openPanes.value.filter((pane) => pane.identity !== killedIdentity);
-    composer.forget(composer.targetKey(connectionId, session, killedIdentity));
-  } finally {
-    stopBusy.value = false;
-    stopping.value = null;
-  }
-  await sessions.refresh(connectionId);
 }
 
 // ---------------------------------------------------------------------------
