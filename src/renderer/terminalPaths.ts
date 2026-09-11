@@ -247,6 +247,36 @@ function matchToken(token: string, base: number): PathMatch | null {
   return matchCandidate(token, base, start, end);
 }
 
+/**
+ * Peel the decoration off the END of a candidate: trailing sentence
+ * punctuation, and closers whose opener the candidate itself does not hold.
+ * `(see tmp/a/b.txt)` loses its `)`; `report(1).pdf` keeps its own, because
+ * the `(` inside is matched. Shared with the URL detector
+ * (terminalUrls.ts), whose spans peel by the same standard — a URL and a
+ * path wear the same prose around them.
+ */
+export function peelTrailingDecoration(token: string): string {
+  let end = token.length;
+  for (;;) {
+    if (end <= 0) return '';
+    const ch = token.charAt(end - 1);
+    if (TRAILING_PUNCT.has(ch)) {
+      end--;
+      continue;
+    }
+    const opener = CLOSERS[ch];
+    if (opener !== undefined) {
+      const inner = token.slice(0, end - 1);
+      if (countChar(inner, opener) <= countChar(inner, ch)) {
+        end--;
+        continue;
+      }
+    }
+    break;
+  }
+  return token.slice(0, end);
+}
+
 /** Parse one possible path span inside a token. */
 function matchCandidate(
   token: string,
@@ -255,27 +285,11 @@ function matchCandidate(
   tokenEnd: number,
 ): PathMatch | null {
   const start = candidateStart;
-  let end = tokenEnd;
+  const end = tokenEnd;
 
-  for (;;) {
-    if (end <= start) return null;
-    const ch = token.charAt(end - 1);
-    if (TRAILING_PUNCT.has(ch)) {
-      end--;
-      continue;
-    }
-    const opener = CLOSERS[ch];
-    if (opener !== undefined) {
-      const inner = token.slice(start, end - 1);
-      if (countChar(inner, opener) <= countChar(inner, ch)) {
-        end--;
-        continue;
-      }
-    }
-    break;
-  }
-
-  let candidate = token.slice(start, end);
+  let candidate = peelTrailingDecoration(token.slice(start, end));
+  const cut = start + candidate.length;
+  if (candidate === '') return null;
   let lineNo: number | undefined;
   let columnNo: number | undefined;
   const suffix = LINE_SUFFIX.exec(candidate);
@@ -292,7 +306,9 @@ function matchCandidate(
   const path = stripFileScheme(candidate) ?? candidate;
   if (!isPath(path, suffix !== null)) return null;
 
-  const match: PathMatch = { start: base + start, end: base + end, path };
+  // `cut`, not `end`: the span leaves the peeled decoration out, exactly as
+  // the old in-place loop did — `(tmp/a.mp3).` underlines `tmp/a.mp3`.
+  const match: PathMatch = { start: base + start, end: base + cut, path };
   if (lineNo !== undefined) match.line = lineNo;
   if (columnNo !== undefined) match.column = columnNo;
   return match;
@@ -372,7 +388,8 @@ function isPath(p: string, hasPosition: boolean): boolean {
   return true;
 }
 
-function hasControlChar(s: string): boolean {
+/** Any C0 control or DEL — text a detector must refuse outright. */
+export function hasControlChar(s: string): boolean {
   for (let i = 0; i < s.length; i++) {
     const code = s.charCodeAt(i);
     if (code < 0x20 || code === 0x7f) return true;

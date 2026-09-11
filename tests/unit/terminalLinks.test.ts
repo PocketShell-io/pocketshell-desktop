@@ -23,7 +23,7 @@ vi.mock('../../src/renderer/ipc', () => ({
   api: { sftp: {}, preview: { onStats: () => () => undefined } },
 }));
 
-const { scanBufferLine, pathLinks } = await import('../../src/renderer/terminalLinks');
+const { scanBufferLine, pathLinks, urlLinks } = await import('../../src/renderer/terminalLinks');
 const { useFilesStore } = await import('../../src/renderer/stores/files');
 const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
 
@@ -550,10 +550,9 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
 /**
  * The "Saved to:" report: a `file://` URL that runs to the right margin and
  * continues at column 0. It was dead on arrival — WebLinksAddon's regex
- * admits only http(s), and before the URL guard learned about `file://` the
- * join rules refused the break exactly as they refuse a web link's. The URL
- * is remote bytes like everything else in the pane: the path under its
- * scheme lives on the SSH host, and the Files tab is where a click lands.
+ * admits only http(s), so the file URL has only ever had the path detector
+ * to claim it, and it joins under the path rules like any other path.
+ * A WEB url has its own reports below.
  */
 describe('scanBufferLine — a file:// URL a TUI broke across two rows', () => {
   const FIRST_ROW =
@@ -585,11 +584,152 @@ describe('scanBufferLine — a file:// URL a TUI broke across two rows', () => {
     expect(files.reveal).toBe(PATH);
   });
 
-  it('still refuses to extend an http URL across the same break', () => {
+  it('refuses an http URL whose tail already reads finished', () => {
+    // An http(s) tail joins the geometric rules now — that is what the
+    // wrapped-URL reports below needed — so the refusals are the
+    // finished-token traces instead of the blanket bar this shape once sat
+    // behind. A tail ending extension-shaped is a whole address one
+    // space-wrap happened to land exactly on the margin, and `and` is where
+    // the next sentence starts: rule 1's URL cut-guard refuses it.
     const first = 'saved https://example.com/a/b.png';
     const scan = (rows: string[], width: number): string =>
       scanBufferLine(fakeScreen(rows, width), 1).text.trimEnd();
     expect(scan([first, 'and cleaned up'], first.length)).toBe(first);
+    expect(urlLinks(fakeScreen([first, 'and cleaned up'], first.length), 1, () => undefined)).toEqual(
+      [],
+    );
+  });
+});
+
+/**
+ * The "comet.com" reports, transcribed from the panes they arrived in: an
+ * agent CLI renders bullet lists whose long web addresses its own wrapper
+ * breaks across rows — after a `/`, after a hyphen inside a UUID, after the
+ * query's `?`, and (the second report) mid-hex at a row full to the margin.
+ * WebLinksAddon reads one row at a time, so each address used to linkify as
+ * no more than its first-row fragment; the joins reconstruct the address and
+ * {@link urlLinks} — the provider registered BEFORE the addon — makes it one
+ * link again.
+ */
+describe('scanBufferLine — a web URL a TUI broke across rows', () => {
+  const HOME = 'https://www.comet.com/opik/alexey-grigorev/';
+  const TRACES = 'https://www.comet.com/opik/alexey-grigorev/projects/01a081da-ba69-7235-9ea8-f0037e30994f/traces';
+  const AUTOMATION = 'https://www.comet.com/opik/alexey-grigorev/projects/01a081da-b529-74c6-b2a4-9afe2fa88e74/traces';
+  const COMPARE =
+    'https://www.comet.com/opik/alexey-grigorev/experiments/01a08215-d194-7638-b00b-9ee98652c456/compare?experiments=%5B%2201a08216-068c-7ee9-9f16-7f6892a78cb6%22%2C%2201a08216-77c3-73df-9873-5ba1e479057f%22%5D';
+
+  /** The report's own block: every bullet, with each wrap where the CLI put it. */
+  const ROWS = [
+    `- Home: ${HOME}`,
+    `- Assistant traces (incl. your live Docker question): https://www.comet.com/opik/`,
+    `  alexey-grigorev/projects/01a081da-ba69-7235-9ea8-f0037e30994f/traces`,
+    `- Automation project: https://www.comet.com/opik/alexey-grigorev/projects/01a081da-`,
+    `b529-74c6-b2a4-9afe2fa88e74/traces`,
+    `- Before/after compare (the Friday money slide): https://www.comet.com/opik/alexey-`,
+    `grigorev/experiments/01a08215-d194-7638-b00b-9ee98652c456/compare?`,
+    `experiments=%5B%2201a08216-068c-7ee9-9f16-7f6892a78cb6%22%2C%2201a08216-77c3-73df-`,
+    `9873-5ba1e479057f%22%5D`,
+  ];
+  const term = (): Terminal => fakeScreen(ROWS, 85);
+
+  it('joins the four-row compare URL and linkifies it whole', () => {
+    const links = urlLinks(term(), 6, () => undefined);
+    // One address, not a `/opik/alexey-` fragment plus three orphan rows.
+    expect(links.map((l) => l.text)).toEqual([COMPARE]);
+    // From the `h` of `https` (after the prose and its space) on the bullet
+    // row to the last `%5D` cell of the fourth row.
+    expect(links[0]?.range.start).toEqual({ x: 50, y: 6 });
+    expect(links[0]?.range.end).toEqual({ x: 23, y: 9 });
+  });
+
+  it('gives the same whole link whichever of its rows the mouse is over', () => {
+    const span = (links: ReturnType<typeof urlLinks>): unknown =>
+      links.map((l) => ({ text: l.text, range: l.range }));
+    const first = span(urlLinks(term(), 6, () => undefined));
+    expect(span(urlLinks(term(), 7, () => undefined))).toEqual(first);
+    expect(span(urlLinks(term(), 9, () => undefined))).toEqual(first);
+  });
+
+  it('opens the whole address, not the directory the first row ended at', () => {
+    const open = vi.fn();
+    urlLinks(term(), 6, open)[0]?.activate(CLICK, COMPARE);
+    expect(open).toHaveBeenCalledWith(COMPARE);
+  });
+
+  it('joins the two-row trace URL that the wrapper indented', () => {
+    // The `Assistant traces` bullet: the continuation row carries the
+    // renderer's two-space hanging indent, dropped the way the path rules
+    // drop it, and the address spans the break.
+    const links = urlLinks(term(), 2, () => undefined);
+    expect(links.map((l) => l.text)).toEqual([TRACES]);
+    expect(links[0]?.range).toEqual({ start: { x: 55, y: 2 }, end: { x: 70, y: 3 } });
+  });
+
+  it('joins the UUID the wrapper cut at its hyphen', () => {
+    expect(urlLinks(term(), 4, () => undefined).map((l) => l.text)).toEqual([AUTOMATION]);
+  });
+
+  it('leaves the single-row Home URL to WebLinksAddon', () => {
+    // `https://…/alexey-grigorev/` fits on its own row; the provider only
+    // ever answers for addresses that SPAN rows, so the addon keeps every
+    // cell it always handled.
+    expect(urlLinks(term(), 1, () => undefined)).toEqual([]);
+  });
+
+  it('joins the mid-hex cut of the experiment report and peels the `).`', () => {
+    // The second report, on its own: the address sits inside parentheses,
+    // the wrapper cut it after `…8b64-ab0e95b` at a row full to the margin,
+    // and the sentence's `).` closes it on the continuation row. Rule 1's
+    // URL cut-guard reads the cut (mid-hex, no dot, head not a second
+    // address); the detector peels the decoration off the opened URL.
+    const FIRST =
+      '(https://www.comet.com/opik/alexey-grigorev/experiments/01a08fa0-1bee-76b6-8b64-ab0e95b';
+    const SECOND = '7d5c6/compare?experiments=%5B%2201a08fa0-222c-743b-bcea-47a9d131bb63%22%5D).';
+    const URL_TEXT = `${FIRST.slice(1)}${SECOND.slice(0, -2)}`;
+    const t = fakeScreen([FIRST, SECOND], FIRST.length);
+
+    const links = urlLinks(t, 1, () => undefined);
+    expect(links.map((l) => l.text)).toEqual([URL_TEXT]);
+    expect(links[0]?.range).toEqual({
+      start: { x: 2, y: 1 },
+      end: { x: SECOND.length - 2, y: 2 },
+    });
+
+    const open = vi.fn();
+    urlLinks(t, 1, open)[0]?.activate(CLICK, URL_TEXT);
+    expect(open).toHaveBeenCalledWith(URL_TEXT);
+  });
+
+  it('refuses a near-full row whose URL is whole and whose head is the next sentence', () => {
+    // The shape that keeps rule 1a closed to web URLs: a COMPLETE address
+    // two columns short of the margin and a long word wrapped below it is a
+    // space-wrap, not a cut — the URL ends at `guide` and `available` is
+    // prose. No opportunity character, no full row, no join.
+    const first = 'docs: https://example.com/guide';
+    const t = fakeScreen([first, 'available online'], first.length + 2);
+
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(first);
+    expect(urlLinks(t, 1, () => undefined)).toEqual([]);
+  });
+
+  it('refuses a full row whose URL is whole and whose head starts a second address', () => {
+    // Two addresses, one per row: the `/` head check refuses the glue even
+    // at rule 1's full geometry, or the link would read `x.io/a/b/c`.
+    const first = 'see https://x.io/a';
+    const t = fakeScreen([first, '/b/c is another'], first.length);
+
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(first);
+  });
+
+  it('leaves a question-mark cut inert when no scheme ever opened', () => {
+    // `?` is a break opportunity only for a URL; without a scheme anywhere
+    // in the line the joined token is claimed by nobody — the glue is
+    // permitted by the geometry and produces no link.
+    const first = 'grigorev/experiments/x/compare?';
+    const t = fakeScreen([first, 'experiments=1'], first.length + 4);
+
+    expect(urlLinks(t, 1, () => undefined)).toEqual([]);
+    expect(pathLinks(t, 1, () => ({ sessionName: 'git-foo' }))).toEqual([]);
   });
 });
 

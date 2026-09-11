@@ -58,8 +58,8 @@ import, `preload/` is the bridge. Two `tsconfig.json`s:
 
 The non-obvious residents, by name: `renderer/parseStall.ts` +
 `xtermWriteBuffer.ts` are the xterm stall watchdog and write-loop repair
-(§9.1); `terminalPaths.ts` / `terminalLinks.ts` are terminal path detection
-and click-to-Files; `terminalPane.ts` is the terminal pane's PTY-lifecycle
+(§9.1); `terminalPaths.ts` / `terminalUrls.ts` / `terminalLinks.ts` are
+terminal path and URL detection and click-to-Files; `terminalPane.ts` is the terminal pane's PTY-lifecycle
 controller (§3's join model as code — the component decides when a PTY
 opens, the controller does how); `reconnectLoop.ts` is the reconnect FSM's
 schedule machinery, driven by the connection store (§9); `remotePaths.ts`
@@ -156,8 +156,17 @@ stays on the path itself — writer labels like `Write(...)` and trailing
 punctuation are excluded. A `file:///` URL is the same link wearing a
 scheme: the detector strips the scheme and opens the path (the file is on
 the SSH host, so it must not travel to a browser) while underlining the
-whole URL; `file://host/…` and any http(s) URL are left alone — web links
-belong to WebLinksAddon and are never extended across a row break. A path
+whole URL; `file://host/…` is refused, and any other scheme is left to
+nobody. Web addresses (`http(s)://`) belong to WebLinksAddon — except a
+URL the remote CLI's wrapper broke across rows, which the addon, reading
+one row at a time, sees only as its first-row fragment. The same
+reconstruction that heals paths rejoins the address (a `?` after a query
+separator joins the break opportunities, and a tail that already ends
+extension-shaped refuses the join — a finished URL must not pick up the
+next sentence), `terminalUrls.ts` finds the address in the flattened
+line, and that link is registered BEFORE the addon, which xterm's
+priority rule lets claim every row of the URL; a single-row URL answers
+nothing and stays the addon's. A path
 a TUI split across rows (this pane is always a tmux client, so nothing is
 ever flagged `isWrapped`) is reconstructed from geometry — hard wrap,
 box-gutter continuation, break at a hyphen or slash inside the token —
@@ -172,8 +181,9 @@ tmux keeps rows painted at the width they were rendered at, so a resized
 window proves nothing about the margins those rows were written under.
 The highlight is two layers: the hover underline from the link
 provider, and an at-rest block tint (`terminalPathHighlights.ts`) that
-re-derives decorations for every row the renderer touches, so a path
-reads as one highlighted span at rest even when the remote CLI's own
+re-derives decorations for every row the renderer touches, so a path —
+or a URL wrapped across rows — reads as one highlighted span at rest
+even when the remote CLI's own
 underline stopped at its first row; the tint is each theme's selection
 colour solidified over the terminal ground. The pane spends almost its
 whole life on the alternate buffer — the tmux attach client is itself a

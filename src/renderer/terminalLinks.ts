@@ -4,9 +4,10 @@
  * Three jobs, in order:
  *   1. flatten a buffer line (with its wrapped continuation rows) back into a
  *      string, remembering which cell produced each character;
- *   2. run the pure detector over that string (./terminalPaths.ts);
+ *   2. run the pure detectors over that string (./terminalPaths.ts for paths
+ *      and `file://` URLs, ./terminalUrls.ts for http(s) ones);
  *   3. hand xterm an ILink per match, whose `activate` asks the files store to
- *      reveal the path.
+ *      reveal the path — or the browser to open the URL.
  *
  * Step 1 is the only part that is not obvious. xterm has no "give me the
  * logical line" call: a line longer than the window is stored as several rows,
@@ -81,6 +82,21 @@
  * visible way this feature can look broken. Each condition is spelled out at
  * the rule.
  *
+ * ## Web links
+ *
+ * Everything above reads paths; the same flattening also rejoins the http(s)
+ * URLs a remote CLI's wrapper breaks across rows — the shape every comet.com
+ * report arrived in: an address cut after `/`, after a hyphen inside a UUID,
+ * after its `?`, or mid-hex at a row full to the margin. WebLinksAddon cannot
+ * see past the break (it reads one row at a time), so the reconstructed line
+ * is scanned by terminalUrls.ts and the one whole-address link is registered
+ * BEFORE the addon, which xterm's priority rule lets claim every row of the
+ * URL — including the first, whose truncated fragment is exactly what the
+ * addon used to underline instead. The rules' URL-specific evidence lives at
+ * {@link joinedRowSkip}: `?` in rule 1b's break opportunities, and rule 1's
+ * cut guard refusing a tail that already ends extension-shaped. A URL on one
+ * row is the addon's and stays the addon's.
+ *
  * ## Appearance
  *
  * A path link is decorated exactly like the http links this terminal already
@@ -135,6 +151,7 @@
  */
 import type { IBuffer, IBufferCell, ILink, ILinkProvider, Terminal } from '@xterm/xterm';
 import { continuesPath, findPaths, HAS_EXTENSION, stripFileScheme } from './terminalPaths';
+import { findUrls } from './terminalUrls';
 import { useFilesStore } from './stores/files';
 import { useSessionsStore } from './stores/sessions';
 
@@ -327,13 +344,25 @@ function inferWrapWidth(buf: IBuffer, y0: number, scratch: IBufferCell): number 
 function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number | null {
   if (prev.lastCol < 0) return null;
   const tail = /\S+$/.exec(prev.text.trimEnd())?.[0] ?? '';
-  // An http(s) URL belongs to WebLinksAddon and is never extended across a
-  // row break: gluing a second row onto one would produce a link to a host
-  // nobody named. A `file://` URL is the opposite case — the detector strips
-  // its scheme and claims it as a path — and the TUIs wrap long file URLs
-  // mid-token exactly like any other path, so it joins under the same rules.
+  // A tail carrying a WEB scheme is not the refusal it used to be. It once
+  // read "an http(s) URL belongs to WebLinksAddon and is never extended
+  // across a row break" — which is precisely why a URL the remote CLI's own
+  // wrapper broke across rows never came back whole: the addon reads one row
+  // at a time, the join rules refused to hand it more, and every wrapped
+  // address stayed a first-row fragment pointing at a truncated link. Now
+  // the tail defers to the same geometric rules a path answers to, with
+  // URL-specific evidence added at the rules that need it: the question mark
+  // joins rule 1b's break opportunities (it is a URL's query separator, and
+  // no PATH can carry one — terminalPaths forbids `?` outright — so a
+  // `?`-cut token can only ever be claimed by the URL detector), and rule 1
+  // demands the URL read CUT before it will glue a row on ({@link HAS_EXTENSION}.
+  // A `file://` URL is the opposite case — the detector strips its scheme
+  // and claims it as a path — and joins under the path rules alone, exactly
+  // as it always has. Any other scheme (`ssh://`, `redis://`) may now join
+  // under the same geometry but produces no link: terminalUrls.ts matches
+  // http(s) only, so the glue is inert until a detector claims it.
   const asPath = stripFileScheme(tail);
-  if (tail.includes('://') && asPath === null) return null;
+  const webSchemeTail = tail.includes('://') && asPath === null;
   // The shape guard is the detector's own standard, not a stricter local one:
   // it used to demand a ROOTED tail, and every relative path failed it — the
   // rows of `assets/images/exam/` + `quizgen-landing-page.png` stayed two
@@ -346,7 +375,7 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
   // report's first-segment cut). The per-rule guards below still decide; the
   // slash keeps its stricter treatment, because `and/` is `and/or` prose and
   // not a break anyone's wrapper made.
-  if (!tail.endsWith('-') && !continuesPath(asPath ?? tail)) return null;
+  if (!webSchemeTail && !tail.endsWith('-') && !continuesPath(asPath ?? tail)) return null;
 
   const gutter = GUTTER.exec(next.text);
   if (gutter === null) {
@@ -382,7 +411,22 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     // a double-width character would not fit in it. Reconstructing that needs a
     // second guess on top of this one, and the cost of being wrong is an
     // underline running through unrelated text.
-    if (indent === 0 && prev.lastCol === prev.width - 1) return 0;
+    if (indent === 0 && prev.lastCol === prev.width - 1) {
+      // A web URL must read CUT before the strongest geometry in the file
+      // glues the next row onto it, because a URL — unlike a path — has no
+      // continuesPath-grade content gate standing in front of this rule:
+      // `https://…` is as anchored as a token gets whether or not it
+      // continues. So the finished-token traces do the refusing instead.
+      // An extension-shaped tail (`…/a/b.png`) is a whole address one
+      // space-wrap happened to land exactly on the margin — the ninth
+      // report's `saved https://example.com/a/b.png` + `and cleaned up` —
+      // and a continuation starting `/` is a second address of its own, not
+      // this one's continuation. The cut the reports actually carry has
+      // neither: `…8b64-ab0e95b` ends mid-hex, and the row below starts
+      // with `7d5c6`.
+      if (webSchemeTail && (HAS_EXTENSION.test(tail) || head.startsWith('/'))) return null;
+      return indent;
+    }
 
     // RULE 1a — the hard wrap that stopped a few columns SHORT of the margin.
     //
@@ -412,8 +456,19 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     //     at the cost of a true cut that happens to leave a dotted fragment
     //     (`…url.t` + `xt`) — the same trade rule 1b's opportunity
     //     characters make.
+    // A web URL never gets rule 1a, deliberately. Its evidence is a
+    // near-full row plus a head that could not have fitted — but a
+    // SPACE-wrap leaves exactly that shape whenever the word after a
+    // complete, not-quite-full URL is too long for the leftover columns
+    // (`docs: https://x.io/guide` two columns short, `available online`
+    // below), and a URL tail has no continuesPath to disprove it: the
+    // scheme is already anchored. Rule 1's full row is a mid-TOKEN cut, a
+    // different geometry; rule 1b's opportunity characters are cut traces.
+    // Near-full with neither stays a refusal, and the true mid-hex cut at a
+    // near-full row — one cell short of the rule-1 shape — is the price.
     const left = prev.width - 1 - prev.lastCol;
     if (
+      !webSchemeTail &&
       head !== '' &&
       !head.startsWith('/') &&
       left <= WRAP_SHORTFALL &&
@@ -425,21 +480,24 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
 
     // RULE 1b — the break a wrapper puts INSIDE the token, at an opportunity
     // the token itself offers, rather than at the margin: hyphens (this app's
-    // own CLI) and slashes (the markdown-rendering CLI of the "Cloudflare
-    // diagrams" report) are the two characters terminal wrappers are seen to
-    // break at. The opportunity character stays at the tail's end, and that
-    // is the one trace of a cut — rather than finished — token a row carries.
-    // Three guards, each the reason a different way of being wrong stays
-    // shut:
+    // own CLI), slashes (the markdown-rendering CLI of the "Cloudflare
+    // diagrams" report) and question marks (the query separator a URL-
+    // wrapping CLI breaks after — `…/compare?` / `experiments=%5B…`) are the
+    // characters terminal wrappers are seen to break at. The opportunity
+    // character stays at the tail's end, and that is the one trace of a cut —
+    // rather than finished — token a row carries. (`?` needs no URL test of
+    // its own: a path cannot hold one, so the glued token is web material or
+    // nothing, and the detectors below decide which.) Four guards, each the
+    // reason a different way of being wrong stays shut:
     //
-    //   - the tail ends with `-` or `/`. That is the break opportunity the
-    //     wrapper used, and the one trace of a cut — rather than finished —
-    //     token a row's end carries that survives being far short of the
-    //     margin: a whole path landing anywhere (`…/result.png` + `and
-    //     cleaned up`) ends in something else and never gets here.
-    //   - the continuation does not start with `/`. `…-` or `…/` plus `/x` is
-    //     not a path anyone wrote; it is two paths, and the second one is
-    //     whole already.
+    //   - the tail ends with `-`, `/` or `?`. That is the break opportunity
+    //     the wrapper used, and the one trace of a cut — rather than
+    //     finished — token a row's end carries that survives being far short
+    //     of the margin: a whole path or URL landing anywhere (`…/result.png`
+    //     + `and cleaned up`) ends in something else and never gets here.
+    //   - the continuation does not start with `/`. `…-`, `…/` or `…?` plus
+    //     `/x` is not a path anyone wrote; it is two paths, and the second
+    //     one is whole already.
     //   - the continuation's first token WOULD NOT HAVE FIT at the render
     //     width ({@link inferWrapWidth}). That is the wrapper's own arithmetic
     //     run backwards: if the token fit, the wrapper would have put it
@@ -447,7 +505,7 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     //     no wider row, the estimate falls back to the block itself and this
     //     guard stops constraining — the tail and head checks then carry the
     //     rule alone, which is the price of surviving resizes.
-    if (!tail.endsWith('-') && !tail.endsWith('/')) return null;
+    if (!tail.endsWith('-') && !tail.endsWith('/') && !tail.endsWith('?')) return null;
     if (head === '' || head.startsWith('/')) return null;
     if (prev.lastCol + 1 + head.length <= wrapWidth) return null;
     return indent;
@@ -608,7 +666,11 @@ export function pathLinks(
   bufferLineNumber: number,
   context: () => TerminalPathContext,
 ): ILink[] {
-  const scanned = scanBufferLine(term, bufferLineNumber);
+  return pathLinksFromScan(scanBufferLine(term, bufferLineNumber), context);
+}
+
+/** The path half of {@link lineLinks}, over an already-flattened line. */
+function pathLinksFromScan(scanned: ScannedLine, context: () => TerminalPathContext): ILink[] {
   const links: ILink[] = [];
 
   for (const match of findPaths(scanned.text)) {
@@ -634,6 +696,72 @@ export function pathLinks(
   return links;
 }
 
+/** What a multi-row URL click does. main allow-lists the scheme; see TerminalView. */
+export type UrlOpener = (url: string) => void;
+
+/**
+ * The web links for one buffer line — but only the ones that SPAN rows.
+ *
+ * A URL on a single row is WebLinksAddon's to find, and stays so: the addon
+ * has matched web links for years and this returns `[]` precisely so the
+ * provider below never answers those lines and the addon keeps every cell it
+ * always owned. A URL the remote CLI's wrapper broke across rows is the
+ * addon's blind spot — it reads one row at a time — and it is the whole
+ * reason these links exist: the flattened line rejoins the fragments, the
+ * detector (./terminalUrls.ts) finds the address in it, and the range runs
+ * from the `h` of `https` on the first row to the last character of the
+ * continuation.
+ *
+ * [open] is injected rather than imported so a click's behaviour stays a
+ * TerminalView decision (and a test can observe it without a window).
+ */
+export function urlLinks(term: Terminal, bufferLineNumber: number, open: UrlOpener): ILink[] {
+  return urlLinksFromScan(scanBufferLine(term, bufferLineNumber), open);
+}
+
+/** The URL half of {@link lineLinks}, over an already-flattened line. */
+function urlLinksFromScan(scanned: ScannedLine, open: UrlOpener): ILink[] {
+  const links: ILink[] = [];
+
+  for (const match of findUrls(scanned.text)) {
+    const from = scanned.cells[match.start];
+    const to = scanned.cells[match.end - 1];
+    if (from === undefined || to === undefined) continue;
+    if (from.y === to.y) continue;
+
+    links.push({
+      range: {
+        start: { x: from.x + 1, y: from.y + 1 },
+        end: { x: to.x + 1, y: to.y + 1 },
+      },
+      text: match.url,
+      decorations: { pointerCursor: true, underline: true },
+      activate: () => open(match.url),
+    });
+  }
+  return links;
+}
+
+/**
+ * One scan, both detectors — the at-rest highlighter's entry point.
+ *
+ * `pathLinks` and `urlLinks` each flatten the line they are asked about, and
+ * the highlighter asks about every row the renderer touches; asking both
+ * questions of one flattening halves that cost. The links come back in one
+ * list because the highlighter does not care who a cell belongs to, only
+ * which rows a link spans — and the two detectors can never contest a cell:
+ * terminalPaths refuses any `://` token before it peels anything.
+ */
+export function lineLinks(
+  term: Terminal,
+  bufferLineNumber: number,
+  context: () => TerminalPathContext,
+  open: UrlOpener,
+): ILink[] {
+  const scanned = scanBufferLine(term, bufferLineNumber);
+  return [...pathLinksFromScan(scanned, context), ...urlLinksFromScan(scanned, open)];
+}
+
 /**
  * A provider for TerminalView to register.
  *
@@ -654,6 +782,31 @@ export function createPathLinkProvider(
       const links = pathLinks(term, bufferLineNumber, context);
       // `undefined`, not an empty array: xterm treats an array as "this
       // provider answered" when it decides which provider owns a cell.
+      callback(links.length > 0 ? links : undefined);
+    },
+  };
+}
+
+/**
+ * A provider for the web links that span rows.
+ *
+ * Registration order is the whole design, and it is the OPPOSITE of the path
+ * provider's: this one must be registered BEFORE `WebLinksAddon`. xterm gives
+ * an earlier provider priority for the same row and drops a later provider's
+ * link where the cells intersect — and on a wrapped URL's FIRST row the addon
+ * does report a link: the truncated `https://…/opik/` fragment, the very
+ * thing the user complained sat underlined and half-usable. Registered first,
+ * the whole-address link claims the fragment's cells out from under it (a
+ * link whose range continues onto the next row occupies the rest of this
+ * row), and on the continuation rows the addon reports nothing at all, so the
+ * one link owns every row of the address. A single-row URL never gets here —
+ * {@link urlLinks} returns `[]` and the callback answers `undefined`, which
+ * leaves the addon untouched on the lines it always handled.
+ */
+export function createUrlLinkProvider(term: Terminal, open: UrlOpener): ILinkProvider {
+  return {
+    provideLinks(bufferLineNumber, callback): void {
+      const links = urlLinks(term, bufferLineNumber, open);
       callback(links.length > 0 ? links : undefined);
     },
   };

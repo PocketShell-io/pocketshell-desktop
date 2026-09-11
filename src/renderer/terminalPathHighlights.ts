@@ -8,8 +8,11 @@
  * covers only the first row's fragment, and the continuation sits plain. The
  * hover link (terminalLinks.ts) does reconstruct the whole path, but only
  * while the mouse is on it — so every at-rest screenshot kept reading as
- * "still not highlighting". This layer closes that gap: the full joined path
- * carries a block tint whenever it is on screen, mouse or no mouse.
+ * "still not highlighting". This layer closes that gap: the full joined
+ * path carries a block tint whenever it is on screen, mouse or no mouse.
+ * The joined WEB urls the same wrapper breaks across rows get the same
+ * repair through the same pipeline (lineLinks below): the remote CLI
+ * underlines only the first row of those too.
  *
  * ## Why an onRender rescan, given the docs once said this was not viable
  *
@@ -60,7 +63,7 @@
  * repopulates.
  */
 import type { IDecoration, IDisposable, IMarker, Terminal } from '@xterm/xterm';
-import { lastTextColumn, pathLinks, type TerminalPathContext } from './terminalLinks';
+import { lastTextColumn, lineLinks, type TerminalPathContext, type UrlOpener } from './terminalLinks';
 
 interface RowSegment {
   x: number;
@@ -119,7 +122,12 @@ export class PathHighlighter {
     // clamped to the row's own text: a reconstructed row stops short of the
     // pane and the padding after it is not path.
     const segments: RowSegment[] = [];
-    for (const link of pathLinks(this.term, line, this.context)) {
+    // One flattening, both detectors: paths of every span, and the web links
+    // that cross rows (a single-row URL gets no tint — it was never
+    // half-underlined by the remote CLI, so there is nothing to repair).
+    // The opener is never called; decorations do not activate.
+    const open: UrlOpener = () => undefined;
+    for (const link of lineLinks(this.term, line, this.context, open)) {
       if (line < link.range.start.y || line > link.range.end.y) continue;
       const rowEnd = lastTextColumn(this.term, line);
       const startX = line === link.range.start.y ? link.range.start.x : 1;

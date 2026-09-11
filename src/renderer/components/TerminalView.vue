@@ -53,7 +53,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { applyUnicode11Widths } from '../terminalUnicode';
 import AppIcon from './AppIcon.vue';
 import { useShellsStore } from '../stores/shells';
-import { createPathLinkProvider } from '../terminalLinks';
+import { createPathLinkProvider, createUrlLinkProvider } from '../terminalLinks';
 import { PathHighlighter } from '../terminalPathHighlights';
 import { decodeOsc52SetClipboard } from '../osc52';
 import { forceLocalMouseSelection } from '../terminalMouseSelection';
@@ -553,6 +553,15 @@ function onCustomKey(e: KeyboardEvent): boolean {
 }
 
 onMounted(async () => {
+  // The one way any link leaves this pane: the system browser, through main's
+  // allow-list, with the scheme checked here so a bad match never leaves the
+  // renderer. Shared by the three layers that can carry an http(s) address —
+  // the multi-row provider below, WebLinksAddon, and xterm's OSC 8 handler —
+  // so all three keep saying the same thing about what a click opens.
+  const openExternal = (uri: string): void => {
+    if (!/^https?:\/\//i.test(uri)) return;
+    window.open(uri, '_blank', 'noopener,noreferrer');
+  };
   term = new Terminal({
     ...TERMINAL_OPTIONS,
     fontFamily: resolveMonoStack(settings.monospaceFontFamily),
@@ -577,11 +586,7 @@ onMounted(async () => {
     // non-http(s) OSC 8 URIs before a link is even offered, unless
     // `allowNonHttpProtocols` is set (it is not).
     linkHandler: {
-      activate: (_event, uri) => {
-        if (/^https?:\/\//i.test(uri)) {
-          window.open(uri, '_blank', 'noopener,noreferrer');
-        }
-      },
+      activate: (_event, uri) => openExternal(uri),
     },
   });
   fitAddon = new FitAddon();
@@ -589,6 +594,17 @@ onMounted(async () => {
   // Emoji measure two columns — in the buffer as well as in the font — before
   // the first output byte is parsed (terminalUnicode.ts).
   applyUnicode11Widths(term);
+  // Web links that span rows, registered BEFORE WebLinksAddon below — the
+  // opposite of the path provider's ordering, and for the mirror reason. A
+  // URL the remote CLI's wrapper broke across rows reaches WebLinksAddon as
+  // only its first-row fragment (`https://…/opik/`, underlined, opening a
+  // truncated address); this provider reports the one whole-address link
+  // reconstructed from the flattened line, and xterm's priority rule lets it
+  // claim the fragment's cells. On single-row URLs it answers nothing, so
+  // the addon keeps every line it always handled. (createUrlLinkProvider
+  // documents the overlap arithmetic; terminalLinks.ts the joins that make
+  // the address whole.)
+  termDisposables = [term.registerLinkProvider(createUrlLinkProvider(term, openExternal))];
   // An explicit activation handler, not the addon default.
   //
   // WebLinksAddon defaults to `window.open(uri)`, which in Electron reaches
@@ -599,12 +615,7 @@ onMounted(async () => {
   // never leaves the renderer at all, and the check sits next to the thing
   // that produced the URL. Terminal output is remote bytes; a link in it is
   // a suggestion from another machine, not an instruction.
-  term.loadAddon(
-    new WebLinksAddon((event, uri) => {
-      if (!/^https?:\/\//i.test(uri)) return;
-      window.open(uri, '_blank', 'noopener,noreferrer');
-    }),
-  );
+  term.loadAddon(new WebLinksAddon((_event, uri) => openExternal(uri)));
   term.open(containerEl.value!);
   // Hands the terminal to the controller: the initial fit, the parse-stall
   // monitor, and the byte/resize routes — bound ONCE against the terminal's
@@ -625,7 +636,7 @@ onMounted(async () => {
   // the same reason: the session the pane shows is read through a getter at
   // CLICK time, so a switch that reuses this terminal needs no re-registration
   // and cannot stack a second provider.
-  termDisposables = [
+  termDisposables.push(
     term.registerLinkProvider(
       createPathLinkProvider(term, () => ({ sessionName: targetSession.value })),
     ),
@@ -655,7 +666,7 @@ onMounted(async () => {
       if (text) void copyToClipboard(text);
       return true;
     }),
-  ];
+  );
   term.attachCustomKeyEventHandler(onCustomKey);
   // A plain drag must select in this pane even while the remote owns the
   // mouse — that ownership is exactly what made a selection's highlight
