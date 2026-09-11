@@ -1,18 +1,8 @@
-import type { AppIconName } from './AppIcon.vue';
 import type { Point } from '../shared/doodleGeometry';
 
 /** Everything that is defined by a pointer drag. */
 export type ShapeTool = 'pen' | 'line' | 'arrow' | 'rect' | 'ellipse';
 export type Tool = ShapeTool | 'text';
-
-export const TOOLS: { id: Tool; icon: AppIconName; label: string }[] = [
-  { id: 'pen', icon: 'edit-2', label: 'Draw' },
-  { id: 'line', icon: 'minus', label: 'Line' },
-  { id: 'arrow', icon: 'arrow-right', label: 'Arrow' },
-  { id: 'rect', icon: 'square', label: 'Rectangle' },
-  { id: 'ellipse', icon: 'circle', label: 'Ellipse' },
-  { id: 'text', icon: 'type', label: 'Text' },
-];
 
 /**
  * The pen palette, as token NAMES.

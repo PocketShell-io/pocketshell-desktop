@@ -138,8 +138,6 @@ describe('design gates', () => {
         'three-route creation form; subcomponent split pending',
       'views/SettingsView.vue':
         'settings panels; per-section component split pending',
-      'components/DoodleCanvas.vue':
-        'canvas and palette UI; drawing math already in doodleGeometry.ts',
     };
     const offenders = vueFiles(RENDERER)
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
