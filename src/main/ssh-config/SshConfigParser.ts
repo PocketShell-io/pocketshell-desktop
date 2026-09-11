@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { LOOPBACK_HOST, MAX_PORT } from '../../shared/net.js';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, posix } from 'node:path';
 import type { ForwardSpec, HostEntry } from '../../shared/types.js';
 
 /**
@@ -254,5 +254,12 @@ function tildeExpand(p: string): string {
   // a slash as absolute and discards homedir(), so `~/.ssh/k` would collapse to
   // `/.ssh/k` (drive root `C:\.ssh\k` on Windows) instead of the user's home.
   const rest = p.slice(1).replace(/^[/\\]+/, '');
-  return rest ? resolve(homedir(), rest) : homedir();
+  // Joined POSIX-style, not resolve(): the expansion is written back into
+  // OpenSSH config text, which ssh builds other than Windows-native (Git's,
+  // WSL's) read with `/` as the only separator, and what the parser produces is
+  // what the writer later writes. Node's fs reads either spelling on Windows,
+  // so `~/.ssh/k` comes back as `<home>/.ssh/k` everywhere — the identityFile
+  // round-trip the parser tests assert. Identical to resolve() on POSIX.
+  const home = homedir();
+  return rest ? posix.join(home, rest) : home;
 }

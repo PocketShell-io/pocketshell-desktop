@@ -114,7 +114,14 @@ Host second
     // the key name" is not enough: the old `resolve(homedir(), p.slice(1))` bug
     // produced `/.ssh/id_ed25519` (`C:\.ssh\id_ed25519` on Windows), which passes
     // that weaker check while pointing at a file that does not exist.
-    expect(hosts[0]!.identityFile).toBe(resolve(homedir(), '.ssh', 'id_ed25519'));
+    //
+    // The separator is `/` on every platform, deliberately: the expansion is
+    // written back into OpenSSH config text that non-native ssh builds (Git's,
+    // WSL's) read with `/` as the only separator. Node's fs reads either
+    // spelling on Windows, so the POSIX join costs nothing and keeps the file
+    // portable. (SshConfigWriter's round-trip test asserts the same spelling
+    // from the other direction.)
+    expect(hosts[0]!.identityFile).toBe(`${homedir()}/.ssh/id_ed25519`);
   });
 
   it('expands a bare ~ to the home dir', () => {
