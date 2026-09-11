@@ -837,6 +837,55 @@ describe('scanBufferLine — a command echo wrapped inside a KEY=" assignment', 
 });
 
 /**
+ * The "GEN_IMG=" report, transcribed from the pane: the same command-echo
+ * shape as the PKG= block, with two differences that must not matter — the
+ * assignment is SINGLE-quoted, and the assignment row is itself a gutter row
+ * of the block (`• Ran set -e` above it opens the echo). The path breaks
+ * after the UUID's trailing slash onto the next gutter row and closes the
+ * quote there. One path, one link, from either row; the bullet line above
+ * stays a line of its own.
+ */
+describe('scanBufferLine — a single-quoted assignment wrapped inside a gutter block', () => {
+  const ROW0 = '• Ran set -e';
+  const ROW1 =
+    `  │ GEN_IMG='/home/alexey/.codex/generated_images/01a091cc-f6e4-7791-91ad-4c47f4a3f9e4/`;
+  const ROW2 = `  │ exec-194bb016-1c73-4021-88fd-5212a4a4fdec.png'`;
+  const ROW3 = `  │ … +12 lines`;
+  const ROW4 = `  │ No image converter found`;
+  const PATH =
+    '/home/alexey/.codex/generated_images/01a091cc-f6e4-7791-91ad-4c47f4a3f9e4/exec-194bb016-1c73-4021-88fd-5212a4a4fdec.png';
+
+  it('joins and linkifies whole, at the pane width and in a wider one', () => {
+    // Two geometries: the block rendered at the pane's own width (row one
+    // full to the margin), and the report's actual case — a pane resized
+    // wider than the block's render width. The join is the same in both.
+    for (const width of [ROW1.length, 200]) {
+      const t = fakeScreen([ROW0, ROW1, ROW2, ROW3, ROW4], width);
+      const context = (): { sessionName: string } => ({ sessionName: 'git-foo' });
+
+      // The bullet line above is not a continuation of anything.
+      expect(scanBufferLine(t, 1).text.trimEnd()).toBe(ROW0);
+
+      // The assignment row opens the echo; the path runs across the break
+      // with gutter, `GEN_IMG='` and the closing quote all outside it.
+      for (const line of [2, 3]) {
+        const links = pathLinks(t, line, context);
+        expect(links.map((l) => l.text)).toEqual([PATH]);
+        expect(links[0]?.range).toEqual({ start: { x: 14, y: 2 }, end: { x: 49, y: 3 } });
+      }
+    }
+  });
+
+  it('opens the whole png, not the directory the first row ended at', () => {
+    const files = useFilesStore();
+    pathLinks(fakeScreen([ROW0, ROW1, ROW2, ROW3, ROW4], 200), 2, () => ({
+      sessionName: 'git-foo',
+    }))[0]?.activate(CLICK, PATH);
+    expect(files.reveal).toBe(PATH);
+  });
+});
+
+/**
  * The other half of the joining rules, and the half that decides whether this
  * feature is trustworthy: two rows that merely follow one another must stay two
  * lines. A join that should not have happened invents a path nothing can open
