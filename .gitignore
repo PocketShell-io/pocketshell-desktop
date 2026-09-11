@@ -56,3 +56,7 @@ tests-docker/.data/
 # Screenshots are local-only reference, never committed.
 # Captures go here when re-recording UI states; see docs/DESIGN.md section 1.
 docs/screenshots/
+
+# Local tooling state and scratch (agent workspaces, temp dumps, check scripts)
+.zcode/
+.tmp*
