@@ -18,11 +18,12 @@ import type { ShellId } from '../../shared/types';
  * ownership into a store. This takes the store, because the composer, the
  * terminal and the workspace all need to address the same shell and a template
  * ref only solves it for whoever holds the ref. But it deliberately stops at a
- * REGISTRY: TerminalView still opens, re-opens and closes its own PTY.
+ * REGISTRY: TerminalView still decides when its PTY opens, re-opens and closes
+ * (the mechanics live in its controller, renderer/terminalPane.ts).
  *
- * Moving `open`/`close` out of the component would mean re-sequencing the code
- * that binds xterm's `onData`/`onResize` — and that sequencing is exactly what
- * the just-landed listener-leak fix pins (handlers bound once per terminal
+ * Moving `open`/`close` decisions into a store would mean re-sequencing the
+ * code that binds xterm's `onData`/`onResize` — and that sequencing is exactly
+ * what the just-landed listener-leak fix pins (handlers bound once per terminal
  * lifetime, reading `shellId` from the closure; the e2e regression test in
  * tests/e2e/session-nav.spec.ts asserts no duplicated `0;276;0c` device-attribute
  * replies after repeated session switches). A registry gets the composer what
