@@ -132,8 +132,6 @@ describe('design gates', () => {
         'tab model, pane wiring, chords, drag and files-tabs plumbing; template split pending',
       'components/PromptComposer.vue':
         'composer UI; its pipelines are already extracted (composerSend, AttachmentStager) — template split pending',
-      'components/SessionTree.vue':
-        'template/style-heavy session tree; subcomponent split pending',
     };
     const offenders = vueFiles(RENDERER)
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
