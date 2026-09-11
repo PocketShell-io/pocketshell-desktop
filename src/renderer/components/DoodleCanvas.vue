@@ -54,23 +54,40 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import AppIcon from './AppIcon.vue';
-import type { AppIconName } from './AppIcon.vue';
 import { useSettingsStore } from '../stores/settings';
 import { isShortcut } from '../../shared/shortcuts';
 import { doodleAttachmentName } from '../../shared/composerAttachments';
 import {
-  arrowHead,
   constrainToAngle,
   hitTestText,
   isBlankText,
   isDegenerateDrag,
-  layoutText,
   textFontSize,
   textHalfLeading,
   TEXT,
   type Point,
-  type TextLayout,
 } from '../../shared/doodleGeometry';
+import {
+  PENS,
+  TOOLS,
+  WIDTHS,
+  type Item,
+  type Pen,
+  type Stroke,
+  type TextItem,
+  type Tool,
+} from '../doodleModel';
+import {
+  fontContentHeight as fontContentHeightOn,
+  lineHeightRatioFor,
+  paintItem as paintItemOn,
+  resolveToken,
+  surfaceColor,
+  strokePath as strokePathOn,
+  layoutFor as layoutForOn,
+  type PaintEnv,
+} from '../doodlePaint';
+import type { TextLayout } from '../../shared/doodleGeometry';
 
 const props = withDefaults(
   defineProps<{
@@ -121,54 +138,9 @@ const settings = useSettingsStore();
 // ---------------------------------------------------------------------------
 // Tools and pens
 // ---------------------------------------------------------------------------
-
-/** Everything that is defined by a pointer drag. */
-type ShapeTool = 'pen' | 'line' | 'arrow' | 'rect' | 'ellipse';
-type Tool = ShapeTool | 'text';
-
-const TOOLS: { id: Tool; icon: AppIconName; label: string }[] = [
-  { id: 'pen', icon: 'edit-2', label: 'Draw' },
-  { id: 'line', icon: 'minus', label: 'Line' },
-  { id: 'arrow', icon: 'arrow-right', label: 'Arrow' },
-  { id: 'rect', icon: 'square', label: 'Rectangle' },
-  { id: 'ellipse', icon: 'circle', label: 'Ellipse' },
-  { id: 'text', icon: 'type', label: 'Text' },
-];
-
-/**
- * The pen palette, as token NAMES.
- *
- * These six are the status/accent tokens that already carry meaning in this
- * UI, so an annotation drawn in `--error` reads the same way an error does
- * everywhere else. No new token is introduced for drawing.
- *
- * Text shares this row rather than growing its own. A second colour control
- * that happened to apply only to text would double the toolbar to express a
- * distinction nobody drawing on a screenshot has ever wanted: the arrow and the
- * label at the end of it are one annotation and should be one colour.
- */
-const PENS = ['--error', '--warning', '--success', '--accent', '--agent', '--fg'] as const;
-type Pen = (typeof PENS)[number];
-
-/**
- * Logical stroke widths. Scaled with the canvas, so they hold at any zoom.
- *
- * Text size is derived from this too (see `TEXT.sizeRatio` and `TEXT.minSize`,
- * which make these three 48 / 96 / 192px of type), which is why the control's
- * label is deliberately generic: it is the weight of the mark, not the
- * thickness of a line. The two ladders are not the same shape — the floor is a
- * guard for callers below the toolbar's lightest weight — and that is fine,
- * because what the control promises is an ORDERING, not a ratio.
- *
- * The lightest rung used to be 3 and was dropped when every weight but the
- * heaviest was reported as too small: at the ~0.34 display scale of the sheet,
- * a width-3 stroke is about one CSS pixel of ink. The ladder shifted up a rung
- * rather than growing a fourth button — three choices is already two more
- * decisions than annotating a screenshot wants — and the middle one is the
- * default, so the complaint is answered by what opens, not by what must be
- * hunted for.
- */
-const WIDTHS = [6, 12, 24] as const;
+//
+// The tool list, the pen palette and the width ladder — with the reasoning for
+// each — are data in doodleModel.ts. The toolbar's live state is here.
 
 const tool = ref<Tool>('pen');
 const pen = ref<Pen>('--error');
@@ -177,39 +149,6 @@ const width = ref<number>(WIDTHS[1]);
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
-
-interface Stroke {
-  kind: 'stroke';
-  tool: ShapeTool;
-  pen: Pen;
-  width: number;
-  points: Point[];
-}
-
-/**
- * A committed text annotation.
- *
- * `origin` is the TOP OF THE GLYPHS of the first line, not a baseline and not
- * the top of the first line BOX — it is the pixel the user clicked, and what
- * they clicked is where the writing starts. The editing `<textarea>` is offset
- * upwards by `textHalfLeading` to put its own first line here too (see
- * `editorStyle`); without that the caret sits half a leading low and the
- * caption visibly hops up at the moment it is committed.
- *
- * The raw text is stored, never the wrapped lines: wrapping depends on the
- * measured font, and the font depends on tokens that can change under a theme
- * switch. Storing lines would freeze a layout computed against a font that is
- * no longer the one being painted with.
- */
-interface TextItem {
-  kind: 'text';
-  pen: Pen;
-  width: number;
-  origin: Point;
-  text: string;
-}
-
-type Item = Stroke | TextItem;
 
 /**
  * shallowRef: strokes accumulate hundreds of points while the pointer is down.
@@ -313,185 +252,35 @@ const isEmpty = computed(
 const canUndo = computed(() => history.value.length > 0);
 
 // ---------------------------------------------------------------------------
-// Token resolution
+// Token resolution and painting
 // ---------------------------------------------------------------------------
+//
+// The painters are pure functions in doodlePaint.ts — tokens into colours and
+// fonts, text laid out with the canvas's own metrics, strokes and captions
+// drawn — and every decision record travelled with them. These closures bind
+// them to THIS sheet's canvas and width, so the component's callers read
+// exactly as before.
 
-/** Read a custom property off the live element tree. */
-function readToken(name: string): string {
-  const host = canvasEl.value ?? document.documentElement;
-  return getComputedStyle(host).getPropertyValue(name).trim();
-}
+const resolve = (token: Pen): string => resolveToken(canvasEl.value, token);
+const getSurface = (): string => surfaceColor(canvasEl.value);
+const lineHeightRatio = (): number => lineHeightRatioFor(canvasEl.value);
+const fontContentHeight = (markWidth: number): number | null =>
+  fontContentHeightOn(canvasEl.value, markWidth);
 
-/** Resolve a token to the concrete colour the canvas context needs. */
-function resolve(token: Pen): string {
-  const value = readToken(token);
-  // A token that fails to resolve means the stylesheet is not attached — draw
-  // something visible rather than throwing away the stroke.
-  return value === '' ? 'white' : value;
-}
+const paintEnv = (): PaintEnv => ({
+  host: canvasEl.value,
+  sheetWidth: size.value.w,
+  resolve,
+});
 
-/** The blank-sheet ground, taken from the same token the app paints panels with. */
-function getSurface(): string {
-  const value = readToken('--surface-2');
-  return value === '' ? 'black' : value;
-}
+const layoutFor = (ctx: CanvasRenderingContext2D, item: TextItem): TextLayout =>
+  layoutForOn(ctx, item, paintEnv());
 
-/** `--lh-300` as a number. The body ratio: this is body copy, on a picture. */
-function lineHeightRatio(): number {
-  const parsed = Number.parseFloat(readToken('--lh-300'));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : TEXT.lineHeightRatio;
-}
+const strokePath = (ctx: CanvasRenderingContext2D, stroke: Stroke): void =>
+  strokePathOn(ctx, stroke, paintEnv());
 
-/** The canvas `font` shorthand for a mark of the given width. */
-function fontFor(markWidth: number): string {
-  const family = readToken('--font-ui') || 'sans-serif';
-  const weight = readToken('--fw-semibold') || '600';
-  return `${weight} ${textFontSize(markWidth)}px ${family}`;
-}
-
-/**
- * Ascent plus descent of the font a mark of this width paints in, or null.
- *
- * Asked of the canvas rather than of the DOM because the canvas is the only
- * thing here that can answer: `getComputedStyle` reports the font that was
- * REQUESTED, while `measureText` reports metrics of the font that was actually
- * resolved, which is what both the painter and the browser's own line boxes are
- * built from. The string measured is arbitrary — `fontBoundingBox*` describes
- * the font, not the glyphs — but 'Hg' is a cap and a descender, so a renderer
- * that ever regressed to ink-box metrics would be caught rather than flattered.
- *
- * Null when the metrics are missing, which is not hypothetical: jsdom has no
- * text engine and its `measureText` returns a width and nothing else.
- * `textHalfLeading` has a documented fallback for exactly that.
- */
-function fontContentHeight(markWidth: number): number | null {
-  const ctx = canvasEl.value?.getContext('2d');
-  if (!ctx) return null;
-  ctx.font = fontFor(markWidth);
-  const metrics = ctx.measureText('Hg');
-  const height = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent;
-  return Number.isFinite(height) && height > 0 ? height : null;
-}
-
-/**
- * Lay a text item out using the canvas's own text metrics.
- *
- * The context is mutated (`font`) before measuring, because `measureText`
- * answers for whatever font is set — measuring in one font and painting in
- * another is the classic way to get wrapping that is right on screen and wrong
- * in the export. Setting it here means every caller measures in the font the
- * very next `fillText` will use.
- */
-function layoutFor(ctx: CanvasRenderingContext2D, item: TextItem): TextLayout {
-  ctx.font = fontFor(item.width);
-  return layoutText({
-    text: item.text,
-    origin: item.origin,
-    fontSize: textFontSize(item.width),
-    lineHeightRatio: lineHeightRatio(),
-    sheetWidth: size.value.w,
-    measure: (s) => ctx.measureText(s).width,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Painting
-// ---------------------------------------------------------------------------
-
-function strokePath(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
-  const { points } = stroke;
-  if (points.length === 0) return;
-
-  ctx.strokeStyle = resolve(stroke.pen);
-  ctx.lineWidth = stroke.width;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-
-  const first = points[0];
-  const last = points[points.length - 1];
-
-  if (stroke.tool === 'pen') {
-    // Quadratic through the midpoints: joining the raw samples with straight
-    // segments makes a slow hand look faceted, because pointer events arrive
-    // far apart in screen space when the pointer moves slowly.
-    ctx.moveTo(first.x, first.y);
-    if (points.length === 1) {
-      // A tap is a dot, not nothing.
-      ctx.lineTo(first.x + 0.01, first.y);
-    }
-    for (let i = 1; i < points.length - 1; i++) {
-      const p = points[i];
-      const next = points[i + 1];
-      ctx.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
-    }
-    if (points.length > 1) ctx.lineTo(last.x, last.y);
-    ctx.stroke();
-    return;
-  }
-
-  if (stroke.tool === 'line' || stroke.tool === 'arrow') {
-    // The head is computed before the shaft is drawn because it decides where
-    // the shaft ENDS — see ArrowHead.shaftEnd for why it is not the tip.
-    const head = stroke.tool === 'arrow' ? arrowHead(first, last, stroke.width) : null;
-    const end = head?.shaftEnd ?? last;
-    ctx.moveTo(first.x, first.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    if (head) {
-      ctx.beginPath();
-      ctx.moveTo(head.tip.x, head.tip.y);
-      ctx.lineTo(head.barbA.x, head.barbA.y);
-      ctx.lineTo(head.barbB.x, head.barbB.y);
-      ctx.closePath();
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.fill();
-    }
-    return;
-  }
-
-  const x = Math.min(first.x, last.x);
-  const y = Math.min(first.y, last.y);
-  const w = Math.abs(last.x - first.x);
-  const h = Math.abs(last.y - first.y);
-
-  if (stroke.tool === 'rect') {
-    ctx.rect(x, y, w, h);
-  } else {
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-  }
-  ctx.stroke();
-}
-
-/**
- * Paint one text annotation.
- *
- * `textBaseline = 'top'` rather than the default alphabetic baseline: the
- * layout module works in top-left boxes, and an alphabetic baseline would need
- * an ascent metric that differs per font before a click could be turned into
- * one. With 'top' the glyphs of line 0 begin exactly at `layout.y`, which is
- * exactly where the user clicked — no fudge on this side at all.
- *
- * The half-leading correction that makes the editing overlay agree lives in
- * `editorStyle`, and it is on that side ON PURPOSE. Only one of these two
- * renderers can be the reference, and it has to be this one: this is what the
- * PNG will contain, and the textarea is an affordance that exists for a few
- * seconds. Correcting the paint instead would land every caption half a leading
- * below the click forever, to spare a transient box from being moved.
- */
-function paintText(ctx: CanvasRenderingContext2D, item: TextItem): void {
-  const layout = layoutFor(ctx, item);
-  ctx.fillStyle = resolve(item.pen);
-  ctx.textBaseline = 'top';
-  for (let i = 0; i < layout.lines.length; i++) {
-    ctx.fillText(layout.lines[i], layout.x, layout.y + i * layout.lineHeight);
-  }
-}
-
-function paintItem(ctx: CanvasRenderingContext2D, item: Item): void {
-  if (item.kind === 'text') paintText(ctx, item);
-  else strokePath(ctx, item);
-}
+const paintItem = (ctx: CanvasRenderingContext2D, item: Item): void =>
+  paintItemOn(ctx, item, paintEnv());
 
 function repaint(): void {
   const canvas = canvasEl.value;
