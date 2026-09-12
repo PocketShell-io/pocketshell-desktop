@@ -162,6 +162,16 @@ let term: Terminal | null = null;
 let fitAddon: FitAddon | null = null;
 /** View-side xterm disposables: link provider, highlighter, OSC 52 handler. */
 let termDisposables: IDisposable[] = [];
+/**
+ * Set once the component is being torn down. The mount hook's continuation
+ * after the join (`await pane.open()`) reads this: the join is seconds long —
+ * an SSH channel, a login shell, an attach — and the workspace can tear the
+ * pane down inside it, which releases the template refs and has already run
+ * {@link onBeforeUnmount}. Resuming into `pane.observeContainer(null)` then
+ * throws (`ResizeObserver: parameter 1 is not of type 'Element'`), leaks the
+ * window resize listener, and re-arms a pane that no longer exists.
+ */
+let unmounted = false;
 
 /** True between mousedown inside the terminal and the mouse-up that ends it. */
 let selecting = false;
@@ -691,6 +701,11 @@ onMounted(async () => {
 
   await pane.open();
 
+  // An unmount landed inside the join: the teardown hook below already ran,
+  // and nothing here is this pane's business any more. See the `unmounted`
+  // note by the declarations.
+  if (unmounted) return;
+
   // Re-fit on window resize.
   window.addEventListener('resize', onWindowResize);
   pane.observeContainer(containerEl.value!);
@@ -705,6 +720,7 @@ function onWindowResize(): void {
 }
 
 onBeforeUnmount(() => {
+  unmounted = true;
   window.removeEventListener('resize', onWindowResize);
   document.removeEventListener('mouseup', onDocumentMouseUp);
   containerEl.value?.removeEventListener('mousedown', onTerminalMouseDown, true);
