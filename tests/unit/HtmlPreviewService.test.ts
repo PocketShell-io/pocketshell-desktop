@@ -23,12 +23,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * goes through the same entry point Chromium uses, with a real `Request`.
  */
 
-const handlers = new Map<string, (request: GlobalRequest) => Promise<GlobalResponse>>();
+const handlers = new Map<string, (request: Request) => Promise<Response>>();
 
 vi.mock('electron', () => ({
   protocol: {
     registerSchemesAsPrivileged: vi.fn(),
-    handle: (scheme: string, handler: (r: GlobalRequest) => Promise<GlobalResponse>) => {
+    handle: (scheme: string, handler: (r: Request) => Promise<Response>) => {
       handlers.set(scheme, handler);
     },
   },
@@ -111,7 +111,7 @@ function makeService(sftp: ReturnType<typeof fakeSftp>): InstanceType<typeof Htm
   return service;
 }
 
-const handle = (url: string): Promise<GlobalResponse> => {
+const handle = (url: string): Promise<Response> => {
   const handler = handlers.get(PREVIEW_SCHEME);
   if (!handler) throw new Error('handler not installed');
   return handler(new Request(url));
