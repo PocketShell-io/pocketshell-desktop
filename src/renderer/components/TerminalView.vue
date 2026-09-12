@@ -938,4 +938,16 @@ defineExpose({ focus: (): void => term?.focus(), resyncDisplay });
   /* Windows Terminal defaults.json: padding "8, 8, 8, 8" */
   padding: var(--term-padding);
 }
+/* xterm 6.0.0 injects its runtime theme and dimension sheets as <style>
+   children of .xterm-screen — inside the terminal, not document.head — and
+   this Electron's Chromium (33.x) does not apply the UA `style { display:
+   none }`, so the sheets compute `display: inline` and their ~55 KB of rules
+   render as in-flow pane content whenever the rows don't cover them: an
+   empty pane mid-join, a pane whose render died. Reported as a pane filled
+   top to bottom with `.xterm-dom-renderer-owner-1 …` colour rules. A style
+   element's rules apply regardless of its own display, so hiding it here
+   costs nothing and cannot come back. (e2e: terminal-style-escape.spec.ts.) */
+.terminal :deep(.xterm-screen > style) {
+  display: none !important;
+}
 </style>
