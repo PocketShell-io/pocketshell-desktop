@@ -2,7 +2,9 @@ import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
 import { coerceHostEntries, type SyncPullResult, type SyncPushResult } from '../../shared/sync.js';
+import { parseSyncPayload } from '../../shared/syncMerge.js';
 import { SYNC_SLOT } from '../../shared/syncConfig.js';
+import type { HostEntry } from '../../shared/types.js';
 import { decryptEnvelope, encryptToEnvelope, SyncCryptoError } from '../sync/SyncCrypto.js';
 import { SyncConflictError } from '../sync/SyncService.js';
 import { applyHostsToConfig } from '../ssh-config/SshConfigWriter.js';
@@ -16,7 +18,14 @@ import { applyHostsToConfig } from '../ssh-config/SshConfigWriter.js';
  * Push is a RESULT union, not a throw, because the UI branches on `conflict`
  * (re-pull → re-merge → retry) and an IPC rejection would flatten that into
  * a string. Pull distinguishes `absent` for the same reason.
+ *
+ * The account host cache: whichever window decrypted the account copy last
+ * (a pull or a push) leaves the parsed host list here, in memory only, and
+ * every window — the picker among them — can then read it without holding
+ * the passphrase. It never reaches disk, and sign-out drops it.
  */
+let decryptedAccountHosts: HostEntry[] | null = null;
+
 export function registerSyncIpc(ctx: IpcContext): void {
   ipcMain.handle(ipc.sync.status, () => ctx.syncAuth.status());
 
@@ -25,18 +34,22 @@ export function registerSyncIpc(ctx: IpcContext): void {
     return identity.email;
   });
 
-  ipcMain.handle(ipc.sync.logout, () => ctx.syncAuth.logout());
+  ipcMain.handle(ipc.sync.logout, () => {
+    decryptedAccountHosts = null;
+    return ctx.syncAuth.logout();
+  });
 
   ipcMain.handle(
     ipc.sync.pull,
     async (_evt, slot: unknown, passphrase: unknown): Promise<SyncPullResult> => {
       const pulled = await ctx.sync.pull(readSlot(slot));
-      if (pulled === null) return { kind: 'absent' };
-      return {
-        kind: 'ok',
-        version: pulled.version,
-        plaintext: decryptEnvelope(pulled.data, readPassphrase(passphrase)),
-      };
+      if (pulled === null) {
+        decryptedAccountHosts = [];
+        return { kind: 'absent' };
+      }
+      const plaintext = decryptEnvelope(pulled.data, readPassphrase(passphrase));
+      decryptedAccountHosts = parseSyncPayload(plaintext);
+      return { kind: 'ok', version: pulled.version, plaintext };
     },
   );
 
@@ -51,6 +64,7 @@ export function registerSyncIpc(ctx: IpcContext): void {
       try {
         const envelope = encryptToEnvelope(plaintext, readPassphrase(passphrase));
         const pushed = await ctx.sync.push(readSlot(slot), envelope, base);
+        decryptedAccountHosts = parseSyncPayload(plaintext);
         return { kind: 'ok', version: pushed.version };
       } catch (err) {
         if (err instanceof SyncConflictError) return { kind: 'conflict', currentVersion: err.currentVersion };
@@ -58,6 +72,8 @@ export function registerSyncIpc(ctx: IpcContext): void {
       }
     },
   );
+
+  ipcMain.handle(ipc.sync.accountHosts, (): HostEntry[] | null => decryptedAccountHosts);
 
   ipcMain.handle(ipc.sync.applyHosts, (_evt, hosts: unknown) => {
     const entries = coerceHostEntries(hosts);

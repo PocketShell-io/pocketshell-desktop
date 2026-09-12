@@ -58,7 +58,19 @@ export const useSyncStore = defineStore('sync', () => {
 
   async function refreshStatus(): Promise<void> {
     status.value = await api.sync.status();
-    if (!status.value.loggedIn) accountHosts.value = null;
+    if (!status.value.loggedIn) {
+      accountHosts.value = null;
+      return;
+    }
+    // Signed in: seed the account copy from main's session cache when this
+    // window has not decrypted one itself. That is what lets the host picker
+    // (which never sees the passphrase) show the account's hosts once any
+    // window — usually the Account window's Check account or Sync now — has
+    // decrypted them this session. A copy pulled HERE is fresher than the
+    // cache, so it is never overwritten.
+    if (accountHosts.value === null) {
+      accountHosts.value = await api.sync.accountHosts().catch(() => null);
+    }
   }
 
   /** Read the account so the Account window can distinguish synced hosts. */

@@ -757,6 +757,13 @@ const api = {
      */
     push: (slot: string, plaintext: string, passphrase: string, baseVersion: number): Promise<SyncPushResult> =>
       ipcRenderer.invoke(ipc.sync.push, slot, plaintext, passphrase, baseVersion),
+    /**
+     * The last account copy decrypted THIS SESSION (by any window's pull or
+     * push), or null while none has been. Memory only in main — sign-out
+     * drops it; a fresh launch starts over at null until a passphrase decrypts
+     * the copy again.
+     */
+    accountHosts: (): Promise<HostEntry[] | null> => ipcRenderer.invoke(ipc.sync.accountHosts),
     /** Append hosts missing from ~/.ssh/config; returns the aliases added. */
     applyHosts: (hosts: HostEntry[]): Promise<SyncApplyResult> =>
       ipcRenderer.invoke(ipc.sync.applyHosts, hosts),

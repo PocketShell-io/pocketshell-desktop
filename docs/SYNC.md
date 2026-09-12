@@ -58,6 +58,14 @@ auth tag appended to `ct` makes a wrong passphrase and a corrupted blob fail
 closed. Pull hands the decrypted plaintext across IPC; the envelope itself
 never does.
 
+The DECRYPTED COPY is kept in main's memory for the session: whichever
+window last pulled or pushed leaves the parsed host list behind, and every
+window can read it through `sync:accountHosts` without holding the
+passphrase. This is what lets the host picker list the account's hosts on a
+machine where the passphrase was typed once, in the Account window. The
+cache never reaches disk, and sign-out drops it; a fresh launch stays
+locked until a passphrase decrypts the copy again.
+
 ## What syncs: the selection
 
 Sync is selective. The Account & sync window lists `~/.ssh/config`'s hosts
@@ -110,11 +118,13 @@ duplicated.
 ## IPC surface
 
 Under `ipc.sync` (see `src/shared/channels.ts`, wrapped by the preload):
-`status`, `login`, `logout`, `pull`, `push`, `applyHosts`. Push answers as a
+`status`, `login`, `logout`, `pull`, `push`, `accountHosts`, `applyHosts`.
+Push answers as a
 result union — `ok` / `conflict` (with the current version) / `error` —
 because the store branches on the first two and an IPC rejection would
 flatten that into a string. Pull distinguishes a fresh account (`absent`)
-from a blob. `applyHosts` degrades its payload per entry
+from a blob. `accountHosts` answers the session cache described under
+Encryption. `applyHosts` degrades its payload per entry
 (`coerceHostEntries` in `src/shared/sync.ts`) before anything reaches the
 config writer.
 

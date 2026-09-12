@@ -16,6 +16,7 @@ const syncApi = vi.hoisted(() => ({
   logout: vi.fn(),
   pull: vi.fn(),
   push: vi.fn(),
+  accountHosts: vi.fn(async () => null),
   applyHosts: vi.fn(async () => ({ added: [] })),
 }));
 

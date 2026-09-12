@@ -222,6 +222,7 @@ export const ipc = {
     logout: 'sync:logout', // forget tokens (and revoke the grant)
     pull: 'sync:pull', // (slot, passphrase) -> SyncPullResult (decrypted)
     push: 'sync:push', // (slot, plaintext, passphrase) -> SyncPushResult
+    accountHosts: 'sync:accountHosts', // () -> HostEntry[] | null — the last copy decrypted this session
     applyHosts: 'sync:applyHosts', // HostEntry[] -> append missing to ~/.ssh/config
   },
   /**

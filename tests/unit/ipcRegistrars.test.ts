@@ -47,6 +47,17 @@ vi.mock('../../src/main/log', () => ({ log: vi.fn() }));
 vi.mock('../../src/main/ssh-config/SshConfigParser', () => ({ readSshConfig: vi.fn(() => [{ name: 'hetzner' }]) }));
 vi.mock('../../src/main/update/ReleaseChecker', () => ({ checkForUpdate: vi.fn(async () => ({ status: 'up-to-date' })) }));
 vi.mock('../../src/main/helper/bootstrap', () => ({ runBootstrap: vi.fn(async () => ({ ok: true })) }));
+// Real crypto would only slow these tests down, and the config writer would
+// touch the real ~/.ssh/config — the cache tests replace both with canned
+// answers and drive the handlers directly.
+vi.mock('../../src/main/sync/SyncCrypto', () => ({
+  decryptEnvelope: vi.fn(),
+  encryptToEnvelope: vi.fn(),
+  SyncCryptoError: class SyncCryptoError extends Error {},
+}));
+vi.mock('../../src/main/ssh-config/SshConfigWriter', () => ({
+  applyHostsToConfig: vi.fn(() => ({ added: [] })),
+}));
 
 type Fakes = Record<string, ReturnType<typeof vi.fn>>;
 
@@ -88,6 +99,8 @@ const { registerProjectsIpc } = await import('../../src/main/ipc/projectsIpc');
 const { registerSftpIpc } = await import('../../src/main/ipc/sftpIpc');
 const { registerPortsIpc } = await import('../../src/main/ipc/portsIpc');
 const { registerPreviewIpc } = await import('../../src/main/ipc/previewIpc');
+const { registerSyncIpc } = await import('../../src/main/ipc/syncIpc');
+const { decryptEnvelope, encryptToEnvelope } = await import('../../src/main/sync/SyncCrypto');
 
 const ssh = fakeService();
 const helper = fakeService();
@@ -145,6 +158,7 @@ beforeEach(() => {
   registerSftpIpc(ctx);
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
+  registerSyncIpc(ctx);
 });
 
 describe('terminalIpc — the composer session fence', () => {
@@ -672,5 +686,79 @@ describe('every remaining channel is wired to its service call', () => {
     )({}, { connectionId: 'c', remotePath: '/r', localPath: '/l', transferId: 't-9' });
     progress!({ bytesSoFar: 1, totalBytes: 2 });
     expect(broadcast).toHaveBeenCalledWith(ipc.sftp.progress, { transferId: 't-9', bytesSoFar: 1, totalBytes: 2 });
+  });
+});
+
+describe('syncIpc — the session account-host cache', () => {
+  // Module-level state in syncIpc.ts outlives a single test, so each test
+  // establishes the cache contents it needs rather than assuming a fresh one.
+  const invoke = async (channel: string, ...args: unknown[]): Promise<unknown> => {
+    const handler = handlers.get(channel)! as (e: unknown, ...a: unknown[]) => Promise<unknown>;
+    return handler({}, ...args);
+  };
+  const payloadWith = (name: string): string => JSON.stringify({ hosts: [{ name, hostname: `${name}.example` }] });
+
+  it('answers null until some window has decrypted the account copy', async () => {
+    // First handler query of the file: no pull or push has run yet.
+    await expect(invoke(ipc.sync.accountHosts)).resolves.toBeNull();
+  });
+
+  it('a pull leaves the parsed copy readable without a passphrase', async () => {
+    mockOf(sync, 'pull').mockResolvedValue({ slot: 'main', version: 3, data: 'envelope' });
+    (decryptEnvelope as ReturnType<typeof vi.fn>).mockReturnValue(payloadWith('alpha'));
+
+    await expect(invoke(ipc.sync.pull, 'main', 'passphrase')).resolves.toEqual({
+      kind: 'ok',
+      version: 3,
+      plaintext: payloadWith('alpha'),
+    });
+    await expect(invoke(ipc.sync.accountHosts)).resolves.toEqual([
+      { name: 'alpha', hostname: 'alpha.example' },
+    ]);
+  });
+
+  it('an absent slot reads as an empty account, not "unknown"', async () => {
+    mockOf(sync, 'pull').mockResolvedValue(null);
+    await expect(invoke(ipc.sync.pull, 'main', 'passphrase')).resolves.toEqual({ kind: 'absent' });
+    await expect(invoke(ipc.sync.accountHosts)).resolves.toEqual([]);
+  });
+
+  it('a successful push caches the set it just stored', async () => {
+    mockOf(sync, 'push').mockResolvedValue({ version: 4 });
+    (encryptToEnvelope as ReturnType<typeof vi.fn>).mockReturnValue('envelope');
+
+    await expect(invoke(ipc.sync.push, 'main', payloadWith('beta'), 'passphrase', 3)).resolves.toEqual({
+      kind: 'ok',
+      version: 4,
+    });
+    await expect(invoke(ipc.sync.accountHosts)).resolves.toEqual([
+      { name: 'beta', hostname: 'beta.example' },
+    ]);
+  });
+
+  it('a failed push leaves the previous copy standing', async () => {
+    mockOf(sync, 'pull').mockResolvedValue({ slot: 'main', version: 5, data: 'envelope' });
+    (decryptEnvelope as ReturnType<typeof vi.fn>).mockReturnValue(payloadWith('alpha'));
+    await invoke(ipc.sync.pull, 'main', 'passphrase');
+
+    // The service signals failure by throwing, not by resolving an error shape.
+    mockOf(sync, 'push').mockRejectedValue(new Error('denied'));
+    await expect(invoke(ipc.sync.push, 'main', payloadWith('beta'), 'passphrase', 5)).resolves.toEqual({
+      kind: 'error',
+      message: 'denied',
+    });
+    await expect(invoke(ipc.sync.accountHosts)).resolves.toEqual([
+      { name: 'alpha', hostname: 'alpha.example' },
+    ]);
+  });
+
+  it('sign-out drops the copy along with the tokens', async () => {
+    mockOf(sync, 'pull').mockResolvedValue({ slot: 'main', version: 6, data: 'envelope' });
+    (decryptEnvelope as ReturnType<typeof vi.fn>).mockReturnValue(payloadWith('alpha'));
+    await invoke(ipc.sync.pull, 'main', 'passphrase');
+
+    await invoke(ipc.sync.logout);
+    await expect(invoke(ipc.sync.accountHosts)).resolves.toBeNull();
+    expect(mockOf(syncAuth, 'logout')).toHaveBeenCalled();
   });
 });
