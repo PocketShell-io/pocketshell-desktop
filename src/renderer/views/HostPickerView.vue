@@ -87,6 +87,51 @@ const accountAriaLabel = computed(() =>
     : 'Open account and sync',
 );
 
+/**
+ * Whether the picker may show the account's hosts at all: they exist here
+ * only after some window decrypted the account copy this session (the
+ * Account window's Check account or Sync now — the picker never sees the
+ * passphrase). Until then the group says how to reveal them instead of
+ * pretending the account is empty.
+ */
+const accountUnlocked = computed(() => accountSignedIn.value && sync.accountHosts !== null);
+
+/**
+ * The account's hosts this machine's config does not list — the rows the
+ * account group exists for. A host in BOTH sources is already connectable
+ * from the config group, and showing it twice would invite dialling the
+ * same box from two rows that look unrelated.
+ */
+const accountOnlyHosts = computed<HostEntry[]>(() => {
+  const account = accountSignedIn.value ? sync.accountHosts : null;
+  if (account === null) return [];
+  const configNames = new Set(connection.hosts.map((host) => host.name));
+  return account.filter((host) => !configNames.has(host.name));
+});
+
+/**
+ * The picker's two host sources, signed in: the account first (it is the
+ * newer, less visible of the two), the config second. Signed out there is
+ * one source and no labels — the list reads exactly as it always did.
+ */
+interface HostGroup {
+  kind: 'account' | 'config';
+  label: string;
+  hosts: HostEntry[];
+}
+
+const hostGroups = computed<HostGroup[]>(() => {
+  if (!accountSignedIn.value) {
+    return [{ kind: 'config', label: '', hosts: connection.hosts }];
+  }
+  const groups: HostGroup[] = [];
+  if (accountOnlyHosts.value.length > 0) {
+    groups.push({ kind: 'account', label: 'From your account', hosts: accountOnlyHosts.value });
+  }
+  groups.push({ kind: 'config', label: 'From ~/.ssh/config', hosts: connection.hosts });
+  return groups;
+});
+
 function onAccountAction(): void {
   void api.win.openAccount();
 }
@@ -334,60 +379,78 @@ function onToggleDefault(host: HostEntry): void {
         <button class="btn-ghost" @click="settings.set('defaultHost', null)">Clear</button>
       </p>
       <p v-if="hostReloadError" class="error">{{ hostReloadError }}</p>
-      <p v-if="!connection.hosts.length && !connection.error && !hostReloadError" class="muted">
-        No hosts found in <code>~/.ssh/config</code>. Add one there to get started.
+      <!-- Signed in but the account copy is still encrypted to this session:
+           say how to reveal it rather than reading as an empty account. -->
+      <p v-if="accountSignedIn && !accountUnlocked" class="muted locked-note">
+        Your account's hosts show up here once Account &amp; sync has checked the account.
       </p>
-      <ul class="host-list">
-        <!-- The card is the <li>, not the row button: the "make this the
-             default" star is a second control on the same card, and a button
-             inside a button is invalid. -->
-        <li v-for="host in connection.hosts" :key="host.name" class="host-item">
-          <button
-            class="host-row"
-            :disabled="connectingTo !== null"
-            @click="onConnect(host)"
-          >
-            <!-- Mirrors the Android StatusDot: the desktop used to show
-                 connection state only as the word "connecting…". -->
-            <span
-              class="status-dot"
-              :class="{
-                connecting: connectingTo === host.name,
-                connected: connectedName === host.name,
-              }"
-            />
-            <span class="host-name">{{ host.name }}</span>
-            <span class="host-detail">
-              {{ host.user || '(default user)' }}@{{ host.hostname }}:{{ host.port }}
-            </span>
-            <span v-if="connectingTo === host.name" class="muted">connecting…</span>
-            <!-- A list row that goes somewhere gets a chevron, not an arrow
-                 (VS Code / macOS convention). Kept on the connected row too:
-                 it still goes somewhere — back into the workspace. -->
-            <AppIcon v-else name="chevron-right" class="chevron" />
-          </button>
-          <button
-            v-if="connectedName === host.name"
-            class="btn-ghost disconnect"
-            @click="onDisconnect"
-          >
-            Disconnect
-          </button>
-          <button
-            class="icon-btn star"
-            :class="{ on: settings.defaultHost === host.name }"
-            :title="
-              settings.defaultHost === host.name
-                ? 'Stop connecting to this host on startup'
-                : 'Connect to this host on startup'
-            "
-            :aria-pressed="settings.defaultHost === host.name"
-            @click="onToggleDefault(host)"
-          >
-            <AppIcon :name="settings.defaultHost === host.name ? 'star-filled' : 'star'" />
-          </button>
-        </li>
-      </ul>
+      <!-- The two host sources. Each group is a labelled list; the config
+           group keeps the empty state, the account group only exists when it
+           has something the config group does not. -->
+      <template v-for="group in hostGroups" :key="group.kind">
+        <h2 v-if="group.label" class="group-label">{{ group.label }}</h2>
+        <ul class="host-list">
+          <!-- The card is the <li>, not the row button: the "make this the
+               default" star is a second control on the same card, and a button
+               inside a button is invalid. -->
+          <li v-for="host in group.hosts" :key="host.name" class="host-item">
+            <button
+              class="host-row"
+              :disabled="connectingTo !== null"
+              @click="onConnect(host)"
+            >
+              <!-- Mirrors the Android StatusDot: the desktop used to show
+                   connection state only as the word "connecting…". -->
+              <span
+                class="status-dot"
+                :class="{
+                  connecting: connectingTo === host.name,
+                  connected: connectedName === host.name,
+                }"
+              />
+              <span class="host-name">{{ host.name }}</span>
+              <span class="host-detail">
+                {{ host.user || '(default user)' }}@{{ host.hostname }}:{{ host.port }}
+              </span>
+              <span v-if="connectingTo === host.name" class="muted">connecting…</span>
+              <!-- A list row that goes somewhere gets a chevron, not an arrow
+                   (VS Code / macOS convention). Kept on the connected row too:
+                   it still goes somewhere — back into the workspace. -->
+              <AppIcon v-else name="chevron-right" class="chevron" />
+            </button>
+            <button
+              v-if="connectedName === host.name"
+              class="btn-ghost disconnect"
+              @click="onDisconnect"
+            >
+              Disconnect
+            </button>
+            <!-- The default-host star lives in the config group only: a
+                 default must survive a relaunch, and auto-connect reads
+                 ~/.ssh/config, which an account-only host is not in yet. -->
+            <button
+              v-if="group.kind === 'config'"
+              class="icon-btn star"
+              :class="{ on: settings.defaultHost === host.name }"
+              :title="
+                settings.defaultHost === host.name
+                  ? 'Stop connecting to this host on startup'
+                  : 'Connect to this host on startup'
+              "
+              :aria-pressed="settings.defaultHost === host.name"
+              @click="onToggleDefault(host)"
+            >
+              <AppIcon :name="settings.defaultHost === host.name ? 'star-filled' : 'star'" />
+            </button>
+          </li>
+        </ul>
+        <p
+          v-if="group.kind === 'config' && !connection.hosts.length && !connection.error && !hostReloadError"
+          class="muted"
+        >
+          No hosts found in <code>~/.ssh/config</code>. Add one there to get started.
+        </p>
+      </template>
       <p v-if="connectError" class="error">{{ connectError }}</p>
     </main>
 
@@ -518,6 +581,22 @@ h1 {
   color: var(--warning);
   background: var(--warning-soft);
   border-color: transparent;
+}
+/* Section eyebrows over the two host groups (account / config), matched to
+   the Account window's .account-eyebrow treatment. */
+.group-label {
+  margin: var(--sp-5) 0 var(--sp-2);
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.group-label:first-child {
+  margin-top: 0;
+}
+.locked-note {
+  margin: 0 0 var(--sp-3);
 }
 .host-list {
   list-style: none;

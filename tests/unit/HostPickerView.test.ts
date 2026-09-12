@@ -38,6 +38,7 @@ const sshConnect = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const sshClose = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const listConfigHosts = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const syncStatus = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+const syncAccountHosts = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const openAccount = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
 /**
@@ -52,6 +53,7 @@ const overrides: Record<string, unknown> = {
   'ssh.close': (...a: unknown[]) => sshClose(...a),
   'ssh.listConfigHosts': (...a: unknown[]) => listConfigHosts(...a),
   'sync.status': (...a: unknown[]) => syncStatus(...a),
+  'sync.accountHosts': (...a: unknown[]) => syncAccountHosts(...a),
   'win.openAccount': (...a: unknown[]) => openAccount(...a),
 };
 
@@ -135,6 +137,7 @@ beforeEach(() => {
   resetAutoConnectLatch();
   sshClose.mockResolvedValue(undefined);
   syncStatus.mockResolvedValue({ loggedIn: false, email: null, keychainAvailable: true });
+  syncAccountHosts.mockResolvedValue(null);
   openAccount.mockResolvedValue(undefined);
 });
 
@@ -375,5 +378,74 @@ describe('HostPickerView — reloads SSH config on demand', () => {
     expect(wrapper.text()).not.toContain('No hosts found');
     // The decision still ran (on an empty list): nothing was dialled.
     expect(sshConnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('HostPickerView — signed in: two host groups', () => {
+  function signedIn(): void {
+    syncStatus.mockResolvedValue({
+      loggedIn: true,
+      email: 'alexey@example.com',
+      keychainAvailable: true,
+    });
+  }
+
+  it('lists the account hosts as their own group, without duplicating what the config lists', async () => {
+    signedIn();
+    // hetzner is in BOTH sources: it is connectable from the config group
+    // already, so the account group carries only what the config lacks.
+    syncAccountHosts.mockResolvedValue([host('hetzner'), host('cloudbox')]);
+    const wrapper = await openPicker([host('hetzner')]);
+
+    expect(wrapper.findAll('.group-label').map((h) => h.text())).toEqual([
+      'From your account',
+      'From ~/.ssh/config',
+    ]);
+    expect(wrapper.findAll('.host-name').map((h) => h.text())).toEqual(['cloudbox', 'hetzner']);
+  });
+
+  it('dials an account host straight from its synced entry', async () => {
+    signedIn();
+    syncAccountHosts.mockResolvedValue([host('cloudbox')]);
+    const wrapper = await openPicker([host('hetzner')]);
+    const dial = pendingConnect();
+    // The account group renders first, so the first row is its own.
+    await wrapper.get('.host-list .host-row').trigger('click');
+    dial.resolve({ ok: true, connectionId: 'c1' });
+    await flush(wrapper);
+
+    const payload = sshConnect.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload).toEqual(
+      expect.objectContaining({ host: 'cloudbox.example', user: 'me', port: 22 }),
+    );
+    expect(routerPush).toHaveBeenCalledWith({ name: 'host-sessions', params: { name: 'cloudbox' } });
+  });
+
+  it('an account-only row carries no default-host star', async () => {
+    signedIn();
+    syncAccountHosts.mockResolvedValue([host('cloudbox')]);
+    const wrapper = await openPicker([host('hetzner')]);
+
+    // A default host must survive a relaunch, and auto-connect reads
+    // ~/.ssh/config — an account-only host is not in it yet.
+    expect(wrapper.findAll('.star')).toHaveLength(1);
+  });
+
+  it('signed in but the account copy is still locked: says how to reveal it instead of reading as empty', async () => {
+    signedIn();
+    syncAccountHosts.mockResolvedValue(null);
+    const wrapper = await openPicker([host('hetzner')]);
+
+    expect(wrapper.get('.locked-note').text()).toContain('Account & sync');
+    expect(wrapper.findAll('.group-label').map((h) => h.text())).toEqual(['From ~/.ssh/config']);
+    expect(wrapper.findAll('.host-name').map((h) => h.text())).toEqual(['hetzner']);
+  });
+
+  it('signed out: one plain config list again — no labels, no note', async () => {
+    const wrapper = await openPicker([host('hetzner')]);
+
+    expect(wrapper.find('.group-label').exists()).toBe(false);
+    expect(wrapper.find('.locked-note').exists()).toBe(false);
+    expect(wrapper.findAll('.host-name').map((h) => h.text())).toEqual(['hetzner']);
   });
 });

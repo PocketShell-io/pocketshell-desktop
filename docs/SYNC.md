@@ -44,6 +44,21 @@ passphrase, Check account decrypts the current account copy and labels each
 host as in the account, selected here but not synced, or not selected. Hosts
 that exist only in the account remain visible as backup entries.
 
+## The picker's two host groups
+
+Signed in, the host picker labels its list as two sources: hosts from the
+account (the session cache described under Encryption) and hosts from
+`~/.ssh/config`. The account group shows only what the config group does not
+already list — a host in both sources is connectable from the config group,
+and showing it twice would invite dialling the same box from two unrelated
+rows. Its rows dial straight from the synced entry, with no detour through
+the config file, and carry no default-host star: a default must survive a
+relaunch, and auto-connect reads `~/.ssh/config`, which an account-only host
+is not in yet. Until some window has decrypted the account copy this
+session, the group says so instead of reading as an empty account. Signed
+out, the picker is one plain config list, exactly as it was before accounts
+existed.
+
 ## Encryption
 
 Zero-knowledge, in `src/main/sync/SyncCrypto.ts`. The passphrase is typed in
