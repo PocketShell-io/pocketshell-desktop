@@ -308,6 +308,9 @@ whose exemption is not recorded there with its extraction queue.
   from the server-side `pocketshell usage`; repo browsing from `gh` on the
   host (D23).
 - Logs redact secrets (the helper's `logs ingest` already does this).
+- `shell.openExternal` is reached only through purpose-built channels that
+  construct and scheme-check the URL in main — release pages (`update:open`)
+  and the VS Code deep link (§10). The renderer sends fields, never URLs.
 - The committed `test_key` is a fixture used **only** by Docker tests.
 
 ---
@@ -363,3 +366,35 @@ Tests: `tests/unit/xtermWriteBuffer.test.ts` drives the real
 `@xterm/headless` internals through the identical sync-throw path;
 `scripts/xterm-fuzz.mjs` is the fuzzer that found the original invariant
 break (seed 32) and the tool to rerun when upgrading xterm.
+
+---
+
+## 10. Open in VS Code
+
+The folder workspace's bar carries a `code` button (left of the `+`): it
+hands the OS the deep link that makes VS Code desktop open THIS folder
+through its Remote-SSH extension:
+
+    vscode://vscode-remote/ssh-remote+<host-token>/<absolute remote path>
+
+The spelling lives in `shared/vscodeDeepLink.ts` (pure, unit-tested), with
+the two decisions the format forces:
+
+- **The host token is resolved through the user's `~/.ssh/config`.**
+  Remote-SSH dials by looking the token up there, so a config alias — what
+  the app read from the same file — carries port, key and ProxyJump intact.
+  A manually entered host can only go as `user@host`, which has no port in
+  it: a non-default port needs a config entry, and the link cannot invent
+  one.
+- **The path must be absolute.** The URL's path is resolved server-side
+  with no shell in front of it, so a literal `~/git/foo` would name a
+  directory `~`. The workspace's tilde-spelled folder keys are expanded
+  against the remote `$HOME` the projects store already resolved
+  (`absoluteRemoteFolder`), and refused when there is none.
+
+The renderer sends FIELDS — host token, absolute path — over
+`editors:openVsCode`; main builds the URL itself and scheme-checks the
+result before `shell.openExternal`, the same rule `update:open` runs under
+(§8). A request that does not build is logged and answered `false`; the
+view reports a failed hand-off (typically nothing registered for the
+scheme) through the diag banner.

@@ -242,4 +242,14 @@ export const ipc = {
      */
     open: 'update:open',
   },
+  /**
+   * Open this host + folder in an external desktop editor (docs/ARCHITECTURE.md
+   * §10). The renderer sends FIELDS — which host token, which path — and main
+   * builds the `vscode://` URL itself from the shared builder and allow-lists
+   * the scheme before `shell.openExternal`, the same rule `update:open` runs
+   * under: the renderer never hands main a finished URL to open.
+   */
+  editors: {
+    openVsCode: 'editors:openVsCode', // { hostToken, path } -> boolean (false = refused)
+  },
 } as const;

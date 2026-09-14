@@ -25,7 +25,8 @@ export type DiagKind =
   | 'unhandledrejection'
   | 'error'
   | 'terminal-stall'
-  | 'terminal-selection';
+  | 'terminal-selection'
+  | 'editor';
 
 export interface DiagEntry {
   kind: DiagKind;

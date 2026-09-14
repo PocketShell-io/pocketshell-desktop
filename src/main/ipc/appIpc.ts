@@ -2,6 +2,7 @@ import type { IpcContext } from './context.js';
 import { ipcMain, BrowserWindow, app, shell } from 'electron';
 import { ipc } from '../../shared/channels.js';
 import { APP_TITLE } from '../../shared/windowTitle.js';
+import { vscodeRemoteFolderUrl } from '../../shared/vscodeDeepLink.js';
 import { checkForUpdate } from '../update/ReleaseChecker.js';
 import { log } from '../log.js';
 
@@ -67,6 +68,30 @@ export function registerAppIpc(ctx: IpcContext): void {
       return;
     }
     return shell.openExternal(url);
+  });
+
+  // --- editors:openVsCode ----------------------------------------------------
+  // "Open this folder in VS Code": the OS-dispatched `vscode://` URL that VS
+  // Code's Remote-SSH extension answers by opening [path] on [hostToken]
+  // (docs/ARCHITECTURE.md §10). The URL is BUILT here, from the two fields
+  // the renderer sends through the shared builder — never accepted
+  // ready-made. That is the update:open rule again: shell.openExternal is
+  // the one bridge an XSS drives straight off the machine, so main hands it
+  // nothing it did not construct and scheme-check first, and a request that
+  // does not build is logged and answered false rather than opened.
+  ipcMain.handle(ipc.editors.openVsCode, (_evt, req: { hostToken?: unknown; path?: unknown }) => {
+    const hostToken = typeof req?.hostToken === 'string' ? req.hostToken : '';
+    const path = typeof req?.path === 'string' ? req.path : '';
+    const url = vscodeRemoteFolderUrl(hostToken, path);
+    if (!url) {
+      log(
+        'editor',
+        `refused to build a VS Code link from host "${hostToken.slice(0, 80)}" ` +
+          `path "${path.slice(0, 120)}"`,
+      );
+      return false;
+    }
+    return shell.openExternal(url).then(() => true);
   });
 
   // Plumbing: keep references used by the main process bookkeeping.

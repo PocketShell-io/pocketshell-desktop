@@ -735,6 +735,17 @@ const api = {
      */
     open: (url: string): Promise<void> => ipcRenderer.invoke(ipc.update.open, url),
   },
+  editors: {
+    /**
+     * Open [path] on the host named by [hostToken] in VS Code desktop, over
+     * its Remote-SSH extension (src/shared/vscodeDeepLink.ts for the URL's
+     * shape). The renderer sends FIELDS, never a URL: main builds and
+     * allow-lists the `vscode://` link itself. Resolves false when the
+     * request was refused and logged.
+     */
+    openVsCode: (req: { hostToken: string; path: string }): Promise<boolean> =>
+      ipcRenderer.invoke(ipc.editors.openVsCode, req),
+  },
   sync: {
     /** Who is signed in (and keychain availability); no network, no tokens. */
     status: (): Promise<SyncStatus> => ipcRenderer.invoke(ipc.sync.status),

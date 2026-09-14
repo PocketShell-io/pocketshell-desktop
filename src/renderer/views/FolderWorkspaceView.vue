@@ -60,6 +60,7 @@ import { useFilesStore } from '../stores/files';
 import { useComposerStore } from '../stores/composer';
 import { useSettingsStore } from '../stores/settings';
 import { useShellsStore } from '../stores/shells';
+import { api } from '../ipc';
 import AppIcon from '../components/AppIcon.vue';
 import TerminalView from '../components/TerminalView.vue';
 import PromptComposer from '../components/PromptComposer.vue';
@@ -70,6 +71,9 @@ import WorkspaceTabBar from '../components/WorkspaceTabBar.vue';
 import type { Box } from '../../shared/popupPlacement';
 import { composerAgentKind } from '../../shared/composerSend';
 import { normalisePart } from '../../shared/sessionNameParts';
+import { absoluteRemoteFolder, vscodeHostToken } from '../../shared/vscodeDeepLink';
+import { errorMessage } from '../../shared/errors';
+import { recordDiagDetail } from '../diag';
 import { UNTRACKED_PATH } from '../sessionGrouping';
 import { useFolderTree } from '../folderTree';
 import { useWorkspaceMemory } from '../useWorkspaceMemory';
@@ -453,6 +457,47 @@ function addFilesFromMenu(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Open in VS Code
+// ---------------------------------------------------------------------------
+
+/**
+ * Hand the OS the deep link that makes VS Code desktop open THIS folder over
+ * its Remote-SSH extension (docs/ARCHITECTURE.md §10).
+ *
+ * This handler sends two validated FIELDS and main builds the `vscode://`
+ * URL — the update:open rule, and the reason no URL is assembled here. The
+ * host token is the `~/.ssh/config` alias when the host has one: Remote-SSH
+ * dials by resolving the token through that same file, so port, key and
+ * ProxyJump all arrive intact. A manually entered host goes as `user@host`,
+ * which carries no port — the one thing a deep link cannot say, and the
+ * reason a non-default port wants a config entry (shared/vscodeDeepLink.ts
+ * records the whole format). The folder goes absolute, because the URL's
+ * path is resolved server-side with no shell in front of it: a literal
+ * `~/git/foo` would look for a directory NAMED `~`.
+ *
+ * The button is hidden when the workspace has no real path (an untracked
+ * session's pseudo-folder), so the refusals below are edge-conditions, not
+ * UI states.
+ */
+async function openInVsCode(): Promise<void> {
+  const path = folderPath.value;
+  const host = connection.activeHost;
+  if (path === null || !host) return;
+  const absolute = absoluteRemoteFolder(path, projects.home);
+  if (absolute === null) {
+    recordDiagDetail('editor', `No absolute path to open in VS Code for "${path}".`, {});
+    return;
+  }
+  try {
+    await api.editors.openVsCode({ hostToken: vscodeHostToken(host), path: absolute });
+  } catch (e) {
+    // The OS may have nothing registered for the scheme (VS Code without
+    // Remote-SSH, or no VS Code). Visible in the strip, reason in the log.
+    recordDiagDetail('editor', `Could not open VS Code: ${errorMessage(e)}`, {});
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The session tab's context menu, and stopping a session
 // ---------------------------------------------------------------------------
 
@@ -569,6 +614,7 @@ const filesRef = ref<{ focus?: () => void } | null>(null);
       :session-tab-title="sessionTabTitle"
       :tab-mark="tabMark"
       :identity-for="identityFor"
+      :vs-code="folderPath !== null"
       @select="selectTab"
       @begin-rename="beginRename"
       @commit-rename="commitRename"
@@ -583,6 +629,7 @@ const filesRef = ref<{ focus?: () => void } | null>(null);
       @add-menu-close="addAnchor = null"
       @redraw="redrawFromIdentity"
       @reorder="writeTabOrder"
+      @open-vs-code="openInVsCode"
     />
 
     <!-- Create and rename refusals share this one strip; see `barError` in the
