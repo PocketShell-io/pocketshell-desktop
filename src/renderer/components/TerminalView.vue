@@ -41,7 +41,7 @@
 // (terminalMouseSelection.ts forces that even while the remote owns the
 // mouse) — and copies on mouse-up (see onDocumentMouseUp). ALT+drag — and a
 // tmux keyboard yank — select in tmux instead, and the yank comes back as
-// OSC 52 (see the handler in onMounted and osc52.ts). RIGHT-CLICK pastes into the shell. Neither paste
+// OSC 52 (see the handler in onMounted and shared/osc52.ts). RIGHT-CLICK pastes into the shell. Neither paste
 // CHORD does — Ctrl/Cmd-V and Ctrl/Cmd-Shift-V are both claimed for the
 // prompt composer and leave as `paste-into-composer` (see onCustomKey). The
 // MIDDLE click does nothing at all (see onTerminalAuxClick): xterm's own
@@ -55,7 +55,7 @@ import AppIcon from './AppIcon.vue';
 import { useShellsStore } from '../stores/shells';
 import { createPathLinkProvider, createUrlLinkProvider } from '../terminalLinks';
 import { PathHighlighter } from '../terminalPathHighlights';
-import { decodeOsc52SetClipboard } from '../osc52';
+import { decodeOsc52SetClipboard } from '../../shared/osc52';
 import { forceLocalMouseSelection } from '../terminalMouseSelection';
 import { useSettingsStore } from '../stores/settings';
 import { resolveMonoStack } from '../fonts';

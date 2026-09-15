@@ -11,7 +11,7 @@
  * own drag-end (`copy-pipe; cancel`) the instant the button goes up. From the
  * user's seat the selection appeared and evaporated under the hand, and
  * copy-paste felt broken even after the yank itself was made real
- * (osc52.ts) — the copy landed, but nothing on screen said so.
+ * (shared/osc52.ts) — the copy landed, but nothing on screen said so.
  *
  * ## The lever
  *
@@ -32,7 +32,7 @@
  *     grip. Both grips now behave identically.
  *   - **Alt hands the gesture to the remote.** tmux runs its copy-mode
  *     selection, its drag-end yanks, and the yank reaches the clipboard
- *     through the OSC 52 handler (osc52.ts). This is also the door back to
+ *     through the OSC 52 handler (shared/osc52.ts). This is also the door back to
  *     tmux's own mouse gestures — focusing a pane inside a split, say.
  *
  * Wheel and hover-motion reporting never went through this predicate and are
