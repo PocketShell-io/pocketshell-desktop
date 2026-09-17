@@ -15,7 +15,7 @@
 
 import type { SshService } from '../ssh/SshService.js';
 import type { SessionSummary } from '../../shared/types.js';
-import type { AplexerSessionRecord, AplexerSortKey } from '../../shared/aplexer.js';
+import type { AplexerSessionRecord, AplexerSortKey, AplexerWarning } from '../../shared/aplexer.js';
 import { APLEXER_LIST_SORT } from '../../shared/aplexer.js';
 import { pathAwareCommand } from './bootstrap.js';
 import { shellQuote, shellQuoteRemotePath } from '../../shared/shellQuote.js';
@@ -23,6 +23,7 @@ import {
   aplexerRecordToSummary,
   byOldestCreated,
   parseAplexerSnapshot,
+  parseAplexerWarnings,
 } from './aplexerParsers.js';
 import { log } from '../log.js';
 
@@ -84,6 +85,32 @@ export function aplexerRenameCommand(id: string, tag: string): string {
   return `a rename ${shellQuote(id)} --tag ${shellQuote(tag)}`;
 }
 
+/**
+ * `a warnings --json`: every unacknowledged crash/OOM warning on the host,
+ * including ones whose session record is already pruned — which is exactly
+ * the row this app's snapshot parse would otherwise silently drop.
+ */
+export function aplexerWarningsCommand(): string {
+  return 'a warnings --json';
+}
+
+/**
+ * `a ack [TARGET]`: acknowledge warnings so they stop listing, host-side and
+ * durably. Bare acks everything; a target acks one. The target is the
+ * warning's session UUID, not the `workspace:tag` selector: the UUID is
+ * exact by construction, and the crashed session may already be pruned, so
+ * the selector form has nothing left to resolve against while the warning
+ * store still knows the id.
+ */
+export function aplexerAckCommand(target?: string): string {
+  return target === undefined ? 'a ack' : `a ack ${shellQuote(target)}`;
+}
+
+/** True when [stderr] is `a ack` finding nothing under the given target. */
+export function isAplexerAckNotFound(exitCode: number, stderr: string): boolean {
+  return exitCode !== 0 && /no matching unacknowledged warning/i.test(stderr);
+}
+
 /** Outcome of {@link AplexerClient.startSession}. Never thrown. */
 export interface AplexerStartOutcome {
   ok: boolean;
@@ -111,6 +138,14 @@ export interface AplexerKillOutcome {
 /** Outcome of {@link AplexerClient.renameSession}. Never thrown. */
 export interface AplexerRenameOutcome {
   ok: boolean;
+  notFound: boolean;
+  error: string | null;
+}
+
+/** Outcome of {@link AplexerClient.ackWarnings}. Never thrown. */
+export interface AplexerAckOutcome {
+  ok: boolean;
+  /** True when the target matched nothing — another client acked first. */
   notFound: boolean;
   error: string | null;
 }
@@ -328,6 +363,49 @@ export class AplexerClient {
       ok: false,
       notFound: false,
       error: res.stderr.trim() || res.stdout.trim() || `a rename exited ${res.exitCode}`,
+    };
+  }
+
+  /**
+   * Every unacknowledged crash/OOM warning on this host, newest first, or []
+   * on any failure. Never throws, and [] on a host without `a` — the same
+   * total contract as the snapshot, because a warning list the renderer can
+   * be denied is a crash it can be denied, and the one thing this endpoint
+   * exists to prevent. The availability gate rides the cache the listing
+   * warms, so a tmux-only host pays no exec for this per poll tick.
+   */
+  async listWarnings(connectionId: string): Promise<AplexerWarning[]> {
+    if (!(await this.isAvailable(connectionId))) return [];
+    try {
+      const res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerWarningsCommand()));
+      if (res.exitCode !== 0) return [];
+      return parseAplexerWarnings(res.stdout);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Acknowledge warnings: the whole list when [target] is null, else the one
+   * whose session UUID it is. `notFound` is the benign race — the warning
+   * was acked from another client between the banner's render and this
+   * click — not an error worth alarming over.
+   */
+  async ackWarnings(connectionId: string, target?: string): Promise<AplexerAckOutcome> {
+    let res;
+    try {
+      res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerAckCommand(target)));
+    } catch (e) {
+      return { ok: false, notFound: false, error: String(e).slice(0, 300) };
+    }
+    if (res.exitCode === 0) return { ok: true, notFound: false, error: null };
+    if (isAplexerAckNotFound(res.exitCode, res.stderr)) {
+      return { ok: false, notFound: true, error: null };
+    }
+    return {
+      ok: false,
+      notFound: false,
+      error: res.stderr.trim() || res.stdout.trim() || `a ack exited ${res.exitCode}`,
     };
   }
 

@@ -8,14 +8,18 @@ import {
   agentKindFromEngine,
   aplexerRecordToSummary,
   parseAplexerSnapshot,
+  parseAplexerWarnings,
 } from '../../src/main/helper/aplexerParsers';
 import { AplexerClient } from '../../src/main/helper/AplexerClient';
 import { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import {
+  aplexerAckCommand,
   aplexerKillCommand,
   aplexerSnapshotCommand,
   aplexerRenameCommand,
   aplexerStartCommand,
+  aplexerWarningsCommand,
+  isAplexerAckNotFound,
   isAplexerNotFound,
   isAplexerStartRefusal,
   isAplexerUnknownFlag,
@@ -24,7 +28,7 @@ import { byOldestCreated } from '../../src/main/helper/aplexerParsers';
 import { TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import type { SshService } from '../../src/main/ssh/SshService';
 import type { ExecResult, ShellId } from '../../src/shared/types';
-import type { AplexerSessionRecord } from '../../src/shared/aplexer';
+import type { AplexerSessionRecord, AplexerWarning } from '../../src/shared/aplexer';
 
 /**
  * aplexer as the main session manager: the snapshot contract, the row
@@ -592,5 +596,157 @@ describe('TmuxClientPool with aplexer sessions', () => {
     await pool.attach('c1', 'git-foo', sink);
     expect(commands[0]).toContain('tmuxctl');
     expect(commands[0]).not.toContain('a attach');
+  });
+});
+
+
+/**
+ * Crash warnings: the `a warnings --json` contract, the ack commands, and
+ * the client's total-ness. The host-side store is ack-gated and outlives
+ * `a prune` — these pin the desktop side of that contract.
+ */
+function warning(overrides: Partial<AplexerWarning> = {}): AplexerWarning {
+  return {
+    session: '0e0c1c64-3f58-4ae2-8f0e-6ff0cb1a16ea',
+    workspace: '/home/alexey/git/aplexer',
+    tag: 'review',
+    engine: 'claude',
+    kind: 'oom',
+    detail: 'the workload was killed by the kernel OOM killer (exit 137).',
+    created_at_ms: 1_787_738_302_000,
+    ...overrides,
+  };
+}
+
+describe('parseAplexerWarnings', () => {
+  it('keeps the host document order — newest crash first is the host sort', () => {
+    const stdout = JSON.stringify([warning(), warning({ session: 'r2', tag: 'main' })]);
+    expect(parseAplexerWarnings(stdout).map((w) => w.tag)).toEqual(['review', 'main']);
+  });
+
+  it('answers [] for garbage, an empty body, and a bare object', () => {
+    expect(parseAplexerWarnings('')).toEqual([]);
+    expect(parseAplexerWarnings('no unacknowledged warnings\n')).toEqual([]);
+    expect(parseAplexerWarnings(JSON.stringify(warning()))).toEqual([]);
+  });
+
+  it('drops unusable rows without losing the batch', () => {
+    const stdout = JSON.stringify([
+      { tag: 'no-session', kind: 'oom', created_at_ms: 1 },
+      null,
+      warning(),
+      { session: 's', tag: 'no-kind', created_at_ms: 1 },
+      { session: 's', tag: 'alien-kind', kind: 'segfault', created_at_ms: 1 },
+      { session: 's', tag: 'bad-time', kind: 'oom', created_at_ms: 'soon' },
+    ]);
+    expect(parseAplexerWarnings(stdout).map((w) => w.tag)).toEqual(['review']);
+  });
+
+  it('degrades missing workspace/engine/detail to empty strings', () => {
+    const stdout = JSON.stringify([{ session: 's', tag: 'bare', kind: 'crash', created_at_ms: 5 }]);
+    expect(parseAplexerWarnings(stdout)[0]).toEqual({
+      session: 's',
+      tag: 'bare',
+      kind: 'crash',
+      created_at_ms: 5,
+      workspace: '',
+      engine: '',
+      detail: '',
+    });
+  });
+});
+
+describe('warnings commands', () => {
+  it('a warnings --json lists; bare ack acks everything', () => {
+    expect(aplexerWarningsCommand()).toBe('a warnings --json');
+    expect(aplexerAckCommand()).toBe('a ack');
+  });
+
+  it('target ack addresses the session UUID, quoted as one shell word', () => {
+    expect(aplexerAckCommand('0e0c1c64')).toBe("a ack '0e0c1c64'");
+    expect(aplexerAckCommand("x'; touch /tmp/pwned")).toBe(`a ack 'x'\\''; touch /tmp/pwned'`);
+  });
+
+  it('isAplexerAckNotFound matches only the host refusing the target', () => {
+    expect(
+      isAplexerAckNotFound(1, 'Error: no matching unacknowledged warning; `a warnings` lists them'),
+    ).toBe(true);
+    expect(isAplexerAckNotFound(1, 'boom')).toBe(false);
+    expect(isAplexerAckNotFound(0, 'no matching unacknowledged warning')).toBe(false);
+  });
+});
+
+describe('AplexerClient crash warnings', () => {
+  it('lists [] without aplexer and never asks for warnings', async () => {
+    const { ssh, execCalls, answerExec } = makeSsh();
+    answerExec('', 1); // command -v a fails
+    await expect(new AplexerClient(ssh).listWarnings('c1')).resolves.toEqual([]);
+    expect(execCalls.filter((c) => c.includes('a warnings'))).toHaveLength(0);
+  });
+
+  it('hands the host order straight through on an aplexer host', async () => {
+    const { ssh, answerExecSequence } = makeSsh();
+    answerExecSequence([
+      { stdout: '/home/u/.local/bin/a\n', exitCode: 0 },
+      {
+        stdout: JSON.stringify([
+          warning(),
+          warning({ session: 'r2', tag: 'main', created_at_ms: 2 }),
+        ]),
+        exitCode: 0,
+      },
+    ]);
+    const rows = await new AplexerClient(ssh).listWarnings('c1');
+    expect(rows.map((w) => w.tag)).toEqual(['review', 'main']);
+  });
+
+  it('answers [] when the command fails or the transport dies', async () => {
+    const { ssh, answerExecSequence } = makeSsh();
+    answerExecSequence([
+      { stdout: '/home/u/.local/bin/a\n', exitCode: 0 },
+      { stdout: '', exitCode: 1, stderr: 'boom' },
+    ]);
+    await expect(new AplexerClient(ssh).listWarnings('c1')).resolves.toEqual([]);
+    const dropped = makeSsh();
+    dropped.answerExec('/home/u/.local/bin/a\n', 0);
+    dropped.failExecs(new Error('dropped'));
+    await expect(new AplexerClient(dropped.ssh).listWarnings('c9')).resolves.toEqual([]);
+  });
+
+  it("acks everything and one, and treats another client's ack as notFound", async () => {
+    const { ssh, execCalls, answerExec } = makeSsh();
+    const client = new AplexerClient(ssh);
+    answerExec('acked 2 warnings\n', 0);
+    await expect(client.ackWarnings('c1')).resolves.toEqual({
+      ok: true,
+      notFound: false,
+      error: null,
+    });
+    answerExec('acked 1 warning\n', 0);
+    await expect(client.ackWarnings('c1', 'uuid-1')).resolves.toEqual({
+      ok: true,
+      notFound: false,
+      error: null,
+    });
+    const acks = execCalls.filter((c) => c.includes('a ack'));
+    expect(acks).toHaveLength(2);
+    // The commands arrive PATH-wrapped (`/bin/sh -lc 'export PATH=…; a ack'`),
+    // so match the tail of the inner command, not of the whole string — and
+    // the targeted command's own quotes are escaped inside that wrapper
+    // (`'` → `'\''`), so its tail is the escaped form of `a ack 'uuid-1'`.
+    expect(acks[0]?.endsWith("a ack'")).toBe(true);
+    expect(acks[1]?.endsWith("uuid-1'\\'''")).toBe(true);
+    answerExec('', 1, 'Error: no matching unacknowledged warning; `a warnings` lists them');
+    await expect(client.ackWarnings('c1', 'uuid-1')).resolves.toEqual({
+      ok: false,
+      notFound: true,
+      error: null,
+    });
+    answerExec('', 1, 'permission denied');
+    await expect(client.ackWarnings('c1', 'uuid-1')).resolves.toEqual({
+      ok: false,
+      notFound: false,
+      error: 'permission denied',
+    });
   });
 });

@@ -65,6 +65,32 @@ export interface AplexerSessionRecord {
   last_activity_ms?: number;
 }
 
+/**
+ * One element of `a warnings --json`: an unacknowledged crash/OOM warning.
+ *
+ * Warnings outlive their session — the store is ack-gated host-side, so a
+ * pruned or OOM-killed session's warning still lists (that is the point of
+ * the standalone endpoint: the snapshot no longer carries the record, and
+ * the desktop's own parse drops dead rows, so neither can show this). Acking
+ * is `a ack <session uuid>` / `a ack` (everything), also durable.
+ */
+export interface AplexerWarning {
+  /** The session the crash belongs to (UUID) — the ack selector. */
+  session: string;
+  /** Canonical workspace path of the session that died. */
+  workspace: string;
+  /** The tag it ran under. */
+  tag: string;
+  /** Declared engine at death (`shell`, `claude`, …). */
+  engine: string;
+  /** How it died: kernel OOM kill, or a death with no recorded exit. */
+  kind: 'oom' | 'crash';
+  /** The host's one-sentence human explanation. */
+  detail: string;
+  /** Epoch ms of the earliest observation of the crash. */
+  created_at_ms: number;
+}
+
 /** A session is attachable only while its worker is alive and its phase is not terminal. */
 export function isAplexerSessionLive(record: Pick<AplexerSessionRecord, 'phase' | 'worker_alive'>): boolean {
   if (record.worker_alive === false) return false;

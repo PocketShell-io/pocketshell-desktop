@@ -10,7 +10,7 @@
  */
 
 import type { SessionAgentKind, SessionSummary } from '../../shared/types.js';
-import type { AplexerSessionRecord } from '../../shared/aplexer.js';
+import type { AplexerSessionRecord, AplexerWarning } from '../../shared/aplexer.js';
 import { agentKindFromTmuxOption } from './parsers.js';
 
 /**
@@ -95,6 +95,52 @@ function parseAplexerRecord(row: unknown): AplexerSessionRecord | null {
 /** Phases after which no worker work remains. Mirrors the spec §20 set. */
 function isTerminalPhase(phase: string): boolean {
   return phase === 'exited' || phase === 'failed';
+}
+
+/**
+ * Parse `a warnings --json` into warnings. Unknown/truncated output -> [].
+ *
+ * The contract is a bare JSON array of warning objects, newest crash first
+ * (the host sorts by `created_at_ms`). Like the snapshot parser, rows that
+ * are not usable are dropped individually — one corrupt file on the host
+ * must not hide the other crashes. A row needs the identity pair
+ * (`session`/`tag`), a known `kind`, and a finite `created_at_ms`; `detail`
+ * may be absent (the banner then speaks from kind + selector alone).
+ */
+export function parseAplexerWarnings(stdout: string): AplexerWarning[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout.trim());
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: AplexerWarning[] = [];
+  for (const row of parsed) {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) continue;
+    const doc = row as Record<string, unknown>;
+    const session = doc['session'];
+    const tag = doc['tag'];
+    const kind = doc['kind'];
+    if (typeof session !== 'string' || session.length === 0) continue;
+    if (typeof tag !== 'string' || tag.length === 0) continue;
+    if (kind !== 'oom' && kind !== 'crash') continue;
+    const createdMs = doc['created_at_ms'];
+    if (typeof createdMs !== 'number' || !Number.isFinite(createdMs)) continue;
+    const workspace = doc['workspace'];
+    const engine = doc['engine'];
+    const detail = doc['detail'];
+    out.push({
+      session,
+      tag,
+      kind,
+      created_at_ms: createdMs,
+      ...(typeof workspace === 'string' ? { workspace } : { workspace: '' }),
+      ...(typeof engine === 'string' ? { engine } : { engine: '' }),
+      ...(typeof detail === 'string' ? { detail } : { detail: '' }),
+    });
+  }
+  return out;
 }
 
 /**

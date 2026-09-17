@@ -245,6 +245,32 @@ separate fact.
   `inferHome` reads the shape of the paths at hand. With no home every
   absolute path falls into `other`.
 
+## 9. Crash warnings
+
+A session that dies badly does not just vanish: aplexer records an
+ack-gated warning host-side (`a warnings`), and the panel shows every
+unacknowledged one in a strip above the rows — kind (`OOM`/`crash`), the
+`workspace:tag` selector, the host's one-sentence detail, the age, and a
+check per row to acknowledge; with several standing, a head row offers
+"Acknowledge all".
+
+- **The data is `a warnings --json`, not the snapshot.** A warning outlives
+  its session — `a prune` drops the record, the warning stays — and the
+  panel's own snapshot parse drops dead rows, so the standalone endpoint is
+  the only surface that still lists the crash. It rides the panel's
+  five-second poll (`helper:warnings`), gated on the availability probe the
+  listing just warmed: one more exec on hosts with `a`, none without it.
+- **No dismiss.** A warning leaves through `a ack <session uuid>` — by id,
+  because the session it names may already be pruned, so the selector form
+  has nothing left to resolve against — or `a ack` for all. Acking is
+  durable and host-side, so every client sees the warning go together.
+  `notFound` — another client acked first — is settled by the refresh that
+  follows, not shown as an error.
+- **In flow, not overlay.** The strip pushes the tree down while it stands:
+  a crash warning is panel business about the rows beneath it, and
+  overlaying a narrow tree hides what it warns about. Hiding it costs a
+  click on purpose, never a scroll.
+
 ## 10. The current invariants
 
 1. **Two levels, always.** Root → folder, with no size at which a level folds

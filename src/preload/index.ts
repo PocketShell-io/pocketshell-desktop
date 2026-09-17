@@ -16,6 +16,8 @@ import type {
   StageAttachmentsResult,
 } from '../shared/types.js';
 import type { UsageRow } from '../main/helper/usageParsers.js';
+import type { AplexerAckOutcome } from '../main/helper/AplexerClient.js';
+import type { AplexerWarning } from '../shared/aplexer.js';
 import type { DirEntry, FileStat, TransferProgress } from '../main/sftp/SftpService.js';
 import type { RemotePort } from '../main/portfwd/PortScanner.js';
 import type { ForwardState } from '../main/portfwd/Forwarder.js';
@@ -283,6 +285,18 @@ const api = {
     /** Provider usage/quota rows. */
     usage: (connectionId: string): Promise<UsageRow[]> =>
       ipcRenderer.invoke(ipc.helper.usage, connectionId),
+
+    /**
+     * Unacknowledged aplexer crash/OOM warnings for this host, newest crash
+     * first. Outlives the sessions it names — `a ack` is the only way a row
+     * leaves this list.
+     */
+    warnings: (connectionId: string): Promise<AplexerWarning[]> =>
+      ipcRenderer.invoke(ipc.helper.warnings, connectionId),
+
+    /** Acknowledge one crash warning (session UUID) or every one (no target). */
+    ackWarnings: (connectionId: string, target?: string): Promise<AplexerAckOutcome> =>
+      ipcRenderer.invoke(ipc.helper.ackWarnings, connectionId, target),
   },
 
   /**

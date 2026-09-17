@@ -84,6 +84,8 @@ import { type SessionDirectory } from '../sessionTree';
 import type { SessionSummary } from '../../shared/types';
 import { useFolderMenu } from '../useFolderMenu';
 import { useFolderStop } from '../useFolderStop';
+import CrashWarningBanner from './CrashWarningBanner.vue';
+import { useWarningsStore } from '../stores/warnings';
 import { useSessionTreePoll } from '../useSessionTreePoll';
 import { sessionCountLabel } from '../sessionTreeText';
 
@@ -192,7 +194,8 @@ const { home, roots } = useFolderTree();
  * — moved whole, comments and all, to ../useSessionTreePoll.ts. `now` feeds
  * the rows' relative ages as a prop.
  */
-const { now } = useSessionTreePoll({ connection, sessions });
+const warnings = useWarningsStore();
+const { now } = useSessionTreePoll({ connection, sessions, warnings });
 
 /**
  * Where the general `+` opens the picker: the FIRST root the panel draws, as
@@ -269,6 +272,8 @@ const { stopping, stopBusy, stopError, stopFolderLabel, askStopFolder, confirmSt
 onMounted(async () => {
   if (!connection.connectionId) return;
   await sessions.refresh(connection.connectionId);
+  // The strip's first paint: the poll keeps it current from here.
+  await warnings.refresh(connection.connectionId);
   // A failure is not worth surfacing: the panel still groups, just from the
   // shape of the paths. The dialog is where a missing `$HOME` is an error,
   // because there it blocks creating anything.
@@ -276,7 +281,10 @@ onMounted(async () => {
 });
 
 async function onRefresh(): Promise<void> {
-  if (connection.connectionId) await sessions.refresh(connection.connectionId);
+  if (connection.connectionId) {
+    await sessions.refresh(connection.connectionId);
+    await warnings.refresh(connection.connectionId);
+  }
 }
 
 /**
@@ -395,6 +403,11 @@ function onSessionStarted(summary: SessionSummary): void {
          rows announce through it: a select for a click, a menu payload for a
          right-click, and the folder each `+` resolved for the ONE creation
          flow, which stays here with the dialog. -->
+    <!-- Crash warnings stand ABOVE the tree on purpose: a session that
+         died badly is the one fact about this host the panel must not let
+         the user scroll past. No dismiss — only `a ack`, one row or all. -->
+    <CrashWarningBanner :now="now" />
+
     <SessionTreeRows
       :active-folder="activeFolder"
       :now="now"

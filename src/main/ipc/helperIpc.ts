@@ -4,10 +4,12 @@ import { ipc } from '../../shared/channels.js';
 import type { BootstrapResult, SessionSummary } from '../../shared/types.js';
 import { runBootstrap } from '../helper/bootstrap.js';
 import type { UsageRow } from '../helper/usageParsers.js';
+import type { AplexerAckOutcome } from '../helper/AplexerClient.js';
+import type { AplexerWarning } from '../../shared/aplexer.js';
 
 
 export function registerHelperIpc(ctx: IpcContext): void {
-  const { ssh, helper } = ctx;
+  const { ssh, helper, aplexer } = ctx;
   // --- helper:bootstrap ----------------------------------------------------
   ipcMain.handle(ipc.helper.bootstrap, async (_evt, connectionId: string): Promise<BootstrapResult> => {
     return runBootstrap(ssh, connectionId);
@@ -42,5 +44,31 @@ export function registerHelperIpc(ctx: IpcContext): void {
   ipcMain.handle(ipc.helper.usage, async (_evt, connectionId: string): Promise<UsageRow[]> => {
     return helper.usage(connectionId);
   });
+
+  // --- helper:warnings -----------------------------------------------------
+  // Unacknowledged aplexer crash/OOM warnings (`a warnings --json`).
+  // Aplexer-only by nature — the tmux fallback keeps no crash store — so this
+  // rides the aplexer client, not the helper's tmux arms. The client method
+  // is total ([] on any failure), so a bad round trip can only delay a
+  // warning, never throw one away.
+  ipcMain.handle(
+    ipc.helper.warnings,
+    async (_evt, connectionId: string): Promise<AplexerWarning[]> => {
+      return aplexer.listWarnings(connectionId);
+    },
+  );
+
+  // --- helper:ackWarnings --------------------------------------------------
+  // `a ack [SESSION]`. The outcome object travels back whole: the renderer
+  // distinguishes a real failure (an error line in the strip) from notFound
+  // — the warning another client acked first — which the refresh that
+  // follows settles, because the goal state "no warning showing" is already
+  // true in that race, not violated by it.
+  ipcMain.handle(
+    ipc.helper.ackWarnings,
+    async (_evt, connectionId: string, target?: string): Promise<AplexerAckOutcome> => {
+      return aplexer.ackWarnings(connectionId, target);
+    },
+  );
 
 }

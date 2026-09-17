@@ -1,10 +1,12 @@
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
 import type { useConnectionStore } from './stores/connection';
 import type { useSessionsStore } from './stores/sessions';
+import type { useWarningsStore } from './stores/warnings';
 
 export interface SessionTreePollDeps {
   connection: ReturnType<typeof useConnectionStore>;
   sessions: ReturnType<typeof useSessionsStore>;
+  warnings: ReturnType<typeof useWarningsStore>;
 }
 
 /**
@@ -92,6 +94,10 @@ export function useSessionTreePoll(deps: SessionTreePollDeps): { now: Ref<number
     polling = true;
     try {
       await deps.sessions.refresh(connectionId, { quiet: true });
+      // The crash-warning strip rides the same tick: one more exec on hosts
+      // with `a`, none without it — the store's data source gates on the
+      // availability probe the listing above just warmed.
+      await deps.warnings.refresh(connectionId);
     } finally {
       polling = false;
     }

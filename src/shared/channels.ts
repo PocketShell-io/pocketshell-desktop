@@ -96,6 +96,14 @@ export const ipc = {
      */
     sessionsCreate: 'helper:sessionsCreate',
     usage: 'helper:usage',
+    /**
+     * Unacknowledged aplexer crash/OOM warnings (`a warnings --json`): the
+     * rows that OUTLIVE their sessions — `a prune` drops the record, the
+     * warning stays until acked, and no snapshot row carries it any more.
+     */
+    warnings: 'helper:warnings',
+    /** `a ack [SESSION]`: acknowledge one warning (session UUID) or all. */
+    ackWarnings: 'helper:ackWarnings',
   },
   /**
    * Project-folder-first session creation: pick a folder (existing / new /
