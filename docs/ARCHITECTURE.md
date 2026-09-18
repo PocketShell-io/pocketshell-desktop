@@ -373,12 +373,12 @@ break (seed 32) and the tool to rerun when upgrading xterm.
 
 The folder workspace's bar carries a `code` button (left of the `+`): it
 hands the OS the deep link that makes VS Code desktop open THIS folder
-through its Remote-SSH extension:
+through its Remote-SSH extension, in a NEW window:
 
-    vscode://vscode-remote/ssh-remote+<host-token>/<absolute remote path>
+    vscode://vscode-remote/ssh-remote+<host-token>/<absolute remote path>?windowId=_blank
 
 The spelling lives in `shared/vscodeDeepLink.ts` (pure, unit-tested), with
-the two decisions the format forces:
+the decisions the format forces:
 
 - **The host token is resolved through the user's `~/.ssh/config`.**
   Remote-SSH dials by looking the token up there, so a config alias — what
@@ -391,6 +391,11 @@ the two decisions the format forces:
   directory `~`. The workspace's tilde-spelled folder keys are expanded
   against the remote `$HOME` the projects store already resolved
   (`absoluteRemoteFolder`), and refused when there is none.
+- **The link asks for a new window.** Without the `windowId=_blank` query
+  VS Code answers a deep link in the window that has focus, replacing the
+  folder the user is working in; the query makes its protocol handler force
+  a fresh window instead (the handler reads and strips it before the
+  folder opens).
 
 The renderer sends FIELDS — host token, absolute path — over
 `editors:openVsCode`; main builds the URL itself and scheme-checks the

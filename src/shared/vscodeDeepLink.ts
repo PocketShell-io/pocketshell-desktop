@@ -8,10 +8,17 @@
  * ## The URL, and what each part must be
  *
  *     vscode://vscode-remote/ssh-remote+<host-token>/<absolute remote path>
+ *       ?windowId=_blank
  *
  * The scheme is VS Code's, not ours, and only the `ssh-remote` authority is
  * documented-by-example (vscode-remote-release#8764 asks for real docs; the
- * format below is the one that works). Two constraints shape everything:
+ * format below is the one that works). The query is the link asking for a
+ * NEW window: without it VS Code's protocol handler answers in whichever
+ * window has focus, replacing the folder the user is working in
+ * (`windowId=_blank` is read and stripped before the folder opens —
+ * `handleProtocolUrl` in VS Code's main process). Same standing as the
+ * authority spelling: no prose documents it, the source does. Two further
+ * constraints shape everything:
  *
  *   - **the host token is resolved through the USER's `~/.ssh/config`.**
  *     Remote-SSH dials by looking the token up in that file, which is where
@@ -32,6 +39,12 @@
 
 /** The authority prefix of a Remote-SSH folder link; also main's allow-list. */
 export const VSCODE_REMOTE_PREFIX = 'vscode://vscode-remote/ssh-remote+';
+
+/**
+ * The query that makes VS Code answer the link in a NEW window instead of
+ * the focused one; {@link vscodeRemoteFolderUrl} appends it.
+ */
+export const VSCODE_NEW_WINDOW_QUERY = '?windowId=_blank';
 
 /**
  * The host token a deep link for [host] carries.
@@ -75,11 +88,14 @@ export function absoluteRemoteFolder(path: string, home: string | null): string 
  * `/ ? #`, which would otherwise start reading as the rest of a URL — and
  * the folder must already be absolute ({@link absoluteRemoteFolder}'s job).
  * Each path segment is percent-encoded; the slashes between them are the
- * URL's own structure and stay literal.
+ * URL's own structure and stay literal. The new-window query rides last,
+ * safe from the encoding because a token and an absolute path can never
+ * carry a `?` of their own.
  */
 export function vscodeRemoteFolderUrl(hostToken: string, folderPath: string): string | null {
   const token = hostToken.trim();
   if (token === '' || /[\s/?#]/.test(token)) return null;
   if (!folderPath.startsWith('/') || folderPath === '/') return null;
-  return VSCODE_REMOTE_PREFIX + token + folderPath.split('/').map(encodeURIComponent).join('/');
+  const authorityAndPath = VSCODE_REMOTE_PREFIX + token + folderPath.split('/').map(encodeURIComponent).join('/');
+  return authorityAndPath + VSCODE_NEW_WINDOW_QUERY;
 }
