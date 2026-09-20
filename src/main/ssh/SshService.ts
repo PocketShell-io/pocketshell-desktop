@@ -4,6 +4,7 @@ import type { ConnectResult, ExecResult, ShellId } from '../../shared/types.js';
 import { newClient, ConnectionRegistry, type ConnectionRecord } from './ConnectionRegistry.js';
 import { ShellTracker } from './ShellTracker.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
+import { decodePublicKeyBlob } from '../../shared/knownHostsCore.js';
 import { log } from '../log.js';
 
 /**
@@ -169,7 +170,7 @@ export class SshService {
           // honour the caller's TOFU decision for unknown hosts.
           hostVerifier: (key: Buffer) => {
             if (!opts.knownHosts) return true; // caller opted out of verification
-            const { type, b64 } = decodePublicKeyBlob(key);
+            const { keyType: type, keyB64: b64 } = decodePublicKeyBlob(key);
             const verdict = opts.knownHosts.verify(opts.host, type, b64, opts.port ?? 22);
             if (verdict.trusted) return true;
             if (verdict.mismatch) {
@@ -580,23 +581,4 @@ function translateError(err: NodeJS.ErrnoException & { code?: string }): string 
     default:
       return err.message;
   }
-}
-
-/**
- * Decode an SSH public key blob (the raw bytes ssh2 hands to hostVerifier)
- * into the key-type label + the base64 that known_hosts stores.
- *
- * The blob format is RFC 4251 string-list: `<uint32 len><type><key-data...>`.
- * The base64 known_hosts line is the base64 of exactly this blob, so the b64
- * here is directly comparable to a known_hosts entry.
- */
-function decodePublicKeyBlob(blob: Buffer): { type: string; b64: string } {
-  // First 4 bytes = big-endian uint32 length of the key-type string.
-  if (blob.length < 4) return { type: 'unknown', b64: blob.toString('base64') };
-  const len = blob.readUInt32BE(0);
-  const type =
-    len > 0 && blob.length >= 4 + len
-      ? blob.subarray(4, 4 + len).toString('utf8')
-      : 'unknown';
-  return { type, b64: blob.toString('base64') };
 }

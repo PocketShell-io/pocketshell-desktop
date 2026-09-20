@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { createHmac } from 'node:crypto';
+import { knownHostsToken } from '../../shared/knownHostsCore.js';
 
 /**
  * Minimal ~/.ssh/known_hosts loader + matcher.
@@ -37,19 +38,6 @@ export interface VerificationResult {
   unknown: boolean;
   /** The matched entry, when trusted or mismatch. */
   entry?: HostKeyEntry;
-}
-
-/**
- * The token OpenSSH uses to key a host in known_hosts: the bare hostname on
- * the default port, `[host]:port` on any other.
- *
- * Without this, a host reached on two ports shares one pin — connecting to
- * `127.0.0.1:22` and `127.0.0.1:3205` would compare each other's keys and
- * report a mismatch, which is both wrong and a real block: it made every
- * connect to the test fixture fail after its image was rebuilt on a new base.
- */
-function knownHostsToken(host: string, port = 22): string {
-  return port === 22 ? host : `[${host}]:${port}`;
 }
 
 export class KnownHosts {
