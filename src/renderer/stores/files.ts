@@ -99,7 +99,9 @@ const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024;
 /** Everything a remembered session keeps while its tab is unmounted. */
 interface RememberedPosition {
   cwd: string;
-  /** Only ever a DIRTY text buffer — see `stash()`. */
+  /** The file to show again when the Files tab returns, if there is one. */
+  filePath: string | null;
+  /** Only ever a DIRTY editable buffer — see `stash()`. */
   buffer: { path: string; content: string } | null;
   /**
    * True when the USER navigated here, false when this is merely where an
@@ -352,17 +354,18 @@ export const useFilesStore = defineStore('files', () => {
   /**
    * Park the current session's position before switching away from it.
    *
-   * Only a DIRTY buffer is kept. A clean one is a cache of bytes that are
-   * still on the host and costs one cheap read to rebuild, while an unsaved
-   * edit exists nowhere else — discarding it silently on a tab switch would
-   * be a worse bug than the one this whole mechanism fixes. Media and binary
-   * views are never kept: their object URLs are revoked on the way out, and
-   * holding a 96 MiB blob per visited session is not a trade worth making.
+   * The selected path is kept for every kind of file, but only a DIRTY
+   * editable buffer is copied. Clean content is still on the host and costs
+   * one read to rebuild; an unsaved edit exists nowhere else and must not be
+   * discarded silently. Media and binary views therefore keep their path, not
+   * their object URL or bytes: they are re-opened when the tab returns instead
+   * of retaining a potentially large blob per visited session.
    */
   function stash(): void {
     if (currentKey == null || !cwd.value) return;
     positions.set(currentKey, {
       cwd: cwd.value,
+      filePath: openPath.value,
       buffer:
         dirty.value && openPath.value != null && isEditable(openMode.value)
           ? { path: openPath.value, content: openContent.value }
@@ -414,13 +417,16 @@ export const useFilesStore = defineStore('files', () => {
 
   function rememberPosition(chosen: boolean): void {
     if (currentKey == null || !cwd.value) return;
-    const held = positions.get(currentKey);
     positions.set(currentKey, {
       cwd: cwd.value,
-      buffer: held?.buffer ?? null,
+      filePath: openPath.value,
+      buffer:
+        openPath.value != null && dirty.value && isEditable(openMode.value)
+          ? { path: openPath.value, content: openContent.value }
+          : null,
       // Never DOWNGRADE: a tab the user navigated in stays theirs even if
       // something later re-opens it and lands on the same directory.
-      chosen: chosen || held?.chosen === true,
+      chosen: chosen || positions.get(currentKey)?.chosen === true,
     });
   }
 
@@ -580,7 +586,10 @@ export const useFilesStore = defineStore('files', () => {
     sessionKey?: string,
   ): Promise<void> {
     const key = positionKey(connectionId, sessionKey ?? startPath);
-    if (currentKey !== key) stash();
+    // The Files view is unmounted when the user visits Terminal. That path
+    // does not change `currentKey`, so park the live file even when the next
+    // `open()` is for the same tab.
+    stash();
 
     const remembered = positions.get(key);
     currentKey = key;
@@ -630,8 +639,8 @@ export const useFilesStore = defineStore('files', () => {
     if (ticket !== navTicket) return;
     cwd.value = resolved;
 
-    // Restore the unsaved edit this session was left with, if any. Nothing
-    // else about the open file survives a switch (see `stash`).
+    // Restore the file this session was left on. A dirty editable file has its
+    // buffer parked locally; every other file is re-read from the host below.
     revokeUrl();
     if (remembered?.buffer) {
       // This branch bypasses `resetOpenFile`, so the open-file error channel
@@ -666,6 +675,10 @@ export const useFilesStore = defineStore('files', () => {
 
     await refresh(connectionId, ticket);
     if (ticket !== navTicket) return;
+    if (remembered?.filePath != null && remembered.buffer == null) {
+      await openFile(connectionId, remembered.filePath);
+      if (ticket !== navTicket) return;
+    }
     rememberResolved();
     // `refresh` clears `error` on entry, so a fallback note is re-applied
     // after it — and only when the listing itself did not fail with something

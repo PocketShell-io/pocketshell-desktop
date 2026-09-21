@@ -369,10 +369,31 @@ describe('files store remembers where each session was left', () => {
     expect(files.cwd).toBe('/home/u/git/red-stamp-sound');
   });
 
+  it('keeps a clean open file selected across a Files tab remount', async () => {
+    realPath.mockImplementation((_c, p) => Promise.resolve(p));
+    stat.mockResolvedValue({ size: 12 });
+    readBinary.mockResolvedValue(new TextEncoder().encode('hello world\n'));
+    const files = useFilesStore();
+    const tab = 'files-tab';
+
+    await files.open(CONN, '/home/u/git/app', tab);
+    await files.openFile(CONN, 'notes.txt');
+    expect(files.openPath).toBe('/home/u/git/app/notes.txt');
+    expect(files.dirty).toBe(false);
+
+    // Terminal unmounts FilesView without changing the store's current key;
+    // the next Files mount calls open() for this same tab.
+    await files.open(CONN, '/home/u/git/app', tab);
+
+    expect(files.openPath).toBe('/home/u/git/app/notes.txt');
+    expect(files.openContent).toBe('hello world\n');
+    expect(readBinary).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps an unsaved edit across a tab switch instead of discarding it', async () => {
-    // A clean buffer is a cache and is cheap to rebuild; an unsaved edit
-    // exists nowhere else, so throwing it away silently would be worse than
-    // the bug this whole mechanism fixes.
+    // A clean buffer is re-read from the host; an unsaved edit exists nowhere
+    // else, so throwing it away silently would be worse than the bug this
+    // whole mechanism fixes.
     realPath.mockImplementation((_c, p) => Promise.resolve(p));
     stat.mockResolvedValue({ size: 12 });
     readBinary.mockResolvedValue(new TextEncoder().encode('hello world\n'));

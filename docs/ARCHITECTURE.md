@@ -257,6 +257,11 @@ markdown and SVG are documents, not binaries: each opens with a
 Preview/Source toggle over the sandboxed `psview:` frame served by
 `src/main/preview/` — DESIGN.md §5.7b holds the reasoning.
 
+The active Files pane is mounted only while its workspace tab is visible, so
+the files store remembers each tab's directory and selected file across a
+terminal visit. Clean files are re-read on return; dirty editable buffers stay
+in memory so a tab switch cannot discard unsaved work.
+
 Why not reuse the helper's `pocketshell env` for editing? It is scoped to
 `.env`/`.envrc` and writes via stdin; general editing needs a real SFTP
 channel. The env panel layers that secret-via-stdin safety on for the
