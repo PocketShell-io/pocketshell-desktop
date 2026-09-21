@@ -80,7 +80,7 @@ import { isShortcut } from '../../shared/shortcuts';
 import { editingTarget } from '../editingTarget';
 import { useFolderTree } from '../folderTree';
 import { rootHostPath } from '../sessionRoots';
-import { type SessionDirectory } from '../sessionTree';
+import { directoryForSession, type SessionDirectory } from '../sessionTree';
 import type { SessionSummary } from '../../shared/types';
 import { useFolderMenu } from '../useFolderMenu';
 import { useFolderStop } from '../useFolderStop';
@@ -294,14 +294,19 @@ async function onRefresh(): Promise<void> {
  * There is deliberately NO refresh here. The dialog's emit carries the full
  * row — name, folder, backend, aplexer id (`StartSessionResult` projected by
  * `summaryFromStartResult`) — so {@link sessions.addPending} puts it in the
- * tree immediately and the lookup below finds the folder on the same tick.
- * The refresh used to stand right here, awaited, and it is the slowest call
- * in the app (`pocketshell sessions list` is a Python program under a login
- * shell); standing between the click and the workspace it put the whole cost
- * of a listing on the create path. The panel's five-second poll — and any
- * other refresh — later replaces the optimistic row with the authoritative
- * one; until then the row already knows everything the tree and the workspace
- * ask of it.
+ * tree immediately and {@link directoryForSession} finds the folder on the
+ * same tick. The refresh used to stand right here, awaited, and it is the
+ * slowest call in the app (`pocketshell sessions list` is a Python program
+ * under a login shell); standing between the click and the workspace it put
+ * the whole cost of a listing on the create path. The panel's five-second
+ * poll — and any other refresh — later replaces the optimistic row with the
+ * authoritative one; until then the row already knows everything the tree and
+ * the workspace ask of it.
+ *
+ * The folder is resolved by the row's IDENTITY (workspace plus tag), not by
+ * its bare name — {@link directoryForSession} carries the record of the host
+ * where every workspace names its default tag `main`, a name-only lookup
+ * answered with another folder's session, and the create read as a no-op.
  *
  * When the lookup misses — the grouping filed the row somewhere else, or not
  * at all — nothing is emitted and the panel simply shows what it has. That is
@@ -321,12 +326,9 @@ async function onRefresh(): Promise<void> {
 function onSessionStarted(summary: SessionSummary): void {
   creating.value = null;
   sessions.addPending(summary);
-  for (const root of roots.value) {
-    const dir = root.directories.find((d) => d.rows.some((r) => r.session.name === summary.name));
-    if (dir) {
-      emit('select', dir, summary.name);
-      return;
-    }
+  const dir = directoryForSession(roots.value, summary);
+  if (dir) {
+    emit('select', dir, summary.name);
   }
 }
 </script>

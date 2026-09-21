@@ -7,6 +7,7 @@
  * sessionRoots.ts; this module is where the two meet.
  */
 import type { SessionSummary } from '../shared/types';
+import { sessionIdentityKey } from './sessionIdentity';
 import {
   buildRows,
   defaultLabelForPath,
@@ -315,4 +316,48 @@ function buildDirectories(rows: SessionRow[], home: string | null): SessionDirec
     dir.active = dir.rows.some((r) => r.session.attached);
   }
   return directories;
+}
+
+/**
+ * The directory the panel files a session with [session]'s identity under, or
+ * null when the grouping has no place for it.
+ *
+ * Matched by the session's IDENTITY — workspace plus tag (`sessionIdentityKey`)
+ * — never by the bare name, and the reason is measured, not imagined: on a
+ * host whose workspaces all name their default tag `main`, the tree holds a
+ * `main` row per folder, and the name-only lookup this replaced answered "the
+ * first directory holding ANY row with this name" — whichever folder draws
+ * first, which is routinely the folder the user is already reading, because
+ * the host's accessed-first order puts the most recent one on top. A create
+ * then emitted `select` for the WRONG folder — often the one already open,
+ * where the navigation resolved to the route already on screen and the query
+ * watcher saw no change, so nothing visibly happened: "I create a session and
+ * it keeps the same session." Workspace plus tag is the same identity
+ * `addPending` and `mergePending` key their ledgers on, so the lookup answers
+ * with the folder the row was actually filed under.
+ */
+export function directoryForSession(
+  roots: readonly SessionRootFolder[],
+  session: Pick<SessionSummary, 'name' | 'backend' | 'workspace'>,
+): SessionDirectory | null {
+  const key = sessionIdentityKey(session.name, {
+    backend: session.backend,
+    workspace: session.workspace,
+  });
+  for (const root of roots) {
+    for (const dir of root.directories) {
+      if (
+        dir.rows.some(
+          (row) =>
+            sessionIdentityKey(row.session.name, {
+              backend: row.session.backend,
+              workspace: row.session.workspace,
+            }) === key,
+        )
+      ) {
+        return dir;
+      }
+    }
+  }
+  return null;
 }
