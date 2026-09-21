@@ -700,6 +700,26 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
     expect(open).toHaveBeenCalledWith(URL_TEXT);
   });
 
+  it('joins opencode’s hanging-list wrap inside a GitHub hostname', () => {
+    const first =
+      '- Prereq: #1680 — Obtain and configure the YouTube upload credential (https://github.';
+    const second =
+      '    com/AI-Shipping-Labs/website/issues/1680). — OPEN, operator setup, not app code.';
+    const url = 'https://github.com/AI-Shipping-Labs/website/issues/1680';
+    const t = fakeScreen([first, second], first.length);
+
+    const links = urlLinks(t, 1, () => undefined);
+    expect(links.map((l) => l.text)).toEqual([url]);
+    expect(links[0]?.range).toEqual({
+      start: { x: first.indexOf('https') + 1, y: 1 },
+      end: { x: second.indexOf(')'), y: 2 },
+    });
+
+    const open = vi.fn();
+    urlLinks(t, 1, open)[0]?.activate(CLICK, url);
+    expect(open).toHaveBeenCalledWith(url);
+  });
+
   it('refuses a near-full row whose URL is whole and whose head is the next sentence', () => {
     // The shape that keeps rule 1a closed to web URLs: a COMPLETE address
     // two columns short of the margin and a long word wrapped below it is a

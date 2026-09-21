@@ -163,8 +163,10 @@ one row at a time, sees only as its first-row fragment. The same
 reconstruction that heals paths rejoins the address (a `?` after a query
 separator joins the break opportunities, and a tail that already ends
 extension-shaped refuses the join — a finished URL must not pick up the
-next sentence), `terminalUrls.ts` finds the address in the flattened
-line, and that link is registered BEFORE the addon, which xterm's
+next sentence; an opencode hanging-list wrap cut inside a hostname is
+accepted when its continuation carries the URL's path), `terminalUrls.ts`
+finds the address in the flattened line, and that link is registered BEFORE
+the addon, which xterm's
 priority rule lets claim every row of the URL; a single-row URL answers
 nothing and stays the addon's. A path
 a TUI split across rows (this pane is always a tmux client, so nothing is

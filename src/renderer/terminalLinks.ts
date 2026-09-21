@@ -105,8 +105,9 @@
  * URL — including the first, whose truncated fragment is exactly what the
  * addon used to underline instead. The rules' URL-specific evidence lives at
  * {@link joinedRowSkip}: `?` in rule 1b's break opportunities, and rule 1's
- * cut guard refusing a tail that already ends extension-shaped. A URL on one
- * row is the addon's and stays the addon's.
+ * cut guard refusing a tail that already ends extension-shaped, and the
+ * hanging-list rule for opencode's full-width cut inside a hostname. A URL on
+ * one row is the addon's and stays the addon's.
  *
  * ## Appearance
  *
@@ -424,6 +425,33 @@ function joinedRowSkip(prev: RowRead, next: RowRead, wrapWidth: number): number 
     const first = content.charAt(0);
     if (first === '' || first === ' ' || overIndented) return null;
     const head = /^\S+/.exec(content)?.[0] ?? '';
+
+    // RULE 1c — opencode's hanging-list wrap inside a hostname.
+    //
+    // opencode renders a markdown list with a hanging indent, then cuts a
+    // long URL at the pane margin. In the report that motivated this rule,
+    // `https://github.` filled the first row and `    com/AI-Shipping-Labs/…`
+    // began the next one. The ordinary full-row rule deliberately refuses an
+    // indented continuation because indentation normally means layout, not
+    // overflow; the unfinished authority (`github.`) and a path-bearing head
+    // are the extra evidence that this is the URL's own cut instead.
+    //
+    // The path-bearing guard keeps a finished URL followed by an indented
+    // sentence from being glued to that sentence. Breaks after `/`, `-`, or
+    // `?` already have their own rules below and do not need this exception.
+    const authority = webSchemeTail
+      ? tail.slice(tail.indexOf('://') + 3).split('/')[0] ?? ''
+      : '';
+    if (
+      webSchemeTail &&
+      indent > 0 &&
+      prev.lastCol === prev.width - 1 &&
+      authority.endsWith('.') &&
+      head.includes('/') &&
+      !head.startsWith('/')
+    ) {
+      return indent;
+    }
 
     // RULE 1 — the hard wrap tmux repainted away.
     //
