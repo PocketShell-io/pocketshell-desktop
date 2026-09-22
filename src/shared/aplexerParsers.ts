@@ -1,27 +1,28 @@
 /**
- * Pure parsers for the aplexer CLI's machine-readable output.
+ * Pure parsers for the aplexer CLI's machine-readable output, the
+ * snapshot-record → panel-row mapping, and the agent-kind vocabulary.
  *
  * The contract is `a snapshot --json` (the same records `a list --json`
  * prints): a bare JSON array of session records, each carrying at least the
  * required `session-v1` fields. Rows come back in the host's own order — with
  * `--sort` the requested key, and on a host that has no `--sort` its
  * newest-created-first default. All functions are pure — string in, data out,
- * no I/O — so they are pinned by unit tests rather than by a host.
+ * no I/O — so they are pinned by unit tests rather than by a host. Both
+ * clients (desktop main, browser bundle) parse with this exact code.
  */
 
-import type { SessionAgentKind, SessionSummary } from '../../shared/types.js';
-import type { AplexerSessionRecord, AplexerWarning } from '../../shared/aplexer.js';
-import { agentKindFromTmuxOption } from './parsers.js';
+import type { SessionAgentKind, SessionSummary } from './types';
+import type { AplexerSessionRecord, AplexerWarning } from './aplexer';
 
 /**
  * Records oldest-created first, ties in document order (Array#sort is
  * stable).
  *
  * The fallback order for a host whose `a` predates `--sort`: its unsorted
- * default is newest-first, and oldest-first is what such a host showed in the
- * panel before the flag existed. It is the same key the legacy helper table
- * is pinned to in `PocketshellClient` — one notion of "no host sort" across
- * both sources.
+ * default is newest-first, and oldest-first is what such a host showed in
+ * the panel before the flag existed. It is the same key the legacy helper
+ * table is pinned to in `PocketshellClient` — one notion of "no host sort"
+ * across both sources.
  */
 export function byOldestCreated(records: AplexerSessionRecord[]): AplexerSessionRecord[] {
   return [...records].sort((a, b) => a.created_at_ms - b.created_at_ms);
@@ -98,6 +99,35 @@ function isTerminalPhase(phase: string): boolean {
 }
 
 /**
+ * Map a declared aplexer engine id to the panel's agent kind.
+ *
+ * The recorded `@ps_agent_kind` vocabulary and the aplexer engine ids are the
+ * same words (`claude`, `codex`, `opencode`, `grok`, `shell`) because both
+ * were ported from the same PocketShell registry — so this one table is ALSO
+ * the tmux option mapper (`helper/parsers.ts` delegates to it), not a second
+ * table to drift from it. Unknown engines read as "we did not launch this"
+ * (null), exactly like an unknown option value.
+ */
+export function agentKindFromEngine(
+  engine: string | null | undefined,
+): SessionAgentKind | null {
+  switch (engine?.trim().toLowerCase()) {
+    case 'claude':
+      return 'claude';
+    case 'codex':
+      return 'codex';
+    case 'opencode':
+      return 'opencode';
+    case 'grok':
+      return 'grok';
+    case 'shell':
+      return 'shell';
+    default:
+      return null;
+  }
+}
+
+/**
  * Parse `a warnings --json` into warnings. Unknown/truncated output -> [].
  *
  * The contract is a bare JSON array of warning objects, newest crash first
@@ -106,6 +136,10 @@ function isTerminalPhase(phase: string): boolean {
  * must not hide the other crashes. A row needs the identity pair
  * (`session`/`tag`), a known `kind`, and a finite `created_at_ms`; `detail`
  * may be absent (the banner then speaks from kind + selector alone).
+ *
+ * The browser's bridge-PTY warnings path deliberately does NOT use this
+ * parser: over a shell there is no framing, so one bad row means the output
+ * itself is untrustworthy and that path refuses the whole batch instead.
  */
 export function parseAplexerWarnings(stdout: string): AplexerWarning[] {
   let parsed: unknown;
@@ -144,16 +178,24 @@ export function parseAplexerWarnings(stdout: string): AplexerWarning[] {
 }
 
 /**
- * Map a declared aplexer engine id to the panel's agent kind.
+ * Parse `a start --json`'s single-record body.
  *
- * The recorded `@ps_agent_kind` vocabulary and the aplexer engine ids are the
- * same words (`claude`, `codex`, `opencode`, `grok`, `shell`) because both
- * were ported from the same PocketShell registry — so the tmux option mapper
- * is the mapping, not a second table to drift from it. Unknown engines read
- * as "we did not launch this" (null), exactly like an unknown option value.
+ * `start` prints one object, not the snapshot's array; rather than a second
+ * record parser, reuse the array one by wrapping — with a direct-parse
+ * fallback for a body that is already an object but wrapped in shell noise
+ * the brackets would corrupt. The first non-empty JSON-looking line wins.
  */
-export function agentKindFromEngine(engine: string): SessionAgentKind | null {
-  return agentKindFromTmuxOption(engine);
+export function parseSingleAplexerRecord(stdout: string): AplexerSessionRecord | null {
+  const start = stdout.indexOf('{');
+  const end = stdout.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed: unknown = JSON.parse(stdout.slice(start, end + 1));
+    const records = parseAplexerSnapshot(JSON.stringify([parsed]));
+    return records.at(0) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -187,4 +229,3 @@ export function aplexerRecordToSummary(record: AplexerSessionRecord): SessionSum
     ...(record.phase ? { aplexerPhase: record.phase } : {}),
   };
 }
-

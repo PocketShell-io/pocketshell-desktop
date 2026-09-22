@@ -10,21 +10,13 @@
 
 import type { SshService } from '../ssh/SshService.js';
 import type { BootstrapResult, ToolState } from '../../shared/types.js';
-import { USER_BIN_PATH } from '../../shared/userBinPath.js';
-import { shellEscapeInsideSingleQuotes } from '../../shared/shellQuote.js';
 import { parseCommandV } from './cliParsers.js';
+import { pathAwareCommand } from '../../shared/aplexerCommands.js';
 
-/**
- * Wrap a command so it runs under the user's full PATH: source the login
- * shell rc, prepend the standard user-bin dirs, then run the command. Mirrors
- * the Android `pathAwareCommand` wrapper.
- *
- * The dir list is shared with the session-join command rather than spelled out
- * here — see src/shared/userBinPath.ts for why the two must not drift.
- */
-export function pathAwareCommand(command: string): string {
-  return `/bin/sh -lc 'export PATH="${USER_BIN_PATH}:$PATH"; ${shellEscapeInsideSingleQuotes(command)}'`;
-}
+// The PATH wrapper itself is shared code now (`shared/aplexerCommands.ts`) —
+// the same lines the browser builds before every probe and join. Re-exported
+// so the helper's existing importers keep one import path.
+export { pathAwareCommand };
 
 /** Probe one tool: `command -v <binary>` under the path-aware shell. */
 async function probeTool(

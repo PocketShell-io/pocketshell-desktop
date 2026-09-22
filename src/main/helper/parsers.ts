@@ -13,6 +13,7 @@
  */
 
 import type { SessionAgentKind, SessionSummary } from '../../shared/types.js';
+import { agentKindFromEngine } from '../../shared/aplexerParsers.js';
 
 // ---------------------------------------------------------------------------
 // `pocketshell sessions list` — fixed-width table
@@ -242,20 +243,7 @@ export interface SessionEnrichment {
  * never appear here.
  */
 export function agentKindFromTmuxOption(raw: string | null | undefined): SessionAgentKind | null {
-  switch (raw?.trim().toLowerCase()) {
-    case 'claude':
-      return 'claude';
-    case 'codex':
-      return 'codex';
-    case 'opencode':
-      return 'opencode';
-    case 'grok':
-      return 'grok';
-    case 'shell':
-      return 'shell';
-    default:
-      return null;
-  }
+  return agentKindFromEngine(raw ?? undefined);
 }
 
 /**

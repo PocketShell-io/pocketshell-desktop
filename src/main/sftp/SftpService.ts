@@ -2,6 +2,19 @@ import type { SFTPWrapper } from 'ssh2';
 import { stat as fsStat } from 'node:fs';
 import type { ConnectionRegistry, ConnectionRecord } from '../ssh/ConnectionRegistry.js';
 import { oversizeMessage } from '../../shared/byteSize.js';
+import {
+  toDirEntry,
+  toFileStat,
+  type DirEntry,
+  type FileStat,
+  type SftpAttrsLike,
+} from '../../shared/sftpCore.js';
+
+// The entry shapes and the type-classification rules are shared code now
+// (`shared/sftpCore.ts`) — the browser's Files pane normalises a listing with
+// the exact same functions; re-exported here for the IPC layer's one import
+// path.
+export type { DirEntry, FileStat };
 
 /**
  * SFTP service over an existing ssh2 connection.
@@ -15,27 +28,6 @@ import { oversizeMessage } from '../../shared/byteSize.js';
  * return typed results for expected "not found" cases (e.g. exists() returns
  * false rather than throwing).
  */
-
-/** A directory entry, normalised from ssh2's stat output. */
-export interface DirEntry {
-  name: string;
-  longname: string;
-  type: 'file' | 'dir' | 'symlink' | 'other';
-  size: number;
-  modifyTime: number; // epoch ms
-  accessTime: number; // epoch ms
-  /** Rights in rwx string form, e.g. 'rwxr-xr-x'. */
-  rights: { user: string; group: string; other: string };
-  owner: number;
-  group: number;
-}
-
-export interface FileStat {
-  type: DirEntry['type'];
-  size: number;
-  modifyTime: number;
-  accessTime: number;
-}
 
 export interface TransferProgress {
   /** Bytes transferred so far. */
@@ -102,7 +94,7 @@ export class SftpService {
           reject(err);
           return;
         }
-        resolve((list ?? []).map((e) => toDirEntry(e.attrs, e.filename)));
+        resolve((list ?? []).map((e) => toDirEntry({ ...e.attrs, longname: e.longname }, e.filename)));
       });
     });
   }
@@ -297,63 +289,13 @@ function openSftp(rec: ConnectionRecord): Promise<SFTPWrapper> {
   });
 }
 
-interface StatsLike {
-  isFile(): boolean;
-  isDirectory(): boolean;
-  isSymbolicLink(): boolean;
-  size: number;
-  mtime: number;
-  atime: number;
-  mode: number;
-  uid: number;
-  gid: number;
-  longname?: string;
-}
-
-function stat(sftp: SFTPWrapper, path: string): Promise<StatsLike> {
+function stat(sftp: SFTPWrapper, path: string): Promise<SftpAttrsLike> {
   return new Promise((resolve, reject) => {
     sftp.stat(path, (err, stats) => {
       if (err) reject(err);
       else resolve(stats);
     });
   });
-}
-
-/** The dir/symlink/file/other verdict, asked identically by both stat shapes. */
-function typeOf(s: StatsLike): DirEntry['type'] {
-  return s.isDirectory()
-    ? 'dir'
-    : s.isSymbolicLink()
-      ? 'symlink'
-      : s.isFile()
-        ? 'file'
-        : 'other';
-}
-
-function toDirEntry(s: StatsLike, name?: string): DirEntry {
-  return {
-    name: name ?? '',
-    longname: s.longname ?? '',
-    type: typeOf(s),
-    size: s.size,
-    modifyTime: s.mtime * 1000,
-    accessTime: s.atime * 1000,
-    rights: {
-      user: modeToRwx((s.mode >> 6) & 7),
-      group: modeToRwx((s.mode >> 3) & 7),
-      other: modeToRwx(s.mode & 7),
-    },
-    owner: s.uid,
-    group: s.gid,
-  };
-}
-
-function toFileStat(s: StatsLike): FileStat {
-  return { type: typeOf(s), size: s.size, modifyTime: s.mtime * 1000, accessTime: s.atime * 1000 };
-}
-
-function modeToRwx(m: number): string {
-  return (m & 4 ? 'r' : '-') + (m & 2 ? 'w' : '-') + (m & 1 ? 'x' : '-');
 }
 
 function assertReadable(size: number, maxBytes: number, path: string): void {

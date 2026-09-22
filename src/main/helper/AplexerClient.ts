@@ -1,259 +1,104 @@
 /**
  * Client for the aplexer session manager (`a`) on the remote host.
  *
+ * The method bodies, outcome shapes, and capability caches live in the SHARED
+ * core (`shared/aplexerClientCore.ts`) — the browser's `aplexer/client` runs
+ * the exact same code against its own transport, so the two clients cannot
+ * drift about what to ask the host or how to read its answers. What remains
+ * here is the desktop shell: one core per connection, exec by connectionId,
+ * and the main-process log line.
+ *
  * aplexer is the MAIN session manager wherever it is installed; the tmux
  * path (`PocketshellClient`, raw tmux through the helper) is the fallback for
- * hosts without it. Every method here is total — it resolves a result object
- * or an empty list, never throws for anything the host does — matching the
- * `SshService.exec` contract one layer down.
- *
- * Identity discipline: the UUID is the stable selector for kill/rename
- * (renames change the tag, never the id, so an id can never be orphaned the
- * way a name can). `start` is the one call with no id yet and addresses
- * `workspace + tag`, which the host enforces as unique among live sessions.
+ * hosts without it.
  */
 
 import type { SshService } from '../ssh/SshService.js';
 import type { SessionSummary } from '../../shared/types.js';
-import type { AplexerSessionRecord, AplexerSortKey, AplexerWarning } from '../../shared/aplexer.js';
+import type {
+  AplexerSessionRecord,
+  AplexerSortKey,
+  AplexerWarning,
+} from '../../shared/aplexer.js';
 import { APLEXER_LIST_SORT } from '../../shared/aplexer.js';
-import { pathAwareCommand } from './bootstrap.js';
-import { shellQuote, shellQuoteRemotePath } from '../../shared/shellQuote.js';
 import {
-  aplexerRecordToSummary,
-  byOldestCreated,
-  parseAplexerSnapshot,
-  parseAplexerWarnings,
-} from './aplexerParsers.js';
+  AplexerCore,
+  type AplexerAckOutcome,
+  type AplexerKillOutcome,
+  type AplexerRenameOutcome,
+  type AplexerStartOutcome,
+} from '../../shared/aplexerClientCore.js';
+import {
+  aplexerAckCommand,
+  aplexerProbeCommand,
+  aplexerSnapshotCommand,
+  aplexerStartCommand,
+  aplexerKillCommand,
+  aplexerRenameCommand,
+  aplexerWarningsCommand,
+  isAplexerAckNotFound,
+  isAplexerNotFound,
+  isAplexerStartRefusal,
+  isAplexerUnknownFlag,
+  pathAwareCommand,
+} from '../../shared/aplexerCommands.js';
 import { log } from '../log.js';
 
-/**
- * `a snapshot --json`: the machine API — the same records `a list --json`
- * prints, so the host's `--sort` applies here too. Without [sort] the host
- * applies its own default; with one the panel's order is spelled out.
- */
-export function aplexerSnapshotCommand(sort?: AplexerSortKey): string {
-  return sort === undefined ? 'a snapshot --json' : `a snapshot --json --sort ${sort}`;
-}
-
-/**
- * True when [stderr] is the CLI refusing a flag it does not know — the
- * argument-parser's usage error a host whose `a` predates `--sort` answers
- * with. A host sentence that merely failed ("boom", a python traceback) does
- * not match, so a transient failure is never mistaken for a missing feature.
- */
-export function isAplexerUnknownFlag(stderr: string): boolean {
-  return /\bunexpected argument\b|\bunrecognized\b|\bunknown option\b/i.test(stderr);
-}
-
-/**
- * `a start --workspace W --tag T`: create a shell session for a folder.
- *
- * No `--engine`: a folder session is a plain shell, the same thing the tmux
- * fallback creates. Agent engines stay a terminal-typed launch on top (the
- * pending-launch flow), so engine/profile resolution is not on this path and
- * cannot fail it. `--json` prints the created record; a live holder is
- * refused with exit 1 and `already belongs to` on stderr (see below).
- */
-export function aplexerStartCommand(workspace: string, tag: string): string {
-  return `a start --workspace ${shellQuoteRemotePath(workspace)} --tag ${shellQuote(tag)} --json`;
-}
-
-/** True when [stderr] is `a start` refusing a workspace+tag that is live. */
-export function isAplexerStartRefusal(exitCode: number, stderr: string): boolean {
-  return exitCode !== 0 && /already belongs to/i.test(stderr);
-}
-
-/** `a kill <id>`: signal the workload and drop the record. */
-export function aplexerKillCommand(id: string): string {
-  return `a kill ${shellQuote(id)} --json`;
-}
-
-/** True when [stderr] is `a kill` reporting the id is already gone. */
-export function isAplexerNotFound(exitCode: number, stderr: string): boolean {
-  return exitCode !== 0 && /no matching session/i.test(stderr);
-}
-
-/**
- * `a rename <id> --tag <new>`: change the tag within its workspace.
- *
- * By id, never by `workspace:tag`: the selector names the session being
- * changed, and a workspace path containing `:` would misparse in the
- * positional form while the id is exact by construction.
- */
-export function aplexerRenameCommand(id: string, tag: string): string {
-  return `a rename ${shellQuote(id)} --tag ${shellQuote(tag)}`;
-}
-
-/**
- * `a warnings --json`: every unacknowledged crash/OOM warning on the host,
- * including ones whose session record is already pruned — which is exactly
- * the row this app's snapshot parse would otherwise silently drop.
- */
-export function aplexerWarningsCommand(): string {
-  return 'a warnings --json';
-}
-
-/**
- * `a ack [TARGET]`: acknowledge warnings so they stop listing, host-side and
- * durably. Bare acks everything; a target acks one. The target is the
- * warning's session UUID, not the `workspace:tag` selector: the UUID is
- * exact by construction, and the crashed session may already be pruned, so
- * the selector form has nothing left to resolve against while the warning
- * store still knows the id.
- */
-export function aplexerAckCommand(target?: string): string {
-  return target === undefined ? 'a ack' : `a ack ${shellQuote(target)}`;
-}
-
-/** True when [stderr] is `a ack` finding nothing under the given target. */
-export function isAplexerAckNotFound(exitCode: number, stderr: string): boolean {
-  return exitCode !== 0 && /no matching unacknowledged warning/i.test(stderr);
-}
-
-/** Outcome of {@link AplexerClient.startSession}. Never thrown. */
-export interface AplexerStartOutcome {
-  ok: boolean;
-  /** The created session's UUID, for the join/kill/rename that follow. */
-  id: string | null;
-  /** The tag the host confirmed. Echoed back, like the helper's create. */
-  tag: string | null;
-  /**
-   * True when the host refused because the pair is LIVE (a race with the
-   * caller's snapshot check). The caller re-reads and treats it as a reuse,
-   * rather than reporting a failure for a session that exists.
-   */
-  liveRefusal: boolean;
-  error: string | null;
-}
-
-/** Outcome of {@link AplexerClient.killSession}. Never thrown. */
-export interface AplexerKillOutcome {
-  ok: boolean;
-  /** True when the session was already gone — the ordinary stale-list race. */
-  notFound: boolean;
-  error: string | null;
-}
-
-/** Outcome of {@link AplexerClient.renameSession}. Never thrown. */
-export interface AplexerRenameOutcome {
-  ok: boolean;
-  notFound: boolean;
-  error: string | null;
-}
-
-/** Outcome of {@link AplexerClient.ackWarnings}. Never thrown. */
-export interface AplexerAckOutcome {
-  ok: boolean;
-  /** True when the target matched nothing — another client acked first. */
-  notFound: boolean;
-  error: string | null;
-}
+// The command builders and sentence classifiers are shared code now
+// (`shared/aplexerCommands.ts`); re-exported here so the helper's existing
+// importers — tests included — keep one import path.
+export {
+  aplexerAckCommand,
+  aplexerProbeCommand,
+  aplexerSnapshotCommand,
+  aplexerStartCommand,
+  aplexerKillCommand,
+  aplexerRenameCommand,
+  aplexerWarningsCommand,
+  isAplexerAckNotFound,
+  isAplexerNotFound,
+  isAplexerStartRefusal,
+  isAplexerUnknownFlag,
+  pathAwareCommand,
+};
+export type {
+  AplexerAckOutcome,
+  AplexerKillOutcome,
+  AplexerRenameOutcome,
+  AplexerStartOutcome,
+};
 
 export class AplexerClient {
-  /**
-   * `a` present per connection. Null means "asked and it is absent";
-   * absent means "not asked yet". Remembering the negative matters as much
-   * as the positive: a tmux-only host must pay one probe per CONNECTION, not
-   * one per five-second poll tick.
-   */
-  private readonly availableByConnection = new Map<string, boolean>();
-
-  /**
-   * `--sort` support per connection, same discipline as the availability
-   * probe: true after one sorted snapshot answered, false after the CLI
-   * refused the flag (an old host — every tick then goes straight to the
-   * unsorted exec), unknown until one of those happens.
-   */
-  private readonly sortSupportedByConnection = new Map<string, boolean>();
+  /** One shared core per connection; it owns the capability caches. */
+  private readonly cores = new Map<string, AplexerCore>();
 
   constructor(private readonly ssh: SshService) {}
 
   /** Forget cached per-connection state. Call on disconnect. */
   evict(connectionId: string): void {
-    this.availableByConnection.delete(connectionId);
-    this.sortSupportedByConnection.delete(connectionId);
+    this.cores.get(connectionId)?.evict();
+    this.cores.delete(connectionId);
   }
 
-  /**
-   * Is `a` installed on this connection's host? Cached per connection, never
-   * throws — a host that cannot be asked is a host without aplexer.
-   */
+  /** Is `a` installed on this connection's host? Cached per connection. */
   async isAvailable(connectionId: string): Promise<boolean> {
-    const cached = this.availableByConnection.get(connectionId);
-    if (cached !== undefined) return cached;
-    let available = false;
-    try {
-      const res = await this.ssh.exec(connectionId, pathAwareCommand('command -v a'));
-      available = res.exitCode === 0 && res.stdout.trim().length > 0;
-    } catch {
-      available = false;
-    }
-    this.availableByConnection.set(connectionId, available);
-    return available;
+    return this.core(connectionId).isAvailable();
   }
 
-  /**
-   * Live aplexer sessions as rows in the host's own order, or null when `a`
-   * is absent.
-   *
-   * Null vs [] is the whole contract: null means "no aplexer here, run the
-   * tmux path", [] means "aplexer answered and nothing is running". A failed
-   * exec on a host that HAS `a` also answers [] — the snapshot is the whole
-   * list on such a host, so the tree shows empty for that poll tick and
-   * recovers on the next; the legacy tmux path is only for hosts without `a`.
-   *
-   * [sort] is what the host sorts the list by, and the list's order is the
-   * panel's order — the renderer does not re-sort. Hosts whose `a` predates
-   * `--sort` get {@link byOldestCreated} instead, which is what such a host
-   * showed before the flag existed.
-   */
+  /** Live sessions in the host's own order, or null when `a` is absent. */
   async listSessions(
     connectionId: string,
     sort: AplexerSortKey = APLEXER_LIST_SORT,
   ): Promise<SessionSummary[] | null> {
-    if (!(await this.isAvailable(connectionId))) return null;
-    return this.snapshotSummaries(connectionId, sort);
+    return this.core(connectionId).listSessions(sort);
   }
 
-  /**
-   * The raw snapshot records, or [] on any failure. Never throws.
-   *
-   * With [sort], the sorted command is tried first and its DOCUMENT ORDER is
-   * kept — that is the feature. When the host cannot do it yet (the flag is
-   * refused, remembered per connection) or the sorted exec dies mid-flight,
-   * the unsorted snapshot answers and is sorted client-side, so the order a
-   * host without the flag sees is the one it always saw.
-   */
+  /** The raw snapshot records, or [] on any failure. Never throws. */
   async snapshotRecords(
     connectionId: string,
     sort?: AplexerSortKey,
   ): Promise<AplexerSessionRecord[]> {
-    if (sort !== undefined && this.sortSupportedByConnection.get(connectionId) !== false) {
-      try {
-        const res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerSnapshotCommand(sort)));
-        if (res.exitCode === 0) {
-          this.sortSupportedByConnection.set(connectionId, true);
-          return parseAplexerSnapshot(res.stdout);
-        }
-        // Remember the refusal only when it IS one: a usage error means every
-        // future tick would fail the same way, while any other non-zero exit
-        // may be a one-off not worth pinning the connection to the fallback.
-        if (isAplexerUnknownFlag(res.stderr)) {
-          this.sortSupportedByConnection.set(connectionId, false);
-        }
-      } catch {
-        // Transport-level: fall through to the unsorted attempt this tick;
-        // the capability stays unknown and the next tick asks again.
-      }
-    }
-    try {
-      const res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerSnapshotCommand()));
-      if (res.exitCode !== 0) return [];
-      return byOldestCreated(parseAplexerSnapshot(res.stdout));
-    } catch {
-      return [];
-    }
+    return this.core(connectionId).snapshotRecords(sort);
   }
 
   /** Find one live record by workspace+tag. Null when absent or unknown. */
@@ -262,82 +107,25 @@ export class AplexerClient {
     workspace: string,
     tag: string,
   ): Promise<AplexerSessionRecord | null> {
-    const records = await this.snapshotRecords(connectionId);
-    return records.find((r) => r.workspace === workspace && r.tag === tag) ?? null;
+    return this.core(connectionId).findSession(workspace, tag);
   }
 
   /** All live tags in [workspace] — the client-side free-name walk's input. */
   async liveTags(connectionId: string, workspace: string): Promise<Set<string> | null> {
-    if (!(await this.isAvailable(connectionId))) return null;
-    const records = await this.snapshotRecords(connectionId);
-    return new Set(records.filter((r) => r.workspace === workspace).map((r) => r.tag));
+    return this.core(connectionId).liveTags(workspace);
   }
 
-  /**
-   * Start a shell session for [workspace] under [tag].
-   *
-   * The caller checks liveness first (snapshot); a `liveRefusal` covers the
-   * race where the pair went live between that check and this exec. Anything
-   * else non-zero is a real failure with the host's own sentence.
-   */
+  /** Start a shell session for [workspace] under [tag]. Never throws. */
   async startSession(
     connectionId: string,
     opts: { workspace: string; tag: string },
   ): Promise<AplexerStartOutcome> {
-    let res;
-    try {
-      res = await this.ssh.exec(
-        connectionId,
-        pathAwareCommand(aplexerStartCommand(opts.workspace, opts.tag)),
-      );
-    } catch (e) {
-      return { ok: false, id: null, tag: null, liveRefusal: false, error: String(e).slice(0, 300) };
-    }
-    if (res.exitCode === 0) {
-      const record = parseSingleAplexerRecord(res.stdout);
-      // The record echoes the tag back; trust it over the request the way the
-      // helper create does. An unparseable body with exit 0 still created the
-      // session (the host said so) — report it under the requested tag.
-      return {
-        ok: true,
-        id: record?.id ?? null,
-        tag: record?.tag ?? opts.tag,
-        liveRefusal: false,
-        error: null,
-      };
-    }
-    if (isAplexerStartRefusal(res.exitCode, res.stderr)) {
-      return { ok: false, id: null, tag: null, liveRefusal: true, error: res.stderr.trim() };
-    }
-    return {
-      ok: false,
-      id: null,
-      tag: null,
-      liveRefusal: false,
-      error: res.stderr.trim() || res.stdout.trim() || `a start exited ${res.exitCode}`,
-    };
+    return this.core(connectionId).startSession(opts);
   }
 
-  /**
-   * Kill the session [id]. `notFound` is the ordinary stale-list race, not
-   * an error worth alarming over — the caller reports "already gone".
-   */
+  /** Kill the session [id]. `notFound` is the ordinary stale-list race. */
   async killSession(connectionId: string, id: string): Promise<AplexerKillOutcome> {
-    let res;
-    try {
-      res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerKillCommand(id)));
-    } catch (e) {
-      return { ok: false, notFound: false, error: String(e).slice(0, 300) };
-    }
-    if (res.exitCode === 0) return { ok: true, notFound: false, error: null };
-    if (isAplexerNotFound(res.exitCode, res.stderr)) {
-      return { ok: false, notFound: true, error: `"${id}" is not running on this host any more.` };
-    }
-    return {
-      ok: false,
-      notFound: false,
-      error: res.stderr.trim() || res.stdout.trim() || `a kill exited ${res.exitCode}`,
-    };
+    return this.core(connectionId).killSession(id);
   }
 
   /** Rename the session [id] to [tag] within its workspace. */
@@ -346,100 +134,30 @@ export class AplexerClient {
     id: string,
     tag: string,
   ): Promise<AplexerRenameOutcome> {
-    let res;
-    try {
-      res = await this.ssh.exec(
-        connectionId,
-        pathAwareCommand(aplexerRenameCommand(id, tag)),
-      );
-    } catch (e) {
-      return { ok: false, notFound: false, error: String(e).slice(0, 300) };
-    }
-    if (res.exitCode === 0) return { ok: true, notFound: false, error: null };
-    if (isAplexerNotFound(res.exitCode, res.stderr)) {
-      return { ok: false, notFound: true, error: 'That session is not running any more.' };
-    }
-    return {
-      ok: false,
-      notFound: false,
-      error: res.stderr.trim() || res.stdout.trim() || `a rename exited ${res.exitCode}`,
-    };
+    return this.core(connectionId).renameSession(id, tag);
   }
 
-  /**
-   * Every unacknowledged crash/OOM warning on this host, newest first, or []
-   * on any failure. Never throws, and [] on a host without `a` — the same
-   * total contract as the snapshot, because a warning list the renderer can
-   * be denied is a crash it can be denied, and the one thing this endpoint
-   * exists to prevent. The availability gate rides the cache the listing
-   * warms, so a tmux-only host pays no exec for this per poll tick.
-   */
+  /** Every unacknowledged crash/OOM warning, newest first, or []. */
   async listWarnings(connectionId: string): Promise<AplexerWarning[]> {
-    if (!(await this.isAvailable(connectionId))) return [];
-    try {
-      const res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerWarningsCommand()));
-      if (res.exitCode !== 0) return [];
-      return parseAplexerWarnings(res.stdout);
-    } catch {
-      return [];
-    }
+    return this.core(connectionId).listWarnings();
   }
 
-  /**
-   * Acknowledge warnings: the whole list when [target] is null, else the one
-   * whose session UUID it is. `notFound` is the benign race — the warning
-   * was acked from another client between the banner's render and this
-   * click — not an error worth alarming over.
-   */
+  /** Acknowledge warnings: the whole list when [target] is null, else one. */
   async ackWarnings(connectionId: string, target?: string): Promise<AplexerAckOutcome> {
-    let res;
-    try {
-      res = await this.ssh.exec(connectionId, pathAwareCommand(aplexerAckCommand(target)));
-    } catch (e) {
-      return { ok: false, notFound: false, error: String(e).slice(0, 300) };
-    }
-    if (res.exitCode === 0) return { ok: true, notFound: false, error: null };
-    if (isAplexerAckNotFound(res.exitCode, res.stderr)) {
-      return { ok: false, notFound: true, error: null };
-    }
-    return {
-      ok: false,
-      notFound: false,
-      error: res.stderr.trim() || res.stdout.trim() || `a ack exited ${res.exitCode}`,
-    };
+    return this.core(connectionId).ackWarnings(target);
   }
 
-  /** Snapshot as session rows, in the host's order. [] on any failure — see {@link listSessions}. */
-  private async snapshotSummaries(
-    connectionId: string,
-    sort?: AplexerSortKey,
-  ): Promise<SessionSummary[]> {
-    const records = await this.snapshotRecords(connectionId, sort);
-    const rows = records.map(aplexerRecordToSummary);
-    if (rows.length > 0) {
-      log('sessions', `listed via aplexer: [${rows.map((s) => s.name).join(', ')}]`);
-    }
-    return rows;
-  }
-}
-
-/**
- * Parse `a start --json`'s single-record body.
- *
- * `start` prints one object, not the snapshot's array; rather than a second
- * record parser, reuse the array one by wrapping — with a direct-parse
- * fallback for a body that is already an object but wrapped in shell noise
- * the brackets would corrupt. The first non-empty JSON-looking line wins.
- */
-function parseSingleAplexerRecord(stdout: string): AplexerSessionRecord | null {
-  const start = stdout.indexOf('{');
-  const end = stdout.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  try {
-    const parsed: unknown = JSON.parse(stdout.slice(start, end + 1));
-    const records = parseAplexerSnapshot(JSON.stringify([parsed]));
-    return records.at(0) ?? null;
-  } catch {
-    return null;
+  /** The connection's core, created on first use with the desktop transport. */
+  private core(connectionId: string): AplexerCore {
+    const existing = this.cores.get(connectionId);
+    if (existing) return existing;
+    const core = new AplexerCore(
+      {
+        exec: (command: string) => this.ssh.exec(connectionId, command),
+      },
+      (rows) => log('sessions', `listed via aplexer: [${rows.map((s) => s.name).join(', ')}]`),
+    );
+    this.cores.set(connectionId, core);
+    return core;
   }
 }

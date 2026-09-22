@@ -9,7 +9,7 @@ import {
   aplexerRecordToSummary,
   parseAplexerSnapshot,
   parseAplexerWarnings,
-} from '../../src/main/helper/aplexerParsers';
+} from '../../src/shared/aplexerParsers';
 import { AplexerClient } from '../../src/main/helper/AplexerClient';
 import { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import {
@@ -24,7 +24,7 @@ import {
   isAplexerStartRefusal,
   isAplexerUnknownFlag,
 } from '../../src/main/helper/AplexerClient';
-import { byOldestCreated } from '../../src/main/helper/aplexerParsers';
+import { byOldestCreated } from '../../src/shared/aplexerParsers';
 import { TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import type { SshService } from '../../src/main/ssh/SshService';
 import type { ExecResult, ShellId } from '../../src/shared/types';
