@@ -79,15 +79,20 @@ jobs:
           repository: PocketShell-io/pocketshell-core
           path: pocketshell-core
           persist-credentials: false
-      - name: Build @pocketshell/core (file sibling)
+      - name: Stage and build @pocketshell/core (file sibling)
         # checkout refuses to place a repo outside the workspace, but the
         # file: spec resolves ../pocketshell-core one level above this repo —
-        # so link that path at the in-workspace checkout. bash on every OS:
-        # MSYS ln -s lands a plain copy on Windows, which is all npm needs.
+        # so bash moves the in-workspace checkout there (the runner user may
+        # write outside the workspace; the action may not). Moving, not
+        # linking, also keeps core's tree out of `eslint .`: its emitted
+        # dist/*.d.ts sits in no tsconfig project and type-aware parsing
+        # errors on files it never expected to see. bash on every OS —
+        # windows-latest defaults to pwsh, which would not expand
+        # $GITHUB_WORKSPACE.
         shell: bash
         run: |
-          ln -s "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
-          cd "$GITHUB_WORKSPACE/pocketshell-core"
+          mv "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
+          cd "$GITHUB_WORKSPACE/../pocketshell-core"
           npm ci && npm run build
       - run: npm ci
       - run: npm run typecheck
@@ -146,15 +151,20 @@ jobs:
           repository: PocketShell-io/pocketshell-core
           path: pocketshell-core
           persist-credentials: false
-      - name: Build @pocketshell/core (file sibling)
+      - name: Stage and build @pocketshell/core (file sibling)
         # checkout refuses to place a repo outside the workspace, but the
         # file: spec resolves ../pocketshell-core one level above this repo —
-        # so link that path at the in-workspace checkout. bash on every OS:
-        # MSYS ln -s lands a plain copy on Windows, which is all npm needs.
+        # so bash moves the in-workspace checkout there (the runner user may
+        # write outside the workspace; the action may not). Moving, not
+        # linking, also keeps core's tree out of `eslint .`: its emitted
+        # dist/*.d.ts sits in no tsconfig project and type-aware parsing
+        # errors on files it never expected to see. bash on every OS —
+        # windows-latest defaults to pwsh, which would not expand
+        # $GITHUB_WORKSPACE.
         shell: bash
         run: |
-          ln -s "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
-          cd "$GITHUB_WORKSPACE/pocketshell-core"
+          mv "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
+          cd "$GITHUB_WORKSPACE/../pocketshell-core"
           npm ci && npm run build
       - run: npm ci
       # E2E launches Electron, which has no headless mode on Linux; Xvfb is
