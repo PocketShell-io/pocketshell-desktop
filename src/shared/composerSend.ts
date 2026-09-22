@@ -17,7 +17,26 @@
  * Programs that do not enable bracketed paste render the markers literally.
  * The Kotlin accepts that degradation explicitly (:9793-9795); so do we.
  *
- * 
+ * ## WHY THE PASTE TRAVELS AS THREE WRITES, NOT ONE
+ *
+ * The fixture's `/bin/sh` — and every minimal appliance shell, including the
+ * one aplexer's shell engine runs — edits lines with busybox's line editor,
+ * whose escape parser consumes a FIXED 16-byte window from any read chunk
+ * that starts with ESC. A bracketed-paste frame delivered as one write
+ * therefore loses `ESC[200~` plus the first ten characters of the prompt,
+ * and the surviving fragment EXECUTES: the composer E2E watched
+ * `echo bp_line_one` arrive as `ne_one`. The bytes are lost in the shell's
+ * parser, not in any transport — the same bytes through a `cat` pane arrive
+ * complete, and `tmux attach` hides the bug by re-emitting the marker as a
+ * key of its own (probed 2026-09-22).
+ *
+ * The split makes the window land on bytes that exist to be eaten: the start
+ * marker travels alone (a chunk of nothing but marker eats itself, which is
+ * harmless), the body travels on its own, the end marker last. The gaps
+ * between writes exist because the shell can only mis-parse what arrives in
+ * one read: below ~50 ms of separation the chunks coalesce on the way down
+ * and the head loss returns (measured: 40 ms broken, 60 ms safe, one 80 ms
+ * run still failed), so `PASTE_GAP_MS` stays comfortably above the window.
  */
 
 /** `ESC [ 2 0 0 ~` — "a paste starts here". */
@@ -64,6 +83,17 @@ export function frameForPaste(payload: string): string {
   return needsBracketedPaste(payload) ? BP_START + payload + BP_END : payload;
 }
 
+/**
+ * Gap between the three paste writes. The shell's escape parser can only eat
+ * into a read that starts with ESC, so the split has to survive the journey
+ * down the channel without coalescing — measured 2026-09-22: 40 ms of
+ * separation still loses the paste's head, 60 ms survives, one 80 ms run
+ * still failed. 120 ms buys margin against a coalescing window that stretches
+ * under load; both gaps together are still far below what a human notices in
+ * a send that already waits `submitDelayMs` before Enter.
+ */
+export const PASTE_GAP_MS = 120;
+
 export interface DeliverOptions {
   /** Writes bytes to the PTY. Resolves false when the write did not land. */
   write: (data: string) => Promise<boolean>;
@@ -81,14 +111,20 @@ const defaultSleep = (ms: number): Promise<void> =>
 /**
  * Write one composed prompt to a PTY: framed body, pause, submit key.
  *
- * Returns false without pressing Enter when the body write failed, so a dead
- * channel can never leave a half-typed prompt sitting in the pane.
+ * The bracketed frame crosses the wire as three writes — START, body, END —
+ * with `PASTE_GAP_MS` between them, because a single-write paste loses its
+ * head to the shell's escape parser (module header). Returns false without
+ * pressing Enter when a write failed, so a dead channel can never leave a
+ * half-typed prompt sitting in the pane.
  */
 export async function deliverPayload(payload: string, opts: DeliverOptions): Promise<boolean> {
   const delay = opts.submitDelayMs ?? composerTiming.submitDelayMs;
   const sleep = opts.sleep ?? defaultSleep;
-  const wrote = await opts.write(frameForPaste(payload));
-  if (!wrote) return false;
+  const parts = needsBracketedPaste(payload) ? [BP_START, payload, BP_END] : [payload];
+  for (const [i, part] of parts.entries()) {
+    if (!(await opts.write(part))) return false;
+    if (i < parts.length - 1 && PASTE_GAP_MS > 0) await sleep(PASTE_GAP_MS);
+  }
   if (delay > 0) await sleep(delay);
   return opts.write(SUBMIT_KEY);
 }

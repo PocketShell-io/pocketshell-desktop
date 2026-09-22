@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BP_END,
   BP_START,
+  PASTE_GAP_MS,
   SUBMIT_KEY,
   deliverPayload,
   frameForPaste,
@@ -70,7 +71,7 @@ describe('frameForPaste', () => {
 });
 
 describe('deliverPayload — the wire sequence', () => {
-  it('sends a framed body and THEN a separate carriage return', async () => {
+  it('sends the frame as three writes and THEN a separate carriage return', async () => {
     const r = recorder();
     const payload = appendAttachmentPaths('what is wrong here', [
       '~/.pocketshell/attachments/main/shot.png',
@@ -80,13 +81,18 @@ describe('deliverPayload — the wire sequence', () => {
     const ok = await deliverPayload(payload, { write: r.write, submitDelayMs: 0, sleep: noSleep });
 
     expect(ok).toBe(true);
-    expect(r.writes).toHaveLength(2);
-    expect(r.writes[0]).toBe(
-      '\x1b[200~what is wrong here\n\nAttached files:\n' +
+    // Three writes, not one: aplexer's attach drops the head of a
+    // single-write bracketed paste, and the same bytes split across
+    // START/body/END land intact on that wire.
+    expect(r.writes).toHaveLength(4);
+    expect(r.writes[0]).toBe(BP_START);
+    expect(r.writes[1]).toBe(
+      'what is wrong here\n\nAttached files:\n' +
         '- ~/.pocketshell/attachments/main/shot.png\n' +
-        '- ~/.pocketshell/attachments/main/log.txt\x1b[201~',
+        '- ~/.pocketshell/attachments/main/log.txt',
     );
-    expect(r.writes[1]).toBe(SUBMIT_KEY);
+    expect(r.writes[2]).toBe(BP_END);
+    expect(r.writes[3]).toBe(SUBMIT_KEY);
   });
 
   it('still sends Enter separately for a single-line payload', async () => {
@@ -95,27 +101,27 @@ describe('deliverPayload — the wire sequence', () => {
     expect(r.writes).toEqual(['hello', '\r']);
   });
 
-  it('waits between the body and Enter so the TUI can ingest the paste', async () => {
+  it('gaps the paste writes and waits before Enter so the TUI can ingest the paste', async () => {
     const r = recorder();
     const slept: number[] = [];
     await deliverPayload('a\nb', {
       write: r.write,
       submitDelayMs: 250,
       sleep: async (ms) => {
-        // Enter must not have been written yet when the delay starts.
-        expect(r.writes).toHaveLength(1);
         slept.push(ms);
       },
     });
-    expect(slept).toEqual([250]);
-    expect(r.writes).toHaveLength(2);
+    // Two gaps inside the frame, then the submit delay; Enter is written
+    // after every wait has passed.
+    expect(slept).toEqual([PASTE_GAP_MS, PASTE_GAP_MS, 250]);
+    expect(r.writes.at(-1)).toBe('\r');
   });
 
-  it('never presses Enter when the body write failed', async () => {
+  it('never presses Enter when a write failed', async () => {
     const r = recorder(false);
     const ok = await deliverPayload('a\nb', { write: r.write, submitDelayMs: 0, sleep: noSleep });
     expect(ok).toBe(false);
-    expect(r.writes).toEqual([`${BP_START}a\nb${BP_END}`]);
+    expect(r.writes).toEqual([BP_START]);
   });
 
   it('produces ONE submission for a multi-line prompt, not one per line', async () => {
