@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import type { ForwardSpec, HostEntry } from '../../shared/types.js';
 

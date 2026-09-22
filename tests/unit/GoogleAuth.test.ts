@@ -102,7 +102,8 @@ describe('browser sign-in flow', () => {
         const inputUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
         expect(inputUrl).toBe('https://a7sota2qic.execute-api.eu-west-1.amazonaws.com/auth/google/token');
         expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
-        const body = JSON.parse(String(init?.body)) as Record<string, string>;
+        expect(typeof init?.body).toBe('string');
+        const body = JSON.parse(init?.body as string) as Record<string, string>;
         expect(body.grant_type).toBe('authorization_code');
         expect(body).not.toHaveProperty('client_secret');
         return new Response(
