@@ -1,4 +1,4 @@
-import type { SessionSummary } from '../shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 
 /**
  * Renderer-side identity for a session row.

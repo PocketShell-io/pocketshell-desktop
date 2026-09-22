@@ -36,10 +36,10 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useConnectionStore } from '../stores/connection';
 import AppIcon from '../components/AppIcon.vue';
 import { useForwardsStore } from '../stores/forwards';
-import type { ForwardSpec } from '../../shared/types';
+import type { ForwardSpec } from '@pocketshell/core';
 import type { DiscoveredPort } from '../../main/portfwd/AutoForwarder';
 import type { ForwardState } from '../../main/portfwd/Forwarder';
-import { formatBytes } from '../../shared/byteSize';
+import { formatBytes } from '@pocketshell/core';
 
 const connection = useConnectionStore();
 const forwards = useForwardsStore();

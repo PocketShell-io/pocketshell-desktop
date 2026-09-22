@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import type { GeometryProbe, ShellId } from '../../shared/types.js';
+import type { GeometryProbe, ShellId } from '@pocketshell/core';
 import { clientTtyVar, sessionAttachCommand } from '../../shared/attachCommand.js';
-import { aplexerAttachCommand, type SessionBackend } from '../../shared/aplexer.js';
+import { aplexerAttachCommand, type SessionBackend } from '@pocketshell/core';
 import { tmuxServerArg } from '../projects/commands.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { SshService } from './SshService.js';

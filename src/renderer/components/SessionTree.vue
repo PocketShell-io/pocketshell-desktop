@@ -81,7 +81,7 @@ import { editingTarget } from '../editingTarget';
 import { useFolderTree } from '../folderTree';
 import { rootHostPath } from '../sessionRoots';
 import { directoryForSession, type SessionDirectory } from '../sessionTree';
-import type { SessionSummary } from '../../shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 import { useFolderMenu } from '../useFolderMenu';
 import { useFolderStop } from '../useFolderStop';
 import CrashWarningBanner from './CrashWarningBanner.vue';

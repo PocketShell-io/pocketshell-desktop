@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
-import type { HostEntry } from '../../src/shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * The lost-link banner in the host workspace.

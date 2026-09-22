@@ -1,11 +1,11 @@
 import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import type { BootstrapResult, SessionSummary } from '../../shared/types.js';
+import type { BootstrapResult, SessionSummary } from '@pocketshell/core';
 import { runBootstrap } from '../helper/bootstrap.js';
 import type { UsageRow } from '../helper/usageParsers.js';
 import type { AplexerAckOutcome } from '../helper/AplexerClient.js';
-import type { AplexerWarning } from '../../shared/aplexer.js';
+import type { AplexerWarning } from '@pocketshell/core';
 
 
 export function registerHelperIpc(ctx: IpcContext): void {

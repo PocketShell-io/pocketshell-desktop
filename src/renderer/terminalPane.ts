@@ -9,7 +9,7 @@ import {
   repairIncompleteViewport,
   resumeWriteBufferAfterError,
 } from './xtermWriteBuffer';
-import type { ConnectionId, GeometryProbe, ShellId } from '../shared/types';
+import type { ConnectionId, GeometryProbe, ShellId } from '@pocketshell/core';
 
 /** What the pane needs from its mounting component, read at call time. */
 export interface TerminalPaneDeps {

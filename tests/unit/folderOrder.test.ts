@@ -8,7 +8,7 @@ import {
   reorderFolders,
 } from '../../src/renderer/folderOrder';
 import { groupSessionsIntoRoots, type SessionRootFolder } from '../../src/renderer/sessionTree';
-import type { SessionSummary } from '../../src/shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 
 /**
  * The pure half of  — the panel's manual folder order.

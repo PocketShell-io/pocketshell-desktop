@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_LIVE_CLIENTS, TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import type { SshService } from '../../src/main/ssh/SshService';
 import type { PocketshellClient } from '../../src/main/helper/PocketshellClient';
-import type { ExecResult, ShellId } from '../../src/shared/types';
+import type { ExecResult, ShellId } from '@pocketshell/core';
 
 /**
  * The pool's job is deciding, per attach, between two outcomes: hand back the

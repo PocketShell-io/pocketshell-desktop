@@ -5,7 +5,7 @@ import { useSettingsStore } from './stores/settings';
 import { useShellsStore } from './stores/shells';
 import { insertAtCaret } from '../shared/composerText';
 import { isShortcut } from '../shared/shortcuts';
-import type { AgentCommand } from '../shared/agentCommands';
+import type { AgentCommand } from '@pocketshell/core';
 import type { ComposerDraftProps } from './useComposerDraft';
 
 export interface ComposerVisibilityDeps {

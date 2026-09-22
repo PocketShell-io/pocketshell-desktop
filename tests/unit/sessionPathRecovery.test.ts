@@ -5,7 +5,7 @@ import {
   inferPathsFromSiblings,
   restoreUnlistedSessions,
 } from '@main/helper/sessionPathRecovery';
-import type { SessionSummary } from '../../src/shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 
 /**
  * The orphan problem. Both of these exist because the

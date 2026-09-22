@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import { MAX_PORT } from '../../shared/net.js';
+import { MAX_PORT } from '@pocketshell/core';
 
 /**
  * Persistence for port-forwarding preferences.

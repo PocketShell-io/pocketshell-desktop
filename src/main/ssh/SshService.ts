@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import type { ClientChannel, PseudoTtyOptions } from 'ssh2';
-import type { ConnectResult, ExecResult, ShellId } from '../../shared/types.js';
+import type { ConnectResult, ExecResult, ShellId } from '@pocketshell/core';
 import { newClient, ConnectionRegistry, type ConnectionRecord } from './ConnectionRegistry.js';
 import { ShellTracker } from './ShellTracker.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
-import { decodePublicKeyBlob } from '../../shared/knownHostsCore.js';
+import { decodePublicKeyBlob } from '@pocketshell/core';
 import { log } from '../log.js';
 
 /**

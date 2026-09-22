@@ -1,6 +1,6 @@
 import { onBeforeUnmount, onMounted, type ComputedRef, type Ref } from 'vue';
 import { adjacentIndex } from '../shared/listNavigation';
-import type { LaunchChoice } from '../shared/agentLaunch';
+import type { LaunchChoice } from '@pocketshell/core';
 import { isShortcut } from '../shared/shortcuts';
 import { editingTarget } from './editingTarget';
 import type { WorkspaceTab } from '../shared/workspaceTabs';

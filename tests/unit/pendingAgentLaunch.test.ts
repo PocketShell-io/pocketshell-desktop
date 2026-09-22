@@ -6,7 +6,7 @@ import {
   parkedAgentLaunch,
   takeAgentLaunch,
 } from '../../src/renderer/pendingAgentLaunch';
-import type { LaunchChoice } from '../../src/shared/agentLaunch';
+import type { LaunchChoice } from '@pocketshell/core';
 
 /**
  * The one-slot handoff that carries an agent choice from the session panel —

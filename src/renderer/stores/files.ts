@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
-import { formatBytes } from '../../shared/byteSize';
+import { formatBytes } from '@pocketshell/core';
 import { ref } from 'vue';
 import { api } from '../ipc';
-import type { ConnectionId } from '../../shared/types';
+import type { ConnectionId } from '@pocketshell/core';
 import type { DirEntry } from '../../main/sftp/SftpService';
 // The token NAMES only. previewStyle.ts imports nothing, so this costs the
 // renderer bundle an array of fourteen strings rather than a markdown parser —

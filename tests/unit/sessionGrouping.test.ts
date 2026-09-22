@@ -9,7 +9,7 @@ import {
 } from '../../src/renderer/sessionGrouping';
 import { OTHER_LABEL } from '../../src/renderer/sessionRoots';
 import { groupSessionsIntoRoots, type SessionRootFolder } from '../../src/renderer/sessionTree';
-import type { SessionAgentKind, SessionSummary } from '../../src/shared/types';
+import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
 
 /**
  * The grouping projection: sessions folded into folders, then into the

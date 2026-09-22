@@ -3,13 +3,13 @@ import {
   aplexerAttachCommand,
   aplexerSelector,
   isAplexerSessionLive,
-} from '../../src/shared/aplexer';
+} from '@pocketshell/core';
 import {
   agentKindFromEngine,
   aplexerRecordToSummary,
   parseAplexerSnapshot,
   parseAplexerWarnings,
-} from '../../src/shared/aplexerParsers';
+} from '@pocketshell/core';
 import { AplexerClient } from '../../src/main/helper/AplexerClient';
 import { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import {
@@ -24,11 +24,11 @@ import {
   isAplexerStartRefusal,
   isAplexerUnknownFlag,
 } from '../../src/main/helper/AplexerClient';
-import { byOldestCreated } from '../../src/shared/aplexerParsers';
+import { byOldestCreated } from '@pocketshell/core';
 import { TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import type { SshService } from '../../src/main/ssh/SshService';
-import type { ExecResult, ShellId } from '../../src/shared/types';
-import type { AplexerSessionRecord, AplexerWarning } from '../../src/shared/aplexer';
+import type { ExecResult, ShellId } from '@pocketshell/core';
+import type { AplexerSessionRecord, AplexerWarning } from '@pocketshell/core';
 
 /**
  * aplexer as the main session manager: the snapshot contract, the row

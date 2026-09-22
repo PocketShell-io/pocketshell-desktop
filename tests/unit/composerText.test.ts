@@ -10,8 +10,8 @@ import {
   railToggle,
   slashQueryFor,
 } from '../../src/shared/composerText';
-import { commandsFor, filteredCommands, insertionTextFor } from '../../src/shared/agentCommands';
-import { composerAgentKind } from '../../src/shared/composerSend';
+import { commandsFor, filteredCommands, insertionTextFor } from '@pocketshell/core';
+import { composerAgentKind } from '@pocketshell/core';
 
 /**
  * Ports of the Android client's own contracts for the composer's pure logic.

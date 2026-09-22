@@ -4,7 +4,7 @@ import { SshService } from '@main/ssh/SshService';
 import { MAX_LIVE_CLIENTS, TmuxClientPool } from '@main/ssh/TmuxClientPool';
 import { PocketshellClient } from '@main/helper/PocketshellClient';
 import { pathAwareCommand } from '@main/helper/bootstrap';
-import type { GridSize, ShellId } from '../../src/shared/types';
+import type { GridSize, ShellId } from '@pocketshell/core';
 import { TEST_KEY_PATH, describeDocker } from './helpers';
 
 /**

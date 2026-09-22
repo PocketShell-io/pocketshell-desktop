@@ -66,7 +66,7 @@ const { useConnectionStore } = await import('../../src/renderer/stores/connectio
 const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
 const { useProjectsStore } = await import('../../src/renderer/stores/projects');
 
-import type { SessionSummary } from '../../src/shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 
 /** A tmux-shaped row of the shape `helper.sessionsList` returns. */
 function row(name: string, created = 1): SessionSummary {

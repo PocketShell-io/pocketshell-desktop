@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '../ipc';
-import type { AttachmentSource, ConnectionId } from '../../shared/types';
+import type { AttachmentSource, ConnectionId } from '@pocketshell/core';
 import {
   appendAttachmentPaths,
   appendSeededPrompt,
@@ -10,7 +10,7 @@ import {
   COMPOSER_STRINGS,
   insertCommandText,
 } from '../../shared/composerText';
-import { composerTiming, withTimeout } from '../../shared/composerSend';
+import { composerTiming, withTimeout } from '@pocketshell/core';
 import { defaultGeometry, type ComposerGeometry } from '../../shared/composerGeometry';
 
 /**

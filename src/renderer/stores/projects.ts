@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api } from '../ipc';
-import type { ConnectionId } from '../../shared/types';
+import type { ConnectionId } from '@pocketshell/core';
 import type { DirEntry } from '../../main/sftp/SftpService';
 import type { RepoEntry, ReposScopeState } from '../../main/projects/repos';
 import { errorMessage } from '../../shared/errors';

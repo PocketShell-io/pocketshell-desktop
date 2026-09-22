@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import type { StageAttachmentsResult } from '../../src/shared/types';
+import type { StageAttachmentsResult } from '@pocketshell/core';
 
 /**
  * The composer's behaviour tests — the desktop equivalents of the Android
@@ -26,7 +26,7 @@ const { useComposerStore, COMPOSER_HISTORY_LIMIT } = await import('../../src/ren
 const { sessionIdentityKey } = await import('../../src/renderer/sessionIdentity');
 const { defaultGeometry } = await import('../../src/shared/composerGeometry');
 const { COMPOSER_STRINGS } = await import('../../src/shared/composerText');
-const { composerTiming } = await import('../../src/shared/composerSend');
+const { composerTiming } = await import('@pocketshell/core');
 
 const A = '~/.pocketshell/attachments/main/shot.png';
 const B = '~/.pocketshell/attachments/main/log.txt';

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, posix } from 'node:path';
-import { buildHosts, parseDirectiveLine } from '../../shared/sshConfigCore.js';
-import type { Directive } from '../../shared/sshConfigCore.js';
-import type { HostEntry } from '../../shared/types.js';
+import { buildHosts, parseDirectiveLine } from '@pocketshell/core';
+import type { Directive } from '@pocketshell/core';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * Parses an OpenSSH-style config file into {@link HostEntry} rows.

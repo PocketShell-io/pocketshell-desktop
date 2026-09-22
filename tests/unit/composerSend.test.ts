@@ -10,7 +10,7 @@ import {
   composerAgentKind,
   sendRoute,
   withTimeout,
-} from '../../src/shared/composerSend';
+} from '@pocketshell/core';
 import { appendAttachmentPaths } from '../../src/shared/composerText';
 
 /**

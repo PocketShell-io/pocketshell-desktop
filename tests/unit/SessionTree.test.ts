@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, type PropType } from 'vue';
-import type { HostEntry, SessionSummary } from '../../src/shared/types';
+import type { HostEntry, SessionSummary } from '@pocketshell/core';
 
 /**
  * The session panel's creation controls.

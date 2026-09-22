@@ -1,8 +1,8 @@
 import { createServer, type Server, type Socket } from 'node:net';
-import { LOOPBACK_HOST } from '../../shared/net.js';
+import { LOOPBACK_HOST } from '@pocketshell/core';
 import type { Client } from 'ssh2';
 import type { ConnectionRegistry } from '../ssh/ConnectionRegistry.js';
-import type { ForwardSpec } from '../../shared/types.js';
+import type { ForwardSpec } from '@pocketshell/core';
 
 /**
  * A single port-forward rule over an SSH connection. Supports the three

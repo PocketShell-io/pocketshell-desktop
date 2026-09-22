@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
-import type { HostEntry, SessionSummary } from '../../src/shared/types';
+import type { HostEntry, SessionSummary } from '@pocketshell/core';
 
 /**
  * `Ctrl+↑` / `Ctrl+↓` — the workspace above, the workspace below.

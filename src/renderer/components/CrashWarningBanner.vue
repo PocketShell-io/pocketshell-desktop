@@ -17,7 +17,7 @@
 import AppIcon from './AppIcon.vue';
 import { useConnectionStore } from '../stores/connection';
 import { useWarningsStore } from '../stores/warnings';
-import { aplexerSelector } from '../../shared/aplexer';
+import { aplexerSelector } from '@pocketshell/core';
 import { fmtRelative } from '../sessionTreeText';
 
 defineProps<{ now: number }>();

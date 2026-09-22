@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { directoryForSession, groupSessionsIntoRoots } from '../../src/renderer/sessionTree';
-import type { SessionSummary } from '../../src/shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 
 /**
  * The folder lookup behind the panel's create hand-off (`onSessionStarted`).

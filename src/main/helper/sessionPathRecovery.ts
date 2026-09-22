@@ -11,7 +11,7 @@
  * parsing this consumes.
  */
 
-import type { SessionSummary } from '../../shared/types.js';
+import type { SessionSummary } from '@pocketshell/core';
 import type { SessionEnrichment } from './parsers.js';
 
 /**

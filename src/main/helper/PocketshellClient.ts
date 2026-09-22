@@ -8,7 +8,7 @@
  */
 
 import type { SshService } from '../ssh/SshService.js';
-import type { EnvVarRow, ExecResult, SessionSummary } from '../../shared/types.js';
+import type { EnvVarRow, ExecResult, SessionSummary } from '@pocketshell/core';
 import type { AplexerClient } from './AplexerClient.js';
 import {
   firstNonEmptyLine,
@@ -44,7 +44,7 @@ import {
   sessionDirCandidates,
 } from '../projects/sessionDirs.js';
 import { log } from '../log.js';
-import { shellQuote, shellQuoteRemotePath } from '../../shared/shellQuote.js';
+import { shellQuote, shellQuoteRemotePath } from '@pocketshell/core';
 import {
   createSessionCommand,
   fallbackCreateSessionCommand,

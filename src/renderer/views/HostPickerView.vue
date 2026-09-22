@@ -45,7 +45,7 @@ import AppIcon from '../components/AppIcon.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import SettingsView from './SettingsView.vue';
 import { readLastFolder } from '../workspaceState';
-import type { HostEntry } from '../../shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 const router = useRouter();
 const connection = useConnectionStore();

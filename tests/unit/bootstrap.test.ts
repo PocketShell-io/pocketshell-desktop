@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SshService } from '@main/ssh/SshService';
 import { pathAwareCommand, runBootstrap } from '@main/helper/bootstrap';
-import { USER_BIN_DIRS } from '../../src/shared/userBinPath';
+import { USER_BIN_DIRS } from '@pocketshell/core';
 
 /**
  * Bootstrap is the app's answer to "is this host ready?", and until now it

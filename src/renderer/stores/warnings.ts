@@ -2,8 +2,8 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '../ipc';
 import { errorMessage } from '../../shared/errors';
-import type { ConnectionId } from '../../shared/types';
-import type { AplexerWarning } from '../../shared/aplexer';
+import type { ConnectionId } from '@pocketshell/core';
+import type { AplexerWarning } from '@pocketshell/core';
 
 /**
  * Crash warnings store: the unacknowledged aplexer crash/OOM warnings for

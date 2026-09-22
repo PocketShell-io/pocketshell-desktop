@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '../ipc';
-import type { ConnectionId } from '../../shared/types';
+import type { ConnectionId } from '@pocketshell/core';
 import type { UsageRow } from '../../main/helper/usageParsers';
-import { parseProfileRows, type AgentProfile } from '../../shared/agentLaunch';
+import { parseProfileRows, type AgentProfile } from '@pocketshell/core';
 import { errorMessage } from '../../shared/errors';
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shellQuote, shellQuoteRemotePath } from '../../src/shared/shellQuote';
+import { shellQuote, shellQuoteRemotePath } from '@pocketshell/core';
 import {
   FREE_SESSION_NAME_MAX_SUFFIX,
   createSessionCommand,

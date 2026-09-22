@@ -62,7 +62,7 @@
  * exist.
  */
 import { shallowRef } from 'vue';
-import type { LaunchChoice } from '../shared/agentLaunch';
+import type { LaunchChoice } from '@pocketshell/core';
 
 /** A launch waiting for a terminal, and when it was asked for. */
 export interface ParkedAgentLaunch {

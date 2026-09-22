@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ExecResult } from '../../src/shared/types.js';
+import type { ExecResult } from '@pocketshell/core';
 import type { SshService } from '@main/ssh/SshService';
 import { PocketshellClient } from '@main/helper/PocketshellClient';
 import { AplexerClient } from '@main/helper/AplexerClient';

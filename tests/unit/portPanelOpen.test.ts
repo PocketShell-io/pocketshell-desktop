@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
-import type { HostEntry } from '../../src/shared/types';
+import type { HostEntry } from '@pocketshell/core';
 import type { ForwardState } from '../../src/main/portfwd/Forwarder';
 import type { DiscoveredPort } from '../../src/main/portfwd/AutoForwarder';
 

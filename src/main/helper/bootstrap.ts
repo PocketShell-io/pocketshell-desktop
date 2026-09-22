@@ -9,9 +9,9 @@
  */
 
 import type { SshService } from '../ssh/SshService.js';
-import type { BootstrapResult, ToolState } from '../../shared/types.js';
+import type { BootstrapResult, ToolState } from '@pocketshell/core';
 import { parseCommandV } from './cliParsers.js';
-import { pathAwareCommand } from '../../shared/aplexerCommands.js';
+import { pathAwareCommand } from '@pocketshell/core';
 
 // The PATH wrapper itself is shared code now (`shared/aplexerCommands.ts`) —
 // the same lines the browser builds before every probe and join. Re-exported

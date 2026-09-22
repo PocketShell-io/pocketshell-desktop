@@ -2,8 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
-import type { HostEntry } from '../../src/shared/types';
-import { serializeSyncPayload } from '../../src/shared/syncMerge';
+import type { HostEntry } from '@pocketshell/core';
+import { serializeSyncPayload } from '@pocketshell/core';
 
 const syncApi = vi.hoisted(() => ({
   status: vi.fn(async () => ({ loggedIn: true, email: 'alexey@example.com', keychainAvailable: true })),

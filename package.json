@@ -50,6 +50,7 @@
     "@fontsource-variable/inter": "5.3.0",
     "@lezer/highlight": "1.2.3",
     "@playwright/test": "1.49.1",
+    "@pocketshell/core": "file:../pocketshell-core",
     "@types/node": "22.10.5",
     "@vitejs/plugin-vue": "5.2.1",
     "@vitest/coverage-v8": "^2.1.8",

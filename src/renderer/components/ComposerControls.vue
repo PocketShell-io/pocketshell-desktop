@@ -9,7 +9,7 @@
 // uses is carried here from PromptComposer.vue's stylesheet; `.spacer` is
 // mirrored because the card's title bar uses it on the parent's side too.
 import AppIcon from './AppIcon.vue';
-import type { ComposerAgentKind } from '../../shared/composerSend';
+import type { ComposerAgentKind } from '@pocketshell/core';
 
 defineProps<{
   /** Drives the tools' disabled state while a batch is still landing. */

@@ -63,7 +63,7 @@ import {
   type HostAgentSupport,
   type LaunchChoice,
   type LaunchableKind,
-} from '../../shared/agentLaunch';
+} from '@pocketshell/core';
 
 const props = defineProps<{
   /** The folder the session starts in. Null when the folder has no host path. */

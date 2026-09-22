@@ -12,8 +12,8 @@
  * subcommand listings, the tree registry) live in ./cliParsers.ts.
  */
 
-import type { SessionAgentKind, SessionSummary } from '../../shared/types.js';
-import { agentKindFromEngine } from '../../shared/aplexerParsers.js';
+import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
+import { agentKindFromEngine } from '@pocketshell/core';
 
 // ---------------------------------------------------------------------------
 // `pocketshell sessions list` — fixed-width table

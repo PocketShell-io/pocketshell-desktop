@@ -1,7 +1,7 @@
 import type { IpcContext } from './context.js';
 import { ipcMain, dialog } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import type { AttachmentSource, StageAttachmentsResult } from '../../shared/types.js';
+import type { AttachmentSource, StageAttachmentsResult } from '@pocketshell/core';
 
 
 export function registerPreviewIpc(ctx: IpcContext): void {

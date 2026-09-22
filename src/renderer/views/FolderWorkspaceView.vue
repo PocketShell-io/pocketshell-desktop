@@ -69,7 +69,7 @@ import OverlayPanel from '../components/OverlayPanel.vue';
 import LaunchSessionDialog from '../components/LaunchSessionDialog.vue';
 import WorkspaceTabBar from '../components/WorkspaceTabBar.vue';
 import type { Box } from '../../shared/popupPlacement';
-import { composerAgentKind } from '../../shared/composerSend';
+import { composerAgentKind } from '@pocketshell/core';
 import { normalisePart } from '../../shared/sessionNameParts';
 import { absoluteRemoteFolder, vscodeHostToken } from '../../shared/vscodeDeepLink';
 import { errorMessage } from '../../shared/errors';

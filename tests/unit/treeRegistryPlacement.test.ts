@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PocketshellClient } from '@main/helper/PocketshellClient';
 import type { SshService } from '@main/ssh/SshService';
-import type { ExecResult } from '../../src/shared/types';
+import type { ExecResult } from '@pocketshell/core';
 
 /**
  * The durable tree registry's placement wiring: `pocketshell tree get/upsert` — the record

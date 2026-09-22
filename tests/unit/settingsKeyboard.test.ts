@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import type { HostEntry } from '../../src/shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * The Keyboard section of Settings — THE PART THE USER ASKED FOR FIRST.

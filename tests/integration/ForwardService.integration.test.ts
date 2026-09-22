@@ -6,7 +6,7 @@ import { SshService } from '@main/ssh/SshService';
 import { ForwardService } from '@main/portfwd/ForwardService';
 import { scanRemotePorts } from '@main/portfwd/scanRemotePorts';
 import type { ForwardState } from '@main/portfwd/Forwarder';
-import type { ForwardSpec } from '../../src/shared/types';
+import type { ForwardSpec } from '@pocketshell/core';
 import { TEST_KEY_PATH, describeDocker } from './helpers';
 
 /**

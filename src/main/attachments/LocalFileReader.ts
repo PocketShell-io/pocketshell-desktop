@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { oversizeMessage } from '../../shared/byteSize.js';
+import { oversizeMessage } from '@pocketshell/core';
 
 /**
  * Reads the BYTES of a local file back into the renderer.

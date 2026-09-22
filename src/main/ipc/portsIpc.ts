@@ -4,7 +4,7 @@ import { ipc } from '../../shared/channels.js';
 import type { RemotePort } from '../portfwd/PortScanner.js';
 import type { AutoForwarderStatus, DiscoveredPort } from '../portfwd/AutoForwarder.js';
 import type { PortIntent } from '../portfwd/PortfwdStore.js';
-import type { ForwardSpec } from '../../shared/types.js';
+import type { ForwardSpec } from '@pocketshell/core';
 
 
 export function registerPortsIpc(ctx: IpcContext): void {

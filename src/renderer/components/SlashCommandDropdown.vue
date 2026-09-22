@@ -10,7 +10,7 @@
 // The catalog is app-shipped and per-agent, so a command an engine does not
 // have is never offered. With no agent detected the parent never renders this.
 // 
-import type { AgentCommand } from '../../shared/agentCommands';
+import type { AgentCommand } from '@pocketshell/core';
 
 defineProps<{
   commands: AgentCommand[];

@@ -1,14 +1,14 @@
 import type { SFTPWrapper } from 'ssh2';
 import { stat as fsStat } from 'node:fs';
 import type { ConnectionRegistry, ConnectionRecord } from '../ssh/ConnectionRegistry.js';
-import { oversizeMessage } from '../../shared/byteSize.js';
+import { oversizeMessage } from '@pocketshell/core';
 import {
   toDirEntry,
   toFileStat,
   type DirEntry,
   type FileStat,
   type SftpAttrsLike,
-} from '../../shared/sftpCore.js';
+} from '@pocketshell/core';
 
 // The entry shapes and the type-classification rules are shared code now
 // (`shared/sftpCore.ts`) — the browser's Files pane normalises a listing with

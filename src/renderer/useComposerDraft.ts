@@ -1,10 +1,10 @@
 import { computed, nextTick, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { useComposerStore, type ComposerMode, type ComposerSessionState } from './stores/composer';
 import { insertCommandText, railToggle, slashQueryFor } from '../shared/composerText';
-import { filteredCommands, insertionTextFor, type AgentCommand } from '../shared/agentCommands';
+import { filteredCommands, insertionTextFor, type AgentCommand } from '@pocketshell/core';
 import { sessionIdentityKey } from './sessionIdentity';
-import type { ComposerAgentKind } from '../shared/composerSend';
-import type { ConnectionId } from '../shared/types';
+import type { ComposerAgentKind } from '@pocketshell/core';
+import type { ConnectionId } from '@pocketshell/core';
 
 /**
  * The component's reactive props, as the draft composable reads them — the

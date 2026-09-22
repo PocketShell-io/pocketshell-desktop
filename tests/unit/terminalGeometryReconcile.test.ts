@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { nextTick } from 'vue';
-import type { GeometryProbe } from '../../src/shared/types';
+import type { GeometryProbe } from '@pocketshell/core';
 
 /**
  * The geometry reconcile loop: the interval that asks tmux what it believes

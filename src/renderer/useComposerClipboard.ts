@@ -3,7 +3,7 @@ import { api } from './ipc';
 import { useComposerStore } from './stores/composer';
 import { decideClipboardPaste } from '../shared/clipboardPaste';
 import { attachmentScopeKey } from '../shared/composerAttachments';
-import type { AttachmentSource } from '../shared/types';
+import type { AttachmentSource } from '@pocketshell/core';
 import type { ComposerDraftProps } from './useComposerDraft';
 
 /**

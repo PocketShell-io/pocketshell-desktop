@@ -3,7 +3,7 @@ import { api } from './ipc';
 import { useComposerStore } from './stores/composer';
 import { useSettingsStore } from './stores/settings';
 import { useShellsStore } from './stores/shells';
-import { composerTiming, deliverPayload, sendRoute, type ComposerAgentKind } from '../shared/composerSend';
+import { composerTiming, deliverPayload, sendRoute, type ComposerAgentKind } from '@pocketshell/core';
 import type { useComposerDraft } from './useComposerDraft';
 
 /** The component's reactive props, as the send paths read them. */

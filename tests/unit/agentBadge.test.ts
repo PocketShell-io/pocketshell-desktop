@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { agentMark } from '../../src/shared/agentBadge';
-import type { SessionAgentKind } from '../../src/shared/types';
+import type { SessionAgentKind } from '@pocketshell/core';
 
 /**
  * Which mark a session tab wears.

@@ -4,7 +4,7 @@
  * tree registry's JSON payloads.
  */
 
-import type { EnvVarRow } from '../../shared/types.js';
+import type { EnvVarRow } from '@pocketshell/core';
 
 // ---------------------------------------------------------------------------
 // bootstrap probe result parsing

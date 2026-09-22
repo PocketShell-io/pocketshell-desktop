@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import type { ForwardSpec, HostEntry } from '../../shared/types.js';
+import type { ForwardSpec, HostEntry } from '@pocketshell/core';
 
 /**
  * The write-back side of settings sync: hosts pulled from the account are

@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import type { HostEntry } from '../../src/shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * The automatic reconnect FSM in the connection store.

@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { sanitisePart } from '../shared/sessionNameParts';
 import { renamedSessionName, type WorkspaceTab } from '../shared/workspaceTabs';
-import type { ConnectionId } from '../shared/types';
+import type { ConnectionId } from '@pocketshell/core';
 import type { SessionPaneRecord } from './sessionPanes';
 import type { useComposerStore } from './stores/composer';
 import type { useConnectionStore } from './stores/connection';

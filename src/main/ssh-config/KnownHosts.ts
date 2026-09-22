@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { createHmac } from 'node:crypto';
-import { knownHostsToken } from '../../shared/knownHostsCore.js';
+import { knownHostsToken } from '@pocketshell/core';
 
 /**
  * Minimal ~/.ssh/known_hosts loader + matcher.

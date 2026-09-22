@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { safeStorage } from 'electron';
-import { GOOGLE_CLIENT_ID, SYNC_API_URL } from '../../shared/syncConfig.js';
+import { GOOGLE_CLIENT_ID, SYNC_API_URL } from '@pocketshell/core';
 
 /**
  * Google sign-in for settings sync — the optional "Gmail login".

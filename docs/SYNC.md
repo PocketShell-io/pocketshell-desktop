@@ -22,7 +22,7 @@ client secret held in AWS Secrets Manager. Signing in twice shares one
 in-flight flow; a deny, a state mismatch, or five minutes of silence all fail
 the same promise with the reason.
 
-The OAuth credential is the "Desktop app" type in `src/shared/syncConfig.ts`.
+The OAuth credential is the "Desktop app" type in `syncConfig` (in @pocketshell/core).
 The downloaded app embeds only its public client ID; it never asks the user
 for a client secret. The backend secret and the server-side email allowlist
 are what control access to the sync service.

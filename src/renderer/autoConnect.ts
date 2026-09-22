@@ -1,4 +1,4 @@
-import type { HostEntry } from '../shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * The launch-time "should we dial a host by ourselves?" decision.

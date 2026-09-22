@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeOsc52SetClipboard } from '../../src/shared/osc52';
+import { decodeOsc52SetClipboard } from '@pocketshell/core';
 
 /** tmux sends `ESC ] 52 ; Pc ; Pt BEL`; xterm hands this function `Pc ; Pt`. */
 

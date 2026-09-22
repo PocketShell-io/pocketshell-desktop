@@ -31,7 +31,7 @@ import {
   attachmentScopeKey,
   replaceStagedAttachment,
 } from '../../shared/composerAttachments';
-import type { AttachmentSource, ConnectionId } from '../../shared/types';
+import type { AttachmentSource, ConnectionId } from '@pocketshell/core';
 import type { StagedAttachment } from '../stores/composer';
 
 const props = defineProps<{

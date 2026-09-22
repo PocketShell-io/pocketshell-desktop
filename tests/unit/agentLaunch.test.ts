@@ -17,7 +17,7 @@ import {
   supportsProfiles,
   supportsSkipPermissions,
   type AgentProfile,
-} from '../../src/shared/agentLaunch';
+} from '@pocketshell/core';
 
 /**
  * Two suites with different jobs.

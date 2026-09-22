@@ -1,5 +1,5 @@
 import { computed, nextTick, ref, watch, type ComputedRef, type Ref } from 'vue';
-import type { ConnectionId } from '../shared/types';
+import type { ConnectionId } from '@pocketshell/core';
 import { FILE_ROW_CAP, viewFileRows, type FileListView } from './fileListView';
 import { normaliseTypedPath } from './remotePaths';
 import { listStep, type ListStepKey } from '../shared/listNavigation';

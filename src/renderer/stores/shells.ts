@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { ShellId } from '../../shared/types';
+import type { ShellId } from '@pocketshell/core';
 
 /**
  * Shell registry: which live PTY belongs to which session.

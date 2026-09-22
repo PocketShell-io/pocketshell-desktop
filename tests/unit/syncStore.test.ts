@@ -37,8 +37,8 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useConnectionStore } from '../../src/renderer/stores/connection';
 import { useSettingsStore } from '../../src/renderer/stores/settings';
 import { useSyncStore } from '../../src/renderer/stores/sync';
-import { serializeSyncPayload } from '../../src/shared/syncMerge';
-import type { HostEntry } from '../../src/shared/types';
+import { serializeSyncPayload } from '@pocketshell/core';
+import type { HostEntry } from '@pocketshell/core';
 
 function host(name: string, hostname = `${name}.example.com`): HostEntry {
   return {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { reactive } from 'vue';
-import type { LaunchChoice } from '../../src/shared/agentLaunch';
+import type { LaunchChoice } from '@pocketshell/core';
 
 /**
  * The folder workspace's `+` -> "New session…" -> Create session, tested for

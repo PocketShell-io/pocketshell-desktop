@@ -8,10 +8,10 @@ import {
   assembleSyncSet,
   parseSyncPayload,
   serializeSyncPayload,
-} from '../../shared/syncMerge';
-import { SYNC_SLOT } from '../../shared/syncConfig';
-import type { SyncStatus } from '../../shared/sync';
-import type { HostEntry } from '../../shared/types';
+} from '@pocketshell/core';
+import { SYNC_SLOT } from '@pocketshell/core';
+import type { SyncStatus } from '@pocketshell/core';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * The Account & sync section's model.

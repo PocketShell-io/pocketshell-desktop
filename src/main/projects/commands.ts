@@ -14,7 +14,7 @@
  * installs `pocketshell` and `tmuxctl` — is not on PATH by default.
  */
 
-import { shellQuote, shellQuoteRemotePath } from '../../shared/shellQuote.js';
+import { shellQuote, shellQuoteRemotePath } from '@pocketshell/core';
 
 /**
  * Ceiling on the `-2`/`-3`… walk in {@link freeSessionNameCommand}. Ported

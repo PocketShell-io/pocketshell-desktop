@@ -1,5 +1,5 @@
 import type { ClientChannel } from 'ssh2';
-import type { ShellId } from '../../shared/types.js';
+import type { ShellId } from '@pocketshell/core';
 
 /**
  * Tracks live PTY shell channels by id, so the renderer can address a shell

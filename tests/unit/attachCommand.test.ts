@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clientTtyVar, sessionAttachCommand } from '../../src/shared/attachCommand';
-import { shellQuote } from '../../src/shared/shellQuote';
-import { USER_BIN_DIRS } from '../../src/shared/userBinPath';
+import { shellQuote } from '@pocketshell/core';
+import { USER_BIN_DIRS } from '@pocketshell/core';
 
 /**
  * These pin the join contract, which is the thing that actually broke: the app

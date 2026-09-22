@@ -18,7 +18,7 @@
 //     a sentence next to the row rather than a silent no-op.
 import { onMounted, ref } from 'vue';
 import { api } from '../ipc';
-import type { ConnectionId, EnvVarRow } from '../../shared/types';
+import type { ConnectionId, EnvVarRow } from '@pocketshell/core';
 import { errorMessage } from '../../shared/errors';
 
 const props = defineProps<{

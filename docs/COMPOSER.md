@@ -437,7 +437,7 @@ Kotlin:
 
 ### 16.3 Routing
 
-`sendRoute` (`src/shared/composerSend.ts`), pure and unit-tested against
+`sendRoute` (`composerSend` (in @pocketshell/core)), pure and unit-tested against
 the four cases: `withEnter && liveAgent === 'codex' → 'agent-payload'`;
 `liveAgent → 'raw'`; `presumedAgent → 'agent-payload'`; else `'raw'`. The
 Codex arm is live (agent kind arrives as the composer's prop, narrowed from
@@ -474,7 +474,7 @@ the file is attached, not when the prompt is sent (§27.7 relies on this).
 
 ## 18. Slash commands (desktop)
 
-The catalog ships as data in `src/shared/agentCommands.ts` (per agent plus
+The catalog ships as data in `agentCommands` (in @pocketshell/core) (per agent plus
 the substring filter) — app-shipped, not user CRUD. **Grok is the one list
 with no Android original**: it was assembled from the Grok CLI's commands
 rather than ported, which makes it the one entry without a receipt — when a

@@ -9,7 +9,7 @@ import PopupMenu from './PopupMenu.vue';
 import { api } from '../ipc';
 import { useConnectionStore } from '../stores/connection';
 import { useFilesStore } from '../stores/files';
-import { formatBytes } from '../../shared/byteSize';
+import { formatBytes } from '@pocketshell/core';
 import { useSettingsStore } from '../stores/settings';
 import { splitLabel } from '../sessionGrouping';
 import { buildCrumbs, type Crumb } from '../fileListView';

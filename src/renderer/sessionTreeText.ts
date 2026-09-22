@@ -5,7 +5,7 @@
  * `fmtRelative` takes the panel's clock tick as an argument rather than
  * reading a ref.
  */
-import type { SessionAgentKind } from '../shared/types';
+import type { SessionAgentKind } from '@pocketshell/core';
 import type { SessionDirectory, SessionRootFolder } from './sessionTree';
 
 /** `1 session` / `3 sessions` — the phrase form, which lives only in tooltips. */

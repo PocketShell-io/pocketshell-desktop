@@ -1,7 +1,7 @@
 import { computed, nextTick, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { displayPath, joinPosix } from './stores/projects';
 import { FILE_ROW_CAP, viewFileRows, type FileListView } from './fileListView';
-import type { LaunchChoice } from '../shared/agentLaunch';
+import type { LaunchChoice } from '@pocketshell/core';
 import type { Box } from '../shared/popupPlacement';
 import type { DirEntry } from '../main/sftp/SftpService';
 import type { useConnectionStore } from './stores/connection';

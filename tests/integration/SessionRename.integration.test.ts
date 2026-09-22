@@ -5,7 +5,7 @@ import { PocketshellClient } from '@main/helper/PocketshellClient';
 import { ProjectsService } from '@main/projects/ProjectsService';
 import { TmuxClientPool } from '@main/ssh/TmuxClientPool';
 import { pathAwareCommand } from '@main/helper/bootstrap';
-import type { ShellId } from '../../src/shared/types';
+import type { ShellId } from '@pocketshell/core';
 import { LIST_SESSIONS_ANY_SOCKET, TEST_KEY_PATH, describeDocker } from './helpers';
 
 /**

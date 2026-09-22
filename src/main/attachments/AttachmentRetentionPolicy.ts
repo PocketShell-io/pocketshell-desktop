@@ -20,7 +20,7 @@
  * {@link RemoteAttachmentPruner} touches the network.
  */
 
-import { shellQuoteRemotePath } from '../../shared/shellQuote.js';
+import { shellQuoteRemotePath } from '@pocketshell/core';
 
 /** Keep at least this many of the newest attachments per scope. */
 export const DEFAULT_KEEP_NEWEST = 20;

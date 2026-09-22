@@ -6,7 +6,7 @@ import type {
   ConnectionId,
   ConnectionState,
   HostEntry,
-} from '../../shared/types';
+} from '@pocketshell/core';
 import { MAX_ATTEMPTS } from '../../shared/reconnectBackoff';
 import { ReconnectLoop } from '../reconnectLoop';
 import { useFilesStore } from './files';

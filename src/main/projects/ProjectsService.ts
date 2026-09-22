@@ -24,7 +24,7 @@ import type { SshService } from '../ssh/SshService.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
-import type { AplexerSessionRecord } from '../../shared/aplexer.js';
+import type { AplexerSessionRecord } from '@pocketshell/core';
 import { pathAwareCommand } from '../helper/bootstrap.js';
 import { firstNonEmptyLine, lastNonEmptyLine } from '../helper/parsers.js';
 import {

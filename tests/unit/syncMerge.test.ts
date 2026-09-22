@@ -4,8 +4,8 @@ import {
   assembleSyncSet,
   parseSyncPayload,
   serializeSyncPayload,
-} from '../../src/shared/syncMerge';
-import type { HostEntry } from '../../src/shared/types';
+} from '@pocketshell/core';
+import type { HostEntry } from '@pocketshell/core';
 
 function host(name: string, hostname = `${name}.example.com`, port = 22): HostEntry {
   return {

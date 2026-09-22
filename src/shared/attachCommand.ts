@@ -113,8 +113,8 @@
  * diagnostic above must survive to print.
  */
 
-import { USER_BIN_PATH } from './userBinPath';
-import { shellQuote } from './shellQuote';
+import { USER_BIN_PATH } from '@pocketshell/core';
+import { shellQuote } from '@pocketshell/core';
 
 /**
  * Build the join command for [sessionName].

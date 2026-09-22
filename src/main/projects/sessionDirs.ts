@@ -61,7 +61,7 @@
  * c614e7e. That is what lets every rule below be tested without a host.
  */
 
-import { shellQuoteRemotePath } from '../../shared/shellQuote.js';
+import { shellQuoteRemotePath } from '@pocketshell/core';
 
 /**
  * How many candidate directories one session name may be asked about.

@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, powerMonitor, shell } from 'electron';
 import { HtmlPreviewService, registerPreviewScheme } from './preview/HtmlPreviewService.js';
 import { GoogleAuth } from './sync/GoogleAuth.js';
 import { SyncService } from './sync/SyncService.js';
-import { SYNC_API_URL } from '../shared/syncConfig.js';
+import { SYNC_API_URL } from '@pocketshell/core';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

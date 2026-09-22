@@ -1,8 +1,8 @@
 import { createServer } from 'node:net';
 import type { SshService } from '../ssh/SshService.js';
 import type { ConnectionRegistry } from '../ssh/ConnectionRegistry.js';
-import type { ForwardSpec } from '../../shared/types.js';
-import { LOOPBACK_HOST, MAX_PORT } from '../../shared/net.js';
+import type { ForwardSpec } from '@pocketshell/core';
+import { LOOPBACK_HOST, MAX_PORT } from '@pocketshell/core';
 import { Forwarder, forwardKey, type ForwardState, type ForwardOrigin } from './Forwarder.js';
 import { scanRemoteListeners, type RemotePort, type ScanResult } from './scanRemotePorts.js';
 import type { PortIntent } from './PortfwdStore.js';

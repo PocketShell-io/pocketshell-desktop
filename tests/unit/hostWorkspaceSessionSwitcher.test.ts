@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
-import type { SessionSummary } from '../../src/shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 
 /**
  * The collapsed rail's session switcher.

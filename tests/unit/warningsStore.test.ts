@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useWarningsStore } from '../../src/renderer/stores/warnings';
-import type { AplexerWarning } from '../../src/shared/aplexer';
+import type { AplexerWarning } from '@pocketshell/core';
 
 const warningsApi = vi.fn<(connectionId: string) => Promise<AplexerWarning[]>>();
 const ackWarningsApi = vi.fn<(...args: unknown[]) => Promise<unknown>>();

@@ -17,7 +17,7 @@ import {
   type StagerSsh,
 } from '@main/attachments/AttachmentStager';
 import { renderSanitised, sanitiseFilename } from '@main/attachments/FilenameSanitiser';
-import type { AttachmentSource } from '../../src/shared/types';
+import type { AttachmentSource } from '@pocketshell/core';
 
 describe('safeScopeSegment', () => {
   it('lowercases and keeps the allow-listed characters', () => {

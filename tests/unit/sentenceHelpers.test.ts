@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { errorMessage } from '../../src/shared/errors';
-import { formatBytes, formatMb, oversizeMessage } from '../../src/shared/byteSize';
+import { formatBytes, formatMb, oversizeMessage } from '@pocketshell/core';
 
 /**
  * The two sentence-shaping helpers every error banner and size refusal goes

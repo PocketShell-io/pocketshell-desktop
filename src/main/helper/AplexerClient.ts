@@ -14,20 +14,20 @@
  */
 
 import type { SshService } from '../ssh/SshService.js';
-import type { SessionSummary } from '../../shared/types.js';
+import type { SessionSummary } from '@pocketshell/core';
 import type {
   AplexerSessionRecord,
   AplexerSortKey,
   AplexerWarning,
-} from '../../shared/aplexer.js';
-import { APLEXER_LIST_SORT } from '../../shared/aplexer.js';
+} from '@pocketshell/core';
+import { APLEXER_LIST_SORT } from '@pocketshell/core';
 import {
   AplexerCore,
   type AplexerAckOutcome,
   type AplexerKillOutcome,
   type AplexerRenameOutcome,
   type AplexerStartOutcome,
-} from '../../shared/aplexerClientCore.js';
+} from '@pocketshell/core';
 import {
   aplexerAckCommand,
   aplexerProbeCommand,
@@ -41,7 +41,7 @@ import {
   isAplexerStartRefusal,
   isAplexerUnknownFlag,
   pathAwareCommand,
-} from '../../shared/aplexerCommands.js';
+} from '@pocketshell/core';
 import { log } from '../log.js';
 
 // The command builders and sentence classifiers are shared code now

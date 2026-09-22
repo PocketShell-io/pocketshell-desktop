@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyHostsToConfig, existingHostNames, mergeSshConfigText } from '../../src/main/ssh-config/SshConfigWriter';
 import { parseSshConfigText } from '../../src/main/ssh-config/SshConfigParser';
-import type { HostEntry } from '../../src/shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 function host(overrides: Partial<HostEntry> = {}): HostEntry {
   return {

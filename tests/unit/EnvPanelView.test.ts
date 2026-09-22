@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import type { EnvVarRow } from '../../src/shared/types';
+import type { EnvVarRow } from '@pocketshell/core';
 
 /**
  * The env panel (FEATURES.md F16).

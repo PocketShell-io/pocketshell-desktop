@@ -6,7 +6,7 @@ import {
   KIND_LABELS,
   launchBlocker,
   type LaunchChoice,
-} from '../shared/agentLaunch';
+} from '@pocketshell/core';
 import { errorMessage } from '../shared/errors';
 import { sessionIdentityKey } from './sessionIdentity';
 import { parkedAgentLaunch, takeAgentLaunch } from './pendingAgentLaunch';

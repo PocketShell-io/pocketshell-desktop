@@ -1,7 +1,7 @@
 import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import type { HostEntry } from '../../shared/types.js';
+import type { HostEntry } from '@pocketshell/core';
 import { readSshConfig } from '../ssh-config/SshConfigParser.js';
 import { KnownHosts } from '../ssh-config/KnownHosts.js';
 

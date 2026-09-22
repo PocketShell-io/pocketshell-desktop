@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron';
 import { ipc } from '../shared/channels.js';
-import type { GeometryProbe, UpdateCheckResult } from '../shared/types';
-import type { SyncApplyResult, SyncPullResult, SyncPushResult, SyncStatus } from '../shared/sync.js';
+import type { GeometryProbe, UpdateCheckResult } from '@pocketshell/core';
+import type { SyncApplyResult, SyncPullResult, SyncPushResult, SyncStatus } from '@pocketshell/core';
 import type { ZoomCommand } from '../shared/zoomKeys.js';
 import type {
   AttachmentSource,
@@ -14,16 +14,16 @@ import type {
   SessionSummary,
   ShellId,
   StageAttachmentsResult,
-} from '../shared/types.js';
+} from '@pocketshell/core';
 import type { UsageRow } from '../main/helper/usageParsers.js';
 import type { AplexerAckOutcome } from '../main/helper/AplexerClient.js';
-import type { AplexerWarning } from '../shared/aplexer.js';
+import type { AplexerWarning } from '@pocketshell/core';
 import type { DirEntry, FileStat, TransferProgress } from '../main/sftp/SftpService.js';
 import type { RemotePort } from '../main/portfwd/PortScanner.js';
 import type { ForwardState } from '../main/portfwd/Forwarder.js';
 import type { AutoForwarderStatus, DiscoveredPort } from '../main/portfwd/AutoForwarder.js';
 import type { PortIntent } from '../main/portfwd/PortfwdStore.js';
-import type { ForwardSpec } from '../shared/types.js';
+import type { ForwardSpec } from '@pocketshell/core';
 import type {
   AplexerSessionRef,
   CloneProgress,

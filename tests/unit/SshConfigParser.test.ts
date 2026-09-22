@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseSshConfigText } from '@main/ssh-config/SshConfigParser';
-import type { HostEntry } from '../../src/shared/types';
+import type { HostEntry } from '@pocketshell/core';
 
 describe('SshConfigParser', () => {
   it('parses a basic Host block with all common directives', () => {

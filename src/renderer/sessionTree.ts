@@ -6,7 +6,7 @@
  * folder grouping) together with the registered-roots algebra in
  * sessionRoots.ts; this module is where the two meet.
  */
-import type { SessionSummary } from '../shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 import { sessionIdentityKey } from './sessionIdentity';
 import {
   buildRows,

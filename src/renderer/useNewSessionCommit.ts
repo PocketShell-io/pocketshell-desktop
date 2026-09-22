@@ -2,10 +2,10 @@ import { computed, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue
 import { joinPosix } from './stores/projects';
 import { matchesQuery } from './fileListView';
 import { parkAgentLaunch } from './pendingAgentLaunch';
-import { launchBlocker, type LaunchChoice } from '../shared/agentLaunch';
+import { launchBlocker, type LaunchChoice } from '@pocketshell/core';
 import type { RepoEntry } from '../main/projects/repos';
 import type { StartSessionResult } from '../main/projects/ProjectsService';
-import type { SessionSummary } from '../shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 import type { useConnectionStore } from './stores/connection';
 import type { useProjectsStore } from './stores/projects';
 import type { useSessionsStore } from './stores/sessions';

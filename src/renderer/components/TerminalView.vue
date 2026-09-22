@@ -55,7 +55,7 @@ import AppIcon from './AppIcon.vue';
 import { useShellsStore } from '../stores/shells';
 import { createPathLinkProvider, createUrlLinkProvider } from '../terminalLinks';
 import { PathHighlighter } from '../terminalPathHighlights';
-import { decodeOsc52SetClipboard } from '../../shared/osc52';
+import { decodeOsc52SetClipboard } from '@pocketshell/core';
 import { forceLocalMouseSelection } from '../terminalMouseSelection';
 import { useSettingsStore } from '../stores/settings';
 import { resolveMonoStack } from '../fonts';
@@ -65,7 +65,7 @@ import { isShortcut } from '../../shared/shortcuts';
 import { sessionIdentityKey } from '../sessionIdentity';
 import { recordDiagDetail } from '../diag';
 import { TerminalPane } from '../terminalPane';
-import type { ConnectionId } from '../../shared/types';
+import type { ConnectionId } from '@pocketshell/core';
 import '@xterm/xterm/css/xterm.css';
 
 // The PTY this component owns is published to the shells store so other

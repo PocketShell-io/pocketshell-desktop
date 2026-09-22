@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ExecResult } from '../../src/shared/types.js';
+import type { ExecResult } from '@pocketshell/core';
 import type { SshService } from '@main/ssh/SshService';
 import { PocketshellClient } from '@main/helper/PocketshellClient';
 

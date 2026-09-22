@@ -18,7 +18,7 @@
  * with nothing but wiring.
  */
 
-import type { UpdateCheckResult as ReleaseCheckResult } from '../../shared/types.js';
+import type { UpdateCheckResult as ReleaseCheckResult } from '@pocketshell/core';
 
 // The result type lives in shared/types so main and the preload surface
 // agree on it; the name here keeps the checker's own vocabulary.

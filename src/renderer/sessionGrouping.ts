@@ -72,7 +72,7 @@
  * us", which is a fact about the host, and that module answers "where did the
  * user put them", which is a preference about the panel.
  */
-import type { SessionAgentKind, SessionSummary } from '../shared/types';
+import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
 
 /** Sentinel path for sessions whose working directory is unknown. */
 export const UNTRACKED_PATH = '::untracked::';

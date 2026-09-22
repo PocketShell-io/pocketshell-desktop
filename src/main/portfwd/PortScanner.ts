@@ -20,7 +20,7 @@
  * The address is `IP:PORT`, `[IPv6]:PORT`, `:::PORT`, or `*:PORT`.
  */
 
-import { MAX_PORT } from '../../shared/net.js';
+import { MAX_PORT } from '@pocketshell/core';
 
 /** One listening TCP port on the remote host. */
 export interface RemotePort {

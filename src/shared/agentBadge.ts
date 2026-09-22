@@ -59,7 +59,7 @@
  * anyway so this stays exhaustive against the same enum the phone renders.
  */
 
-import type { SessionAgentKind } from './types.js';
+import type { SessionAgentKind } from '@pocketshell/core';
 
 /**
  * The AppIcon marks this module may name.

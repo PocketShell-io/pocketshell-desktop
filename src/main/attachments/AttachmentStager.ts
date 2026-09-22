@@ -1,14 +1,14 @@
 import { basename, join, posix } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
-import type { AttachmentSource, StageAttachmentsResult } from '../../shared/types.js';
+import type { AttachmentSource, StageAttachmentsResult } from '@pocketshell/core';
 import {
   renderSanitised,
   sanitiseFilename,
   type SanitisedName,
 } from './FilenameSanitiser.js';
 import { extensionForMimeType } from './mimeTypes.js';
-import { oversizeMessage } from '../../shared/byteSize.js';
+import { oversizeMessage } from '@pocketshell/core';
 import { RemoteAttachmentPruner } from './AttachmentRetentionPolicy.js';
 
 /**

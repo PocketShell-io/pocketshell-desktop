@@ -1,7 +1,7 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { agentMark } from '../shared/agentBadge';
 import { applyTabOrder, buildWorkspaceTabs, pushMru, tabAfterClose, type WorkspaceTab } from '../shared/workspaceTabs';
-import type { SessionSummary } from '../shared/types';
+import type { SessionSummary } from '@pocketshell/core';
 import type { useFilesStore } from './stores/files';
 import type { useSessionsStore } from './stores/sessions';
 import { prunePanes, upsertPane, type SessionPaneRecord } from './sessionPanes';

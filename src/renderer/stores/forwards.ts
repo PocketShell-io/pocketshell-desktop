@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '../ipc';
-import type { ConnectionId, ForwardSpec } from '../../shared/types';
+import type { ConnectionId, ForwardSpec } from '@pocketshell/core';
 import type { AutoForwarderStatus, DiscoveredPort } from '../../main/portfwd/AutoForwarder';
 import type { ForwardState } from '../../main/portfwd/Forwarder';
 import type { PortIntent } from '../../main/portfwd/PortfwdStore';

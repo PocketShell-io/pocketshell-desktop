@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '../ipc';
-import type { ConnectionId, SessionSummary } from '../../shared/types';
+import type { ConnectionId, SessionSummary } from '@pocketshell/core';
 import { errorMessage } from '../../shared/errors';
 import type { StartSessionResult } from '../../main/projects/ProjectsService';
 

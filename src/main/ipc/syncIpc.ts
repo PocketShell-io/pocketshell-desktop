@@ -1,10 +1,10 @@
 import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import { coerceHostEntries, type SyncPullResult, type SyncPushResult } from '../../shared/sync.js';
-import { parseSyncPayload } from '../../shared/syncMerge.js';
-import { SYNC_SLOT } from '../../shared/syncConfig.js';
-import type { HostEntry } from '../../shared/types.js';
+import { coerceHostEntries, type SyncPullResult, type SyncPushResult } from '@pocketshell/core';
+import { parseSyncPayload } from '@pocketshell/core';
+import { SYNC_SLOT } from '@pocketshell/core';
+import type { HostEntry } from '@pocketshell/core';
 import { decryptEnvelope, encryptToEnvelope, SyncCryptoError } from '../sync/SyncCrypto.js';
 import { SyncConflictError } from '../sync/SyncService.js';
 import { applyHostsToConfig } from '../ssh-config/SshConfigWriter.js';

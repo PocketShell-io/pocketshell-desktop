@@ -1,6 +1,6 @@
 import type { SshService } from '../ssh/SshService.js';
 import type { ConnectionRegistry } from '../ssh/ConnectionRegistry.js';
-import type { ForwardSpec } from '../../shared/types.js';
+import type { ForwardSpec } from '@pocketshell/core';
 import {
   AutoForwarder,
   DEFAULT_AUTO_CONFIG,
