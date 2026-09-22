@@ -77,11 +77,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: PocketShell-io/pocketshell-core
-          path: ../pocketshell-core
+          path: pocketshell-core
           persist-credentials: false
       - name: Build @pocketshell/core (file sibling)
-        run: npm ci && npm run build
-        working-directory: ../pocketshell-core
+        # checkout refuses to place a repo outside the workspace, but the
+        # file: spec resolves ../pocketshell-core one level above this repo —
+        # so link that path at the in-workspace checkout. bash on every OS:
+        # MSYS ln -s lands a plain copy on Windows, which is all npm needs.
+        shell: bash
+        run: |
+          ln -s "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
+          cd "$GITHUB_WORKSPACE/pocketshell-core"
+          npm ci && npm run build
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -137,11 +144,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: PocketShell-io/pocketshell-core
-          path: ../pocketshell-core
+          path: pocketshell-core
           persist-credentials: false
       - name: Build @pocketshell/core (file sibling)
-        run: npm ci && npm run build
-        working-directory: ../pocketshell-core
+        # checkout refuses to place a repo outside the workspace, but the
+        # file: spec resolves ../pocketshell-core one level above this repo —
+        # so link that path at the in-workspace checkout. bash on every OS:
+        # MSYS ln -s lands a plain copy on Windows, which is all npm needs.
+        shell: bash
+        run: |
+          ln -s "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
+          cd "$GITHUB_WORKSPACE/pocketshell-core"
+          npm ci && npm run build
       - run: npm ci
       # E2E launches Electron, which has no headless mode on Linux; Xvfb is
       # preinstalled on the runner image. The app's own off-screen mode (set by
