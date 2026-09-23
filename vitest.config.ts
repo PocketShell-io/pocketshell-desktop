@@ -39,6 +39,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@main': resolve(__dirname, 'src/main'),
+      '@ui': resolve(__dirname, 'packages/ui/src'),
     },
   },
 });

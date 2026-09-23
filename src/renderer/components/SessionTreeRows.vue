@@ -11,7 +11,7 @@
 // uses is carried here from SessionTree.vue's stylesheet; the parent keeps
 // only the rules for the chrome it still renders.
 import { computed } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { useFolderTree } from '../folderTree';
 import { useSessionsStore } from '../stores/sessions';
 import { useSettingsStore } from '../stores/settings';

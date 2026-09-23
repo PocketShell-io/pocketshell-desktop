@@ -15,7 +15,7 @@ vi.mock('../../src/renderer/ipc', () => ({
 }));
 
 const { PathHighlighter } = await import('../../src/renderer/terminalPathHighlights');
-const { terminalLinkTint } = await import('../../src/renderer/themes');
+const { terminalLinkTint } = await import('../../packages/ui/src/themes');
 
 const FIRST =
   'assets/images/ai-engineering-buildcamp-cohort-3-projects/work-chronicle/work-chronicle-';

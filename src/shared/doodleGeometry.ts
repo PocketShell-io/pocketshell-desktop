@@ -176,7 +176,7 @@ export const TEXT = {
    *
    * This is the one number here that a reader will want to argue with, because
    * the house rule is that type comes from the `--fs-*` tokens. It cannot, and
-   * src/renderer/fonts.ts already says why in as many words: the `--fs-*`
+   * packages/ui/src/fonts.ts already says why in as many words: the `--fs-*`
    * ladder "is a density system — 28px rows, 40px bars" for CHROME, and it tops
    * out at 20px. The canvas is not chrome. Its logical pixels are not CSS
    * pixels: a phone screenshot is annotated at up to 2048px wide and then

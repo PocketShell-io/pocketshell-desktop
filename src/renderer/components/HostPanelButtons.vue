@@ -23,7 +23,7 @@
 // identical; the state has to live THERE because the forwards store is only
 // fresh while the ports overlay is open.
 import { computed } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { HOST_PANEL_ITEMS, type HostPanel, type HostPanelItem } from '../hostPanels';
 
 const props = withDefaults(

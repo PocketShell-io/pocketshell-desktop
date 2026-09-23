@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   clampFontSize,
   EDITOR_FONT_SIZE_DEFAULT,
@@ -10,7 +12,9 @@ import {
   resolveMonoStack,
   sanitiseFontFamily,
   TERMINAL_FONT_SIZE_DEFAULT,
-} from '../../src/renderer/fonts';
+} from '../../packages/ui/src/fonts';
+
+const UI_TOKENS = resolve(__dirname, '..', '..', 'packages', 'ui', 'src', 'tokens.css');
 
 /**
  * The rules a font setting has to obey, pinned here because the three surfaces
@@ -85,6 +89,14 @@ describe('resolveMonoStack', () => {
     expect(stack.startsWith('"JetBrains Mono",')).toBe(true);
     expect(stack).toContain('Consolas');
     expect(stack).toContain('ui-monospace');
+  });
+
+  it('supports the consuming platform’s fallback stack', () => {
+    const stack = resolveMonoStack(null, "'JetBrains Mono', ui-monospace, monospace");
+    expect(stack).toBe("'JetBrains Mono', ui-monospace, monospace");
+    expect(resolveMonoStack('Fira Code', "'JetBrains Mono', ui-monospace, monospace")).toBe(
+      '"Fira Code", \'JetBrains Mono\', ui-monospace, monospace',
+    );
   });
 
   it('never lets a stack end anywhere but the monospace generic', () => {
@@ -166,6 +178,11 @@ describe('fontCssVariables', () => {
     });
   });
 
+  it('uses a platform fallback without changing the desktop defaults', () => {
+    expect(fontCssVariables(defaults, "'JetBrains Mono', ui-monospace, monospace")['--font-mono'])
+      .toBe("'JetBrains Mono', ui-monospace, monospace");
+  });
+
   it('emits the shipped values when nothing has been changed', () => {
     const vars = fontCssVariables(defaults);
     expect(vars['--font-mono']).toBe(resolveMonoStack(null));
@@ -177,5 +194,13 @@ describe('fontCssVariables', () => {
     const vars = fontCssVariables({ ...defaults, terminalFontSize: 400, editorFontSize: 1 });
     expect(vars['--term-font-size']).toBe(`${FONT_SIZE_MAX}px`);
     expect(vars['--code-font-size']).toBe(`${FONT_SIZE_MIN}px`);
+  });
+});
+
+describe('shared CSS font defaults', () => {
+  it('keeps the CSS mono stack aligned with the font policy fallback', () => {
+    const css = readFileSync(UI_TOKENS, 'utf8');
+    const stack = /--font-mono:\s*([^;]+);/.exec(css)?.[1]?.trim();
+    expect(stack).toBe(resolveMonoStack(null));
   });
 });

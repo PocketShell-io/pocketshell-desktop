@@ -53,8 +53,8 @@
  * irreversible is one misclick from losing the whole markup.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import AppIcon from './AppIcon.vue';
-import type { AppIconName } from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
+import type { AppIconName } from '@ui/components/AppIcon.vue';
 import { useSettingsStore } from '../stores/settings';
 import { isShortcut } from '../../shared/shortcuts';
 import { doodleAttachmentName } from '../../shared/composerAttachments';

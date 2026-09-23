@@ -1,9 +1,10 @@
 # PocketShell Desktop — Visual Design Spec
 
-Status: **implemented.** Decision record for what shipped — the tokens in
-`App.vue`, the type system in `fonts.ts`, the terminal options in
-`TerminalView.vue`, the theme records in `themes.ts`. The code is the source
-of truth for values; this file holds the reasoning and the provenance.
+Status: **implemented.** Decision record for what shipped — shared visual
+source is in `packages/ui/src/` (tokens, type system, theme records and
+presentational primitives); renderer-specific terminal options stay in
+`TerminalView.vue`. The code is the source of truth for values; this file
+holds the reasoning and provenance.
 
 Sources, cited inline throughout: the user's Windows Terminal
 `settings.json` + the installed product's `defaults.json` (§3); the Android
@@ -58,7 +59,7 @@ matching the user's own terminal beats matching the phone.
 --font-mono: Consolas, 'Cascadia Mono', ui-monospace, monospace;
 ```
 
-**The face is a setting (`src/renderer/fonts.ts`); the stack above is only
+**The face is a setting (`packages/ui/src/fonts.ts`); the stack above is only
 its default.** One `monospaceFontFamily` for the whole app, written onto
 `<html>` as `--font-mono`, so it moves the terminal, the editor and every
 mono chrome element together — a per-surface family would let the user undo,
@@ -86,7 +87,7 @@ editor's is not.
 Derived from the Android ladder in `Type.kt` (11 / 13 / 15 / 16 / 18 / 20 sp)
 mapped 1:1 to px — correct because Android `sp` at the default font scale and
 CSS `px` in Electron are both device-independent units at 100% scaling. The
-tokens live in `App.vue`; the workhorse is `--fs-300` (13px), whose line
+tokens live in `packages/ui/src/tokens.css`; the workhorse is `--fs-300` (13px), whose line
 height 1.3846 is Android's `bodyDense` 13sp/18sp exactly, so a 13px row is
 18px tall in both clients. Weights come from Inter Variable's `wght` axis
 (400 body, 500 list-row titles, 600 headers, 700 the wordmark only). **Do
@@ -191,9 +192,9 @@ The full tables are computed per theme by `tests/unit/themes.test.ts`
   `--border-strong` exists and why control boundaries that must
   self-identify — inputs, the composer's at-rest toggle — are drawn with it.
 
-### 4.3 The token block — shipped in `App.vue`, one theme of several
+### 4.3 The token block — shipped in `packages/ui/src/tokens.css`, one theme of several
 
-The `:root` block in `App.vue` is the no-JS default; the applied theme's
+The `:root` block in `packages/ui/src/tokens.css` is the no-JS default; the applied theme's
 record is written over it as inline custom properties on `<html>` (§8), and
 `tests/unit/themes.test.ts` asserts the two copies are identical, so neither
 can drift. What is not obvious from the values: **hover is a neutral lift**
@@ -217,7 +218,7 @@ rows inside scrolling lists, which take the **inset** variant
 ### 5.1 Shared primitives
 
 `.icon-btn`, `.muted`, `.error` and `.empty` exist once each, as global
-classes in `App.vue`'s unscoped `<style>`. Extract-then-restyle is the rule:
+classes in `packages/ui/src/primitives.css`. Extract-then-restyle is the rule:
 restyling seven hand-copied `.icon-btn`s is how the original drift happened.
 The bordered `.icon-btn` split in two, both **ghost** — invisible at rest,
 filled on hover, square by construction (`--control-h`); nine bordered
@@ -432,8 +433,8 @@ colour emoji ignore CSS `color` outright — which is why this document's own
 §5.7 asked for a `--warning` folder icon and could not have one for two
 revisions.
 
-**The mechanism** is one local component, `src/renderer/components/AppIcon.vue`
-— no package, no loader. Contract: Feather 4.29 path data (MIT) verbatim;
+**The mechanism** is one shared component, `packages/ui/src/components/AppIcon.vue`
+— no external icon package or loader. Contract: Feather 4.29 path data (MIT) verbatim;
 one `24 24` viewBox so stroke weights are identical across the set; stroke
 2, round caps; **colour always `currentColor`**; sizes 16 / 14 / 12 and no
 others; flex-centring, never baseline (`display: block; flex: none` kills
@@ -461,7 +462,7 @@ splitter highlight, meter width, the loading spin.
   §21.1).
 - **Folder expand/collapse height** — the chevron rotation is the motion cue.
 
-One global `prefers-reduced-motion` guard in `App.vue` covers everything, so
+One global `prefers-reduced-motion` guard in `packages/ui/src/primitives.css` covers everything, so
 components carry no per-component reduced-motion blocks.
 
 ---
@@ -472,10 +473,9 @@ A rule that lives only in a document decays one locally-reasonable exception
 at a time (which is exactly how the emoji arrived), so the gates run on every
 `npm run test:unit` in `tests/unit/designGates.test.ts`:
 
-1. **Colour tokens.** Raw six-digit hex belongs to the token block in
-   `App.vue` and to `TerminalView.vue`'s Campbell theme — no other renderer
-   `.vue` may carry one, and renderer `.ts` may carry hex only in
-   `themes.ts`. Every component paints from the tokens.
+1. **Colour tokens.** Raw six-digit hex belongs to
+   `packages/ui/src/tokens.css`, `packages/ui/src/themes.ts` and
+   `TerminalView.vue`'s Campbell theme. Other components paint from the tokens.
 2. **No character-as-icon** (§5.8). The glyph blacklist must match nothing
    outside (a) code comments, (b) the genuine-text cases listed in §5.8 —
    `↑`/`↓` in the composer's shortcut tooltip is the one arrow that
@@ -513,7 +513,7 @@ like in VS Code".
 
 ### 8.1 The shape: one record per theme, and nothing per-theme anywhere else
 
-A theme is one object in `src/renderer/themes.ts`: stable `id` (persisted —
+A theme is one object in `packages/ui/src/themes.ts`: stable `id` (persisted —
 never renamed), `label`, `appearance` (`'dark' | 'light'` — **declared, not
 guessed** from the background), `tokens` (every colour-carrying custom
 property of §4.3, by name), and `terminal` (the complete xterm `ITheme`).
@@ -534,7 +534,7 @@ same rule every settings default here follows.
 **To add a theme: write one record in `THEMES`. That is the whole recipe.**
 Two executable gates in `tests/unit/themes.test.ts` hold the record to the
 bar: token parity (exactly the token set the dark theme defines — welded to
-`App.vue`'s `:root`) and the contrast floors of §8.2. A half-audited palette
+`tokens.css`'s `:root`) and the contrast floors of §8.2. A half-audited palette
 fails `npm run test:unit`; it cannot ship by accident.
 
 ### 8.2 Contrast floors — the audit is executed, not remembered
@@ -603,3 +603,24 @@ Nord theme with a foreign cyan is not Nord.
 - **Terminal contents are the remote's.** A theme changes the 16 ANSI slots;
   a remote program that hardcodes 256-colour or truecolor output will look
   however it looks. That is every terminal emulator's contract.
+
+## 9. Shared source for the Android client
+
+`packages/ui/` is the Vue source package shared with the JS-first Android app.
+Android pins this repository as a git submodule and aliases
+`@pocketshell/ui` directly to `packages/ui/src`; the package is not published
+to a registry. Import `styles.css` for the shared tokens, typography,
+licensed Inter Variable font and presentational CSS. The theme and font policy
+modules, `AppIcon`, and `ComposerControls` are exported from the source entry.
+Components accept props and emit events; Electron IPC, Pinia stores and host
+I/O stay in the desktop app.
+
+Keep one theme registry and token set on Android. Adapt the app shell around
+the shared components for a session drawer, safe areas, larger touch targets,
+a keyboard-aware composer, narrow file views and a terminal viewport. Those
+layout changes belong in the Android app's screens and adapters rather than a
+second copy of the desktop palette or design primitives. Validate them in the
+packaged Android app, since browser renders alone do not cover IME and window
+insets. Pass the bundled JetBrains Mono fallback stack to the shared font
+policy on Android; the default Consolas stack preserves the desktop product
+setting.

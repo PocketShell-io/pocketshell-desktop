@@ -9,7 +9,7 @@
 // uses is carried here from FolderWorkspaceView.vue's stylesheet; the parent
 // keeps only the rules for the body it still renders.
 import { ref, type VNode } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import PopupMenu from './PopupMenu.vue';
 import { pointAnchor, type Box } from '../../shared/popupPlacement';
 import { agentMark } from '../../shared/agentBadge';

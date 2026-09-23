@@ -64,7 +64,7 @@
 // useFolderDrag, the row menu to useFolderMenu, the folder stop to
 // useFolderStop, and the row text (tooltips, badges, ages) to sessionTreeText.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import NewSessionDialog from './NewSessionDialog.vue';
 import HostPanelButtons from './HostPanelButtons.vue';
 import OverlayPanel from './OverlayPanel.vue';

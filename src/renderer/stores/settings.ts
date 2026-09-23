@@ -5,10 +5,10 @@ import {
   parseFontSize,
   sanitiseFontFamily,
   TERMINAL_FONT_SIZE_DEFAULT,
-} from '../fonts';
+} from '@ui/fonts';
 import { type FolderOrder, normaliseFolderOrder } from '../folderOrder';
 import { normaliseRootList, normaliseRootPath, SESSION_ROOTS_MAX } from '../sessionRoots';
-import { parseThemeChoice, THEME_CHOICE_DEFAULT } from '../themes';
+import { parseThemeChoice, THEME_CHOICE_DEFAULT } from '@ui/themes';
 import { parseZoomPercent, stepZoomPercent, ZOOM_PERCENT_DEFAULT } from '../zoom';
 import { isLaunchableKind, type LaunchableKind } from '@pocketshell/core';
 import {
@@ -102,7 +102,7 @@ export interface AppSettings {
   /**
    * One monospace family for every mono surface — terminal, file editor and the
    * app's mono chrome alike — or null for the shipped stack. Stored as a bare
-   * family NAME, never a stack: `src/renderer/fonts.ts` appends the fallbacks,
+   * family NAME, never a stack: `packages/ui/src/fonts.ts` appends the fallbacks,
    * which is what stops an uninstalled choice landing on a proportional face.
    */
   monospaceFontFamily: string | null;
@@ -111,7 +111,7 @@ export interface AppSettings {
   /** File-editor text size, in px. Separate from the terminal's — see fonts.ts. */
   editorFontSize: number;
   /**
-   * The colour theme: a theme id from `src/renderer/themes.ts`, or `system`
+   * The colour theme: a theme id from `packages/ui/src/themes.ts`, or `system`
    * to follow the OS between the designated light and dark themes. Stored as
    * a plain string rather than a union so a build that gains or loses a theme
    * does not change this type; `parseThemeChoice` is what keeps stored ids

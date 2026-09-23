@@ -14,7 +14,7 @@
 // acknowledge click — there is no dismiss, because "seen it" is not what
 // makes a crash go away; `a ack` is durable and host-side, so every client
 // sees the warning go together.
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { useConnectionStore } from '../stores/connection';
 import { useWarningsStore } from '../stores/warnings';
 import { aplexerSelector } from '@pocketshell/core';

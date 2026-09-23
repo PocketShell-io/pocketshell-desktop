@@ -4,7 +4,7 @@
 // breadcrumb, a summonable search box, a capped row list with "Load more",
 // refresh, and a "new folder/file" affordance wired to the store.
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import AppIcon, { type AppIconName } from './AppIcon.vue';
+import AppIcon, { type AppIconName } from '@ui/components/AppIcon.vue';
 import PopupMenu from './PopupMenu.vue';
 import { api } from '../ipc';
 import { useConnectionStore } from '../stores/connection';

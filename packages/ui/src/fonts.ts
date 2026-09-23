@@ -171,9 +171,12 @@ export function parseFontSize(raw: unknown): number | undefined {
  * removed every quote and backslash, so quoting is safe and covers the families
  * whose names contain spaces without a per-name special case.
  */
-export function resolveMonoStack(family: string | null | undefined): string {
+export function resolveMonoStack(
+  family: string | null | undefined,
+  fallbackStack = FALLBACK_STACK,
+): string {
   const clean = sanitiseFontFamily(family ?? null);
-  return clean ? `"${clean}", ${FALLBACK_STACK}` : FALLBACK_STACK;
+  return clean ? `"${clean}", ${fallbackStack}` : fallbackStack;
 }
 
 /** The subset of settings this module needs. Keeps the store out of here. */
@@ -198,9 +201,12 @@ export interface FontSettings {
  * why {@link resolveMonoStack} is exported separately: the terminal needs the
  * same string, by a different route.
  */
-export function fontCssVariables(settings: FontSettings): Record<string, string> {
+export function fontCssVariables(
+  settings: FontSettings,
+  fallbackStack = FALLBACK_STACK,
+): Record<string, string> {
   return {
-    '--font-mono': resolveMonoStack(settings.monospaceFontFamily),
+    '--font-mono': resolveMonoStack(settings.monospaceFontFamily, fallbackStack),
     '--term-font-size': `${clampFontSize(settings.terminalFontSize)}px`,
     '--code-font-size': `${clampFontSize(settings.editorFontSize)}px`,
   };

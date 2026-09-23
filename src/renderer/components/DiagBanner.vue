@@ -9,7 +9,7 @@
 // cost of being visible everywhere without rearranging every screen for a
 // state that is usually absent. Dismiss it and it is gone — the same text is
 // in the desktop log (see renderer/diag.ts), so dismissing loses nothing.
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { diagErrors, dismissDiagError } from '../diag';
 </script>
 

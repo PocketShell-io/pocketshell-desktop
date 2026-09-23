@@ -51,15 +51,15 @@ import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { applyUnicode11Widths } from '../terminalUnicode';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { useShellsStore } from '../stores/shells';
 import { createPathLinkProvider, createUrlLinkProvider } from '../terminalLinks';
 import { PathHighlighter } from '../terminalPathHighlights';
 import { decodeOsc52SetClipboard } from '@pocketshell/core';
 import { forceLocalMouseSelection } from '../terminalMouseSelection';
 import { useSettingsStore } from '../stores/settings';
-import { resolveMonoStack } from '../fonts';
-import { resolveTheme, terminalLinkTint } from '../themes';
+import { resolveMonoStack } from '@ui/fonts';
+import { resolveTheme, terminalLinkTint } from '@ui/themes';
 import { isTypingKey } from '../../shared/composerText';
 import { isShortcut } from '../../shared/shortcuts';
 import { sessionIdentityKey } from '../sessionIdentity';
@@ -75,7 +75,7 @@ import '@xterm/xterm/css/xterm.css';
 // for why.
 const shells = useShellsStore();
 // Typography is a user setting; the two values in TERMINAL_OPTIONS are only
-// its defaults. See src/renderer/fonts.ts.
+// its defaults. See packages/ui/src/fonts.ts.
 const settings = useSettingsStore();
 
 const props = defineProps<{
@@ -257,7 +257,7 @@ const TERMINAL_OPTIONS: ITerminalOptions = {
   minimumContrastRatio: 3,
 
   // No `theme` here: the palette belongs to the APPLIED THEME, looked up from
-  // src/renderer/themes.ts at construction and re-assigned by the watcher
+  // packages/ui/src/themes.ts at construction and re-assigned by the watcher
   // below. The dark record carries Campbell verbatim, provenance intact.
 };
 

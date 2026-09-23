@@ -70,7 +70,7 @@
 // worth a sentence, so in those cases the dialog stays put, says it, and the
 // user presses Open (or goes round again) having read it.
 import { ref } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import OverlayPanel from './OverlayPanel.vue';
 import LaunchSessionDialog from './LaunchSessionDialog.vue';
 import PopupMenu from './PopupMenu.vue';

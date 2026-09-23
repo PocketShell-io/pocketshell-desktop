@@ -16,7 +16,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../ipc';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import type { DirEntry } from '../../main/sftp/SftpService';
 
 const props = defineProps<{

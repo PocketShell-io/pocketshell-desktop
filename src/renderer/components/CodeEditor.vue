@@ -69,7 +69,7 @@ import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { codeThemeFor } from '../codeEditorTheme';
 import { loadLanguage } from '../codeEditorLanguages';
 import { PLAIN_TEXT, languageIdForFilename, shouldHighlight } from '../codeLanguage';
-import { resolveTheme } from '../themes';
+import { resolveTheme } from '@ui/themes';
 import { useSettingsStore } from '../stores/settings';
 
 const props = withDefaults(

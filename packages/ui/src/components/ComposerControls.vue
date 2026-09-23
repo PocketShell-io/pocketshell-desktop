@@ -9,13 +9,12 @@
 // uses is carried here from PromptComposer.vue's stylesheet; `.spacer` is
 // mirrored because the card's title bar uses it on the parent's side too.
 import AppIcon from './AppIcon.vue';
-import type { ComposerAgentKind } from '@pocketshell/core';
 
 defineProps<{
   /** Drives the tools' disabled state while a batch is still landing. */
   uploadingCount: number;
   /** Slash commands need a detected agent; the button says so when absent. */
-  agentKind?: ComposerAgentKind | null;
+  agentKind?: string | null;
   canSend: boolean;
   sendInFlight: boolean;
   /** The Discard button exists only over something discardable. */
