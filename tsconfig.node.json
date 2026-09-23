@@ -9,7 +9,7 @@
     "baseUrl": ".",
     "paths": {
       "@main/*": ["src/main/*"],
-      "@ui/*": ["packages/ui/src/*"]
+      "@ui/*": ["../pocketshell-core/packages/ui/src/*"]
     }
   },
   "include": [

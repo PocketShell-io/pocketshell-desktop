@@ -13,7 +13,7 @@
  * The syntax colours are Campbell-derived in the dark theme; the shared
  * `tokens.css` file's `--code-*` block carries that derivation and its contrast
  * audit. Since
- * themes became data (packages/ui/src/themes.ts), every theme record supplies its
+ * themes became data (pocketshell-core/packages/ui/src/themes.ts), every theme record supplies its
  * own `--code-*` values — which is why this file keeps working unchanged: the
  * rules below re-resolve against whatever the applied theme wrote onto
  * `<html>`, on the next paint, with no editor rebuild.
@@ -58,7 +58,7 @@ const chromeSpec = {
     // `--code-font-size`, not `--fs-300`: both default to 13px, but the
     // former is the user's editor size setting and the latter is the UI
     // density scale. They were the same value and the same token until the
-    // first of them became settable. See packages/ui/src/fonts.ts.
+    // first of them became settable. See pocketshell-core/packages/ui/src/fonts.ts.
     fontSize: 'var(--code-font-size)',
   },
   '&.cm-focused': {

@@ -3,10 +3,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import AppIcon from '../../packages/ui/src/components/AppIcon.vue';
-import ComposerControls from '../../packages/ui/src/components/ComposerControls.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
+import ComposerControls from '@ui/components/ComposerControls.vue';
 
-const UI_SOURCE = resolve(__dirname, '..', '..', 'packages', 'ui', 'src');
+const UI_SOURCE = resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src');
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

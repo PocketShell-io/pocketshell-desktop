@@ -10,7 +10,7 @@ import {
   THEME_CHOICE_SYSTEM,
   themeById,
   THEMES,
-} from '../../packages/ui/src/themes';
+} from '@ui/themes';
 
 /**
  * The theme system's three load-bearing guarantees, executed rather than
@@ -26,7 +26,7 @@ import {
  *      real theme.
  */
 
-const TOKENS_CSS = resolve(__dirname, '..', '..', 'packages', 'ui', 'src', 'tokens.css');
+const TOKENS_CSS = resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src', 'tokens.css');
 
 /** A value that paints a colour (hex or rgb/rgba) — the themable kind. */
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|rgba?\(/;

@@ -102,16 +102,25 @@ jobs:
           # python ships no distutils), and tests/.git would only bloat the
           # asar. Nothing past this line needs any of it.
           rm -rf node_modules .git tests
+          # The shared interface package (@pocketshell/ui) rides in the core
+          # sibling: desktop's renderer bundles its .vue/.ts straight from
+          # packages/ui/src, so vue and the compiler toolchain must resolve
+          # from there. Install its pinned devDeps from its own lockfile.
+          npm ci --prefix packages/ui --no-fund --no-audit
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:unit
-      # `dist` = icon + electron-vite build + electron-builder, which reads the
-      # per-platform targets from electron-builder.yml. --publish never: the
-      # artifacts travel via workflow artifacts to the release job below, so no
-      # matrix job ever talks to GitHub Releases (three publishers racing on
-      # one draft release is a race electron-builder loses sometimes).
-      - run: npm run dist
+      # The old single `npm run dist`, split so the ui toolchain can leave
+      # before electron-builder walks the tree: electron-vite build bundles
+      # the renderer, whose @ui imports compile the core sibling's
+      # packages/ui/src — the toolchain installed in the stage step must
+      # still resolve here. Then it goes: electron-builder follows the
+      # @pocketshell/core symlink into the whole sibling, and typescript +
+      # vite alone are ~60 MB unpacked that no installer should carry.
+      - run: npm run build
+      - run: rm -rf "$GITHUB_WORKSPACE/../pocketshell-core/packages/ui/node_modules"
+      - run: npx electron-builder --publish never
         env:
           # electron-builder 25 wants a token present even with --publish never.
           GH_TOKEN: ${{ github.token }}
@@ -182,6 +191,11 @@ jobs:
           # python ships no distutils), and tests/.git would only bloat the
           # asar. Nothing past this line needs any of it.
           rm -rf node_modules .git tests
+          # The shared interface package (@pocketshell/ui) rides in the core
+          # sibling: desktop's renderer bundles its .vue/.ts straight from
+          # packages/ui/src, so vue and the compiler toolchain must resolve
+          # from there. Install its pinned devDeps from its own lockfile.
+          npm ci --prefix packages/ui --no-fund --no-audit
       - run: npm ci
       # E2E launches Electron, which has no headless mode on Linux; Xvfb is
       # preinstalled on the runner image. The app's own off-screen mode (set by

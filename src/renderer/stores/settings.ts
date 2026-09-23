@@ -102,7 +102,7 @@ export interface AppSettings {
   /**
    * One monospace family for every mono surface — terminal, file editor and the
    * app's mono chrome alike — or null for the shipped stack. Stored as a bare
-   * family NAME, never a stack: `packages/ui/src/fonts.ts` appends the fallbacks,
+   * family NAME, never a stack: `pocketshell-core/packages/ui/src/fonts.ts` appends the fallbacks,
    * which is what stops an uninstalled choice landing on a proportional face.
    */
   monospaceFontFamily: string | null;
@@ -111,7 +111,7 @@ export interface AppSettings {
   /** File-editor text size, in px. Separate from the terminal's — see fonts.ts. */
   editorFontSize: number;
   /**
-   * The colour theme: a theme id from `packages/ui/src/themes.ts`, or `system`
+   * The colour theme: a theme id from `pocketshell-core/packages/ui/src/themes.ts`, or `system`
    * to follow the OS between the designated light and dark themes. Stored as
    * a plain string rather than a union so a build that gains or loses a theme
    * does not change this type; `parseThemeChoice` is what keeps stored ids

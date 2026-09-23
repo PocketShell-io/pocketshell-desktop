@@ -12,7 +12,10 @@ import { join, relative, resolve, sep } from 'node:path';
  */
 
 const RENDERER = resolve(__dirname, '..', '..', 'src', 'renderer');
-const UI_SOURCE = resolve(__dirname, '..', '..', 'packages', 'ui', 'src');
+// The shared UI source lives in the @pocketshell/core sibling since the
+// interface moved into core; labels below still read `packages/ui/src/…`
+// because they are relative to this root.
+const UI_SOURCE = resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src');
 
 function files(dir: string, ext: string): string[] {
   const out: string[] = [];

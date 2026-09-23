@@ -12,9 +12,9 @@ import {
   resolveMonoStack,
   sanitiseFontFamily,
   TERMINAL_FONT_SIZE_DEFAULT,
-} from '../../packages/ui/src/fonts';
+} from '@ui/fonts';
 
-const UI_TOKENS = resolve(__dirname, '..', '..', 'packages', 'ui', 'src', 'tokens.css');
+const UI_TOKENS = resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src', 'tokens.css');
 
 /**
  * The rules a font setting has to obey, pinned here because the three surfaces

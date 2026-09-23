@@ -52,7 +52,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer'),
-        '@ui': resolve(__dirname, 'packages/ui/src'),
+        '@ui': resolve(__dirname, '../pocketshell-core/packages/ui/src'),
       },
     },
     build: {
