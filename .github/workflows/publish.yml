@@ -119,7 +119,10 @@ jobs:
       # @pocketshell/core symlink into the whole sibling, and typescript +
       # vite alone are ~60 MB unpacked that no installer should carry.
       - run: npm run build
+      # bash on every OS — windows-latest defaults to pwsh, where `rm -rf`
+      # is not a valid invocation.
       - run: rm -rf "$GITHUB_WORKSPACE/../pocketshell-core/packages/ui/node_modules"
+        shell: bash
       - run: npx electron-builder --publish never
         env:
           # electron-builder 25 wants a token present even with --publish never.
