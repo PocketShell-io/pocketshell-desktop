@@ -8,7 +8,7 @@
 //
 // Each tile shows the file NAME only, never the full remote path
 // (PromptComposerViewModel.kt:2675).
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { classifyByName } from '../fileKind';
 import type { StagedAttachment } from '../stores/composer';
 

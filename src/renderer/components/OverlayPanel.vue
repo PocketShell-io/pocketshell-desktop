@@ -9,7 +9,7 @@
 // otherwise the name appears twice — which it used to, see
 // docs/screenshots/07-usage-overlay.png.
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 
 withDefaults(
   defineProps<{

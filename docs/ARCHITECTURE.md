@@ -274,7 +274,9 @@ channel. The env panel layers that secret-via-stdin safety on for the
 The renderer is layered; each layer talks only to the one below:
 
 - **Components** (`views/`, `components/`) render. Templates do not compute;
-  input policy, gestures and focus are theirs.
+  input policy, gestures and focus are theirs. Shared visual components,
+  theme/font policy and CSS tokens live in `packages/ui/src`; they use
+  platform-free props and events and do not import desktop stores or IPC.
 - **Composables and controllers** (`usePaneWidth`, `useStripDrag`,
   `useWorkspaceMemory`, `terminalPane.ts`) own reusable reactive logic and
   per-surface machinery.

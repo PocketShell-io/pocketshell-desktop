@@ -2,7 +2,7 @@
  * Themes as DATA: one record per theme, and nothing per-theme anywhere else.
  *
  * A theme is the complete set of colour decisions the app makes — the CSS
- * token block App.vue ships as `:root`, plus the two surfaces that cannot read
+ * token block in tokens.css ships as `:root`, plus the two surfaces that cannot read
  * the cascade: xterm (rasterises from an options object) and, indirectly,
  * anything that keys off `appearance`. So a record carries exactly three
  * things: the token values, the xterm ANSI palette, and whether the theme is
@@ -19,7 +19,7 @@
  * tests/unit/themes.test.ts hold every record to the same two gates —
  *
  *   1. token parity: a record must define exactly the tokens the dark theme
- *      defines (which are welded to App.vue's `:root` by the same test), so a
+ *      defines (which are welded to tokens.css's `:root` by the same test), so a
  *      new theme cannot silently leave a surface unthemed;
  *   2. contrast: the text roles must meet the WCAG floors — the audit is executed, not remembered.
  *
@@ -43,7 +43,7 @@
  * scheme's colour lifted toward the readable pole (hue preserved) until it
  * meets the floor, and the comment says so. That mirrors the dark theme's own
  * precedent: its `--code-comment` is a lifted Campbell brightBlack, and its
- * `--code-meta` a substitution, both documented in App.vue.
+ * `--code-meta` a substitution, both documented in tokens.css.
  *
  * All ratios in comments are WCAG 2.1 relative-luminance, against the theme's
  * `--bg` unless the comment names another ground, and every one of them is
@@ -61,7 +61,7 @@ export interface ThemeSpec {
   label: string;
   /**
    * Declared, not guessed from the background: it decides which side of the
-   * `system` choice this theme can serve, and the `color-scheme` App.vue sets
+   * `system` choice this theme can serve, and the `color-scheme` document shell sets
    * so form controls and scrollbars agree with the surfaces.
    */
   appearance: ThemeAppearance;
@@ -76,7 +76,7 @@ export interface ThemeSpec {
 /* ---------------------------------------------------------------------------
  * Dark — what ships, untouched. GitHub-dark-derived UI,
  * Campbell terminal (transcribed from Windows Terminal 1.24 defaults.json).
- * These values are duplicated from App.vue's `:root` block ON PURPOSE: `:root`
+ * These values are duplicated from tokens.css's `:root` block ON PURPOSE: `:root`
  * stays readable as "what ships" and works with no JavaScript at all, and the
  * parity test asserts this record and that block never drift.
  * ------------------------------------------------------------------------- */

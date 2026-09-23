@@ -21,7 +21,7 @@
 import { computed, ref } from 'vue';
 import { api } from '../ipc';
 import { useComposerStore } from '../stores/composer';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import OverlayPanel from './OverlayPanel.vue';
 import DoodleCanvas from './DoodleCanvas.vue';
 import RemoteImagePicker from './RemoteImagePicker.vue';

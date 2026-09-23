@@ -2,7 +2,7 @@
  * The CodeMirror theme, expressed entirely in the app's design tokens.
  *
  * Not one colour literal appears below. Every value is a `var(--…)` reference
- * resolved by the browser against the token block in App.vue, which is the same
+ * resolved by the browser against the shared token block, which is the same
  * rule tests/unit/designGates.test.ts enforces for `.vue` files and the same
  * reason DoodleCanvas reads its pens out of computed style. The practical
  * payoff is that this file never has to be revisited when the palette moves:
@@ -10,9 +10,10 @@
  * exactly as they do into any other stylesheet — including inheriting whatever
  * `:root` says at the moment of paint, which a JS colour constant cannot do.
  *
- * The syntax colours are Campbell-derived in the dark theme; App.vue's
- * `--code-*` block carries that derivation and its contrast audit. Since
- * themes became data (src/renderer/themes.ts), every theme record supplies its
+ * The syntax colours are Campbell-derived in the dark theme; the shared
+ * `tokens.css` file's `--code-*` block carries that derivation and its contrast
+ * audit. Since
+ * themes became data (packages/ui/src/themes.ts), every theme record supplies its
  * own `--code-*` values — which is why this file keeps working unchanged: the
  * rules below re-resolve against whatever the applied theme wrote onto
  * `<html>`, on the next paint, with no editor rebuild.
@@ -37,7 +38,7 @@ import { EditorView } from '@codemirror/view';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import type { Extension } from '@codemirror/state';
-import type { ThemeAppearance } from './themes';
+import type { ThemeAppearance } from '@ui/themes';
 
 /**
  * Editor chrome: surface, gutter, cursor, selection.
@@ -57,7 +58,7 @@ const chromeSpec = {
     // `--code-font-size`, not `--fs-300`: both default to 13px, but the
     // former is the user's editor size setting and the latter is the UI
     // density scale. They were the same value and the same token until the
-    // first of them became settable. See src/renderer/fonts.ts.
+    // first of them became settable. See packages/ui/src/fonts.ts.
     fontSize: 'var(--code-font-size)',
   },
   '&.cm-focused': {

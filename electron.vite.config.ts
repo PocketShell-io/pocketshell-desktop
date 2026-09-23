@@ -52,6 +52,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer'),
+        '@ui': resolve(__dirname, 'packages/ui/src'),
       },
     },
     build: {

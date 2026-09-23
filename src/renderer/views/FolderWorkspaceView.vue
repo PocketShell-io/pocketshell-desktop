@@ -61,7 +61,7 @@ import { useComposerStore } from '../stores/composer';
 import { useSettingsStore } from '../stores/settings';
 import { useShellsStore } from '../stores/shells';
 import { api } from '../ipc';
-import AppIcon from '../components/AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import TerminalView from '../components/TerminalView.vue';
 import PromptComposer from '../components/PromptComposer.vue';
 import FilesView from './FilesView.vue';

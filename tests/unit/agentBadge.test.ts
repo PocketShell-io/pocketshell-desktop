@@ -72,7 +72,7 @@ describe('agentMark', () => {
     // checks the two agree. Read the registry and check it here as well, since
     // the failure mode — an empty `<svg>` on the tab — is silent.
     const source = readFileSync(
-      resolve(__dirname, '..', '..', 'src', 'renderer', 'components', 'AppIcon.vue'),
+      resolve(__dirname, '..', '..', 'packages', 'ui', 'src', 'components', 'AppIcon.vue'),
       'utf8',
     );
     for (const kind of ['claude', 'codex', 'opencode', 'grok'] as const) {

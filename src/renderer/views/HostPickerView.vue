@@ -41,7 +41,7 @@ import {
   defaultHostStatus,
   markAutoConnectAttempted,
 } from '../autoConnect';
-import AppIcon from '../components/AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import SettingsView from './SettingsView.vue';
 import { readLastFolder } from '../workspaceState';

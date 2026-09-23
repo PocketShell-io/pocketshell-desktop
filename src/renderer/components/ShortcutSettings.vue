@@ -17,7 +17,7 @@
 // read, so the list cannot go stale the way the zoom percentage would have if
 // the keyboard had been allowed its own copy of the number.
 import { computed, ref } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { useSettingsStore } from '../stores/settings';
 import {
   type BindingRefusal,

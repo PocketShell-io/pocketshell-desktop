@@ -10,13 +10,13 @@ import {
   THEME_CHOICE_SYSTEM,
   themeById,
   THEMES,
-} from '../../src/renderer/themes';
+} from '../../packages/ui/src/themes';
 
 /**
  * The theme system's three load-bearing guarantees, executed rather than
  * remembered (the designGates.test.ts philosophy):
  *
- *   1. PARITY — the `dark` record and App.vue's `:root` block are the same
+ *   1. PARITY — the `dark` record and shared `:root` tokens are the same
  *      palette, and every other theme defines exactly the same token set, so
  *      no theme can leave a surface silently unthemed.
  *   2. CONTRAST — every theme meets the WCAG floors of 
@@ -26,17 +26,17 @@ import {
  *      real theme.
  */
 
-const APP_VUE = resolve(__dirname, '..', '..', 'src', 'renderer', 'App.vue');
+const TOKENS_CSS = resolve(__dirname, '..', '..', 'packages', 'ui', 'src', 'tokens.css');
 
 /** A value that paints a colour (hex or rgb/rgba) — the themable kind. */
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|rgba?\(/;
 
 /**
- * The custom properties of App.vue's `:root` block, with comments stripped so
+ * The custom properties of the shared `:root` block, with comments stripped so
  * a hex inside prose cannot masquerade as a token.
  */
 function rootTokens(): Map<string, string> {
-  const source = readFileSync(APP_VUE, 'utf8');
+  const source = readFileSync(TOKENS_CSS, 'utf8');
   const start = source.indexOf(':root {');
   expect(start).toBeGreaterThan(-1);
   const end = source.indexOf('\n}', start);
@@ -58,7 +58,7 @@ describe('token parity', () => {
   const root = rootTokens();
   const colourTokens = [...root.entries()].filter(([, v]) => COLOUR.test(v));
 
-  it('the dark record IS the :root block — same tokens, same values', () => {
+  it('the dark record IS the shared :root palette — same tokens, same values', () => {
     // Both directions: a colour token added to :root must join the record
     // (else five other themes silently miss it), and a token added to the
     // record must exist in :root (else the no-JS default lacks it).
@@ -68,7 +68,7 @@ describe('token parity', () => {
     }
   });
 
-  it(':root only leaves colour out of a token deliberately', () => {
+  it(':root includes every colour token deliberately', () => {
     // The inverse guard for the filter above: a token that references another
     // token (var(--…)) or carries a non-colour value is fine, but nothing in
     // the record may be missing from :root entirely.

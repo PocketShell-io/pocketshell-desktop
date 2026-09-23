@@ -48,14 +48,14 @@ import {
   parseFontSize,
   resolveMonoStack,
   sanitiseFontFamily,
-} from '../fonts';
+} from '@ui/fonts';
 import {
   formatZoomPercent,
   ZOOM_PERCENT_DEFAULT,
   ZOOM_PERCENT_MAX,
   ZOOM_PERCENT_MIN,
 } from '../zoom';
-import { THEME_CHOICE_SYSTEM, THEMES } from '../themes';
+import { THEME_CHOICE_SYSTEM, THEMES } from '@ui/themes';
 import ShortcutSettings from '../components/ShortcutSettings.vue';
 
 const connection = useConnectionStore();

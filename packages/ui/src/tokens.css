@@ -1,0 +1,175 @@
+/* Shared PocketShell design tokens.
+ * The dark palette has a data counterpart in themes.ts; themes.test.ts checks
+ * that both representations match. Non-colour layout tokens live only here.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ---- Surfaces (elevation 0 -> 3) ----------------------------------- */
+  --bg: #0d1117; /* window / page ground */
+  --surface: #161b22; /* topbar, side panel, cards, overlay body */
+  --surface-2: #1c2129; /* inputs, chips, table heads, menus */
+  --surface-3: #232a34; /* popovers / anything above an overlay */
+  --scrim: rgba(1, 4, 9, 0.72); /* modal backdrop */
+
+  /* ---- Text ---------------------------------------------------------- */
+  --fg: #e6edf3; /* 16.02:1 on --bg */
+  --fg-secondary: #8b949e; /*  6.15:1 — subtitles, timestamps, counts */
+  --fg-muted: #6e7681; /*  4.12:1 — >=15px or decorative ONLY */
+
+  /* ---- Lines --------------------------------------------------------- */
+  --border: #2d333b; /* default hairline */
+  --border-soft: #21262d; /* row separators inside a panel */
+  --border-strong: #6e7681; /* 4.12:1 — inputs & controls (WCAG 1.4.11) */
+
+  /* ---- Accent -------------------------------------------------------- */
+  --accent: #22d3ee; /* 10.47:1 on --bg */
+  --accent-dim: #0891b2; /* accent borders, active separators */
+  --accent-soft: rgba(34, 211, 238, 0.12); /* selected row fill */
+  --on-accent: #04101a; /* 10.62:1 on --accent */
+
+  /* ---- Status -------------------------------------------------------- */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --agent: #a78bfa; /* agent/assistant role, per Android */
+  --success-soft: rgba(34, 197, 94, 0.12);
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --error-soft: rgba(239, 68, 68, 0.12);
+  --agent-soft: rgba(167, 139, 250, 0.14);
+
+  /* ---- Interaction states -------------------------------------------- */
+  /* Neutral lift for hover: tinting every hover with the accent makes hover
+     read as selection, which is what the old rgba(137,180,250,.08) did. */
+  --state-hover: rgba(230, 237, 243, 0.05);
+  --state-active: rgba(230, 237, 243, 0.09);
+  --state-selected: var(--accent-soft);
+
+  /* ---- Elevation shadows ---------------------------------------------- */
+  /* Previously hardcoded per component (OverlayPanel, PromptComposer) as
+     rgba(0,0,0,.5), which was fine while there was one dark ground. A light
+     theme cannot use them — black at half opacity on white reads as a hole,
+     not a lift — so shadows are tokens now and each theme sets its own. */
+  --shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-popover: 0 8px 24px var(--scrim); /* menus, dropdowns — scrim-tinted */
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --focus-ring: var(--accent);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --disabled-opacity: 0.45;
+
+  /* ---- Terminal (— Windows Terminal / Campbell) -- */
+  --term-bg: #0c0c0c;
+  --term-fg: #cccccc;
+  --term-font-size: 16px;
+  --term-padding: 8px;
+
+  /* ---- Code (file editor syntax colours) ------------------------------
+   * Derived from Campbell, because the Files tab's editor sits on
+   * `--term-bg` for the reason FilesView already states: an open file and the
+   * shell it came from should read as the same surface. A stock editor theme
+   * dropped onto that ground would be the only thing in the app not speaking
+   * the terminal's palette.
+   *
+   * Ratios are against `--term-bg` #0C0C0C, computed the same way as the terminal contrast rule's
+   * audit. Two roles deliberately step OUTSIDE Campbell, both for the reason
+   * identified above — the scheme's dim pairs are unreadable on its own
+   * background — and both handled here the way `minimumContrastRatio: 3`
+   * handles them in the terminal: lift only the failing pair, leave the rest
+   * pixel-identical.
+   *   - comment: Campbell brightBlack #767676 is 4.31:1, and the token set reserves
+   *     that band for >=15px or decorative text. Comments are 13px prose and
+   *     are read, so they take `--fg-secondary`'s value (6.36:1) instead.
+   *   - meta: Campbell magenta/brightMagenta are 2.44:1 / 3.20:1 — the exact
+   *     pair called out above as "genuinely unreadable". Decorators, preprocessor lines
+   *     and doctypes take the app's own `--agent` violet (7.19:1).
+   */
+  --code-comment: #8b949e; /*  6.36:1 — lifted, see above */
+  --code-keyword: #3b78ff; /*  4.95:1 — Campbell brightBlue */
+  --code-string: #c19c00; /*  7.47:1 — Campbell yellow */
+  --code-number: #16c60c; /*  8.49:1 — Campbell brightGreen */
+  --code-function: #f9f1a5; /* 16.91:1 — Campbell brightYellow */
+  --code-type: #61d6d6; /* 11.27:1 — Campbell brightCyan */
+  --code-variable: #cccccc; /* 12.18:1 — Campbell foreground */
+  --code-tag: #3a96dd; /*  6.14:1 — Campbell cyan */
+  --code-attribute: #61d6d6; /* 11.27:1 — Campbell brightCyan */
+  --code-punctuation: #8b949e; /*  6.36:1 — brackets, dimmed a step */
+  --code-meta: #a78bfa; /*  7.19:1 — substituted, see above */
+  --code-invalid: #e74856; /*  5.09:1 — Campbell brightRed */
+  --code-link: #22d3ee; /* 10.82:1 — the app accent, so links read as links */
+  --code-heading: #f2f2f2; /* 17.47:1 — Campbell brightWhite */
+  --code-inserted: #16c60c; /*  8.49:1 — diff +, Campbell brightGreen */
+  --code-deleted: #e74856; /*  5.09:1 — diff -, Campbell brightRed */
+
+  /* Editor chrome. Line numbers are decorative and may sit at 4.31:1; the
+     cursor and selection are Windows Terminal's own (defaults.json cursor
+     #FFFFFF, selection = white at ~50% alpha, taken down here because an
+     editor selection covers text that is still being read). */
+  --code-gutter-fg: #767676;
+  --code-gutter-fg-active: #cccccc;
+  --code-active-line: rgba(255, 255, 255, 0.04);
+  --code-selection: rgba(255, 255, 255, 0.22);
+  --code-selection-inactive: rgba(255, 255, 255, 0.1);
+  --code-cursor: #ffffff;
+  --code-bracket-match: rgba(34, 211, 238, 0.25);
+
+  /* ---- Typography ---------------------------------------------------- */
+  --font-ui: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  /* The shipped mono stack, and the fallback tail a chosen family is prepended
+     to. Overridden on <html> by the settings store — see the script block and
+     packages/ui/src/fonts.ts. Must stay in sync with FALLBACK_STACK there. */
+  --font-mono: Consolas, 'Cascadia Mono', ui-monospace, monospace;
+  /* The file editor's text size. Its own token rather than `--fs-300` directly
+     because it is now user-settable and the UI scale is not: `--fs-300` sizes
+     28px rows and 40px bars, and a font preference has no business moving
+     those. The default is `--fs-300`'s value, so nothing changed on upgrade. */
+  --code-font-size: 13px;
+
+  --fs-100: 11px;
+  --lh-100: 1.45;
+  --fs-200: 12px;
+  --lh-200: 1.45;
+  --fs-300: 13px;
+  --lh-300: 1.3846; /* = Android bodyDense 13sp/18sp */
+  --fs-400: 15px;
+  --lh-400: 1.3;
+  --fs-500: 18px;
+  --lh-500: 1.25;
+  --fs-600: 20px;
+  --lh-600: 1.2;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ---- Space (4px grid, per Android Spacing.kt) ----------------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* ---- Radii --------------------------------------------------------- */
+  --r-sm: 4px; /* chips, badges, tags, selected-row band */
+  --r-md: 6px; /* buttons, inputs, tab segments */
+  --r-lg: 10px; /* cards, panels */
+  --r-xl: 14px; /* overlay / modal */
+
+  /* ---- Density ------------------------------------------------------- */
+  --row-h: 28px; /* list rows: session, file, forward */
+  --row-pad-x: 10px;
+  --row-pad-y: 6px;
+  --control-h: 28px; /* buttons, inputs, selects */
+  --control-h-sm: 24px;
+  --topbar-h: 40px;
+  --tabbar-h: 32px;
+
+  /* ---- Motion (per Android docs/design-system.md §motion) ------------- */
+  --dur-fast: 150ms;
+  --dur-normal: 200ms;
+  --dur-slow: 280ms; /* overlay entrance only */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1); /* decelerate: things arriving */
+}

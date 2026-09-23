@@ -34,7 +34,7 @@
 // "N not forwarded" disclosure row instead of leading the table.
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useConnectionStore } from '../stores/connection';
-import AppIcon from '../components/AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { useForwardsStore } from '../stores/forwards';
 import type { ForwardSpec } from '@pocketshell/core';
 import type { DiscoveredPort } from '../../main/portfwd/AutoForwarder';

@@ -12,6 +12,7 @@ import { join, relative, resolve, sep } from 'node:path';
  */
 
 const RENDERER = resolve(__dirname, '..', '..', 'src', 'renderer');
+const UI_SOURCE = resolve(__dirname, '..', '..', 'packages', 'ui', 'src');
 
 function files(dir: string, ext: string): string[] {
   const out: string[] = [];
@@ -29,7 +30,17 @@ function vueFiles(dir: string): string[] {
 
 /** Repo-relative, forward-slashed, so assertion output is readable anywhere. */
 function rel(file: string): string {
-  return relative(RENDERER, file).split(sep).join('/');
+  const fromRenderer = relative(RENDERER, file);
+  if (!fromRenderer.startsWith('..')) return fromRenderer.split(sep).join('/');
+  return `packages/ui/src/${relative(UI_SOURCE, file).split(sep).join('/')}`;
+}
+
+function vueSourceFiles(): string[] {
+  return [...vueFiles(RENDERER), ...vueFiles(UI_SOURCE)];
+}
+
+function tsSourceFiles(): string[] {
+  return [...files(RENDERER, '.ts'), ...files(UI_SOURCE, '.ts')];
 }
 
 /**
@@ -55,8 +66,8 @@ describe('design gates', () => {
    * rather than a UI colour. Everywhere else uses `var(--…)`.
    */
   it('has no raw hex colours outside App.vue and TerminalView.vue', () => {
-    const allowed = new Set(['App.vue', 'components/TerminalView.vue']);
-    const offenders = vueFiles(RENDERER)
+    const allowed = new Set(['components/TerminalView.vue']);
+    const offenders = vueSourceFiles()
       .filter((f) => !allowed.has(rel(f)))
       .filter((f) => /#[0-9a-fA-F]{6}/.test(readFileSync(f, 'utf8')))
       .map(rel);
@@ -73,8 +84,8 @@ describe('design gates', () => {
    * appearing there is a palette escaping its registry.
    */
   it('has no raw hex colours in renderer .ts outside themes.ts', () => {
-    const allowed = new Set(['themes.ts']);
-    const offenders = files(RENDERER, '.ts')
+    const allowed = new Set(['packages/ui/src/themes.ts']);
+    const offenders = tsSourceFiles()
       .filter((f) => !allowed.has(rel(f)))
       .filter((f) => /#[0-9a-fA-F]{6}/.test(readFileSync(f, 'utf8')))
       .map(rel);
@@ -100,7 +111,7 @@ describe('design gates', () => {
     const SHORTCUT_COPY = /Ctrl\+Shift\+[↑↓]/u;
 
     const offenders: string[] = [];
-    for (const file of vueFiles(RENDERER)) {
+    for (const file of vueSourceFiles()) {
       if (EXEMPT_FILES.has(rel(file))) continue;
       for (const { line, text } of codeLines(readFileSync(file, 'utf8'))) {
         if (!BANNED.test(text)) continue;
@@ -128,7 +139,7 @@ describe('design gates', () => {
     const MAX_LINES = 1000;
     /** Over-limit files, each with the extraction queue that retires it. */
     const EXEMPT: Record<string, string> = {};
-    const offenders = vueFiles(RENDERER)
+    const offenders = vueSourceFiles()
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
       .filter(({ file, lines }) => lines > MAX_LINES && !(file in EXEMPT))
       .map(({ file, lines }) => `${file} (${lines} lines)`);

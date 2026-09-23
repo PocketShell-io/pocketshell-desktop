@@ -8,7 +8,8 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@main/*": ["src/main/*"]
+      "@main/*": ["src/main/*"],
+      "@ui/*": ["packages/ui/src/*"]
     }
   },
   "include": [
@@ -24,6 +25,7 @@
     "tests/unit/**/*.ts",
     "tests/integration/**/*.ts",
     "electron.vite.config.ts",
+    "packages/ui/vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts"
   ]

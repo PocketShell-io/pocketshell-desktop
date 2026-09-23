@@ -44,7 +44,7 @@
 //   - an empty or failed profile fetch says so in a line, where the phone
 //     shows nothing at all.
 import { computed, onMounted, ref, watch } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import OverlayPanel from './OverlayPanel.vue';
 import { useAgentsStore } from '../stores/agents';
 import { useConnectionStore } from '../stores/connection';

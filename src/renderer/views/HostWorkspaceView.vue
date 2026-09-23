@@ -41,7 +41,7 @@ import { useSettingsStore } from '../stores/settings';
 import { windowTitle } from '../../shared/windowTitle';
 import { isShortcut } from '../../shared/shortcuts';
 import { MAX_ATTEMPTS } from '../../shared/reconnectBackoff';
-import AppIcon from '../components/AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import OverlayPanel from '../components/OverlayPanel.vue';
 import PopupMenu from '../components/PopupMenu.vue';
 import SessionTree from '../components/SessionTree.vue';

@@ -10,7 +10,7 @@
 // Fixed, not in-flow, for the same reason DiagBanner is (views size to the
 // viewport); it parks BELOW the diag strip so the two can coexist.
 import { computed } from 'vue';
-import AppIcon from './AppIcon.vue';
+import AppIcon from '@ui/components/AppIcon.vue';
 import { useUpdateStore } from '../stores/update';
 import { api } from '../ipc';
 

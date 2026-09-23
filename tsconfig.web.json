@@ -4,13 +4,16 @@
     "outDir": "out/tsbuildinfo/web",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/*"]
+      "@/*": ["src/renderer/*"],
+      "@ui/*": ["packages/ui/src/*"]
     },
     "types": ["node"]
   },
   "include": [
     "src/renderer/**/*.ts",
     "src/renderer/**/*.vue",
+    "packages/ui/src/**/*.ts",
+    "packages/ui/src/**/*.vue",
     "src/shared/**/*.ts"
   ]
 }

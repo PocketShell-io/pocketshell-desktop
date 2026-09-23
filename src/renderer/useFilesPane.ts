@@ -1,6 +1,6 @@
 import { computed, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { formatBytes } from '@pocketshell/core';
-import { resolveTheme } from './themes';
+import { resolveTheme } from '@ui/themes';
 import { usePaneWidth } from './usePaneWidth';
 import type { useConnectionStore } from './stores/connection';
 import type { useFilesStore } from './stores/files';
