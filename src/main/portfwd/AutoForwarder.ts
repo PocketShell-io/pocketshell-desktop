@@ -1,7 +1,8 @@
+import type { AutoForwarderStatus, DiscoveredPort, ForwardSpec } from '@pocketshell/core';
+export type { AutoForwarderStatus, DiscoveredPort } from '@pocketshell/core';
 import { createServer } from 'node:net';
 import type { SshService } from '../ssh/SshService.js';
 import type { ConnectionRegistry } from '../ssh/ConnectionRegistry.js';
-import type { ForwardSpec } from '@pocketshell/core';
 import { LOOPBACK_HOST, MAX_PORT } from '@pocketshell/core';
 import { Forwarder, forwardKey, type ForwardState, type ForwardOrigin } from './Forwarder.js';
 import { scanRemoteListeners, type RemotePort, type ScanResult } from './scanRemotePorts.js';
@@ -27,21 +28,6 @@ export type { ForwardState };
  *   5. give up: the port is recorded as failed and retried after a TTL
  */
 
-/** A remote port the scan saw, whether or not it is forwarded. */
-export interface DiscoveredPort extends RemotePort {
-  /** True when a live forward exists for this remote port. */
-  forwarded: boolean;
-  /** Local port in use, when forwarded. */
-  localPort: number | null;
-  /** Explicit user intent, when one is set. */
-  intent: PortIntent | null;
-  /** Friendly name, when one is set. */
-  name: string | null;
-  /** True when auto policy alone would forward it (ignoring intent). */
-  eligible: boolean;
-  /** Set when the last attempt to open this port failed. */
-  lastError: string | null;
-}
 
 export interface AutoForwardConfig {
   /** Seconds between scans. `cli.py:42` default is 5. */
@@ -97,13 +83,6 @@ export interface AutoForwarderOptions {
   configForwards?: ForwardSpec[];
 }
 
-/** Emitted alongside the state snapshot so the UI can show scan health. */
-export interface AutoForwarderStatus {
-  scanning: boolean;
-  lastScanAt: number | null;
-  lastScanOk: boolean;
-  lastError: string | null;
-}
 
 export class AutoForwarder {
   private timer: ReturnType<typeof setInterval> | null = null;

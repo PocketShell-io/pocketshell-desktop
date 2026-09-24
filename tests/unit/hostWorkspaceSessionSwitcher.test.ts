@@ -35,7 +35,7 @@ const SessionPlaceholder = { template: '<div class="fake-placeholder" />' };
 
 const sessionsList = vi.fn<() => Promise<SessionSummary[]>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       onState: vi.fn(),
@@ -57,12 +57,12 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const HostWorkspaceView = (await import('../../src/renderer/views/HostWorkspaceView.vue')).default;
-const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
+const HostWorkspaceView = (await import('@ui/app/views/HostWorkspaceView.vue')).default;
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
 const {
   registerWorkspaceFocus,
   unregisterWorkspaceFocus,
-} = await import('../../src/renderer/workspaceFocus');
+} = await import('@ui/app/workspaceFocus');
 
 /** Focus requests the host view made through the registration. */
 const focusCalls: string[] = [];

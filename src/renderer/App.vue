@@ -15,15 +15,15 @@
 import { onBeforeUnmount, onMounted, watchEffect } from 'vue';
 import { fontCssVariables } from '@ui/fonts';
 import { resolveTheme } from '@ui/themes';
-import { zoomFactor } from './zoom';
-import { api } from './ipc';
-import { useUpdateStore } from './stores/update';
-import { useSettingsStore } from './stores/settings';
+import { zoomFactor } from '@ui/app/zoom';
+import { api } from '@ui/app/ipc';
+import { useUpdateStore } from '@ui/app/stores/update';
+import { useSettingsStore } from '@ui/app/stores/settings';
 import { isShortcut } from '../shared/shortcuts';
 import { deleteWordBackward } from '../shared/deleteWord';
-import DiagBanner from './components/DiagBanner.vue';
-import UpdateBanner from './components/UpdateBanner.vue';
-import AccountView from './views/AccountView.vue';
+import DiagBanner from '@ui/app/components/DiagBanner.vue';
+import UpdateBanner from '@ui/app/components/UpdateBanner.vue';
+import AccountView from '@ui/app/views/AccountView.vue';
 
 const settings = useSettingsStore();
 const isAccountWindow = new URLSearchParams(window.location.search).get('window') === 'account';

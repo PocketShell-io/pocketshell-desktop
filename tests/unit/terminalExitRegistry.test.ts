@@ -72,7 +72,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 /** The exit events main has broadcast, captured so a test can fire them. */
 let exitHandlers: ((e: { shellId: string }) => void)[] = [];
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     shell: {
       open: vi.fn(async () => 'shell-1'),
@@ -90,7 +90,7 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
 
 async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) await nextTick();
@@ -112,7 +112,7 @@ async function mountTerminal(): Promise<VueWrapper> {
 
 describe('a shell exit clears the pane from the shells registry', () => {
   it('unregisters the session key when its shell exits', async () => {
-    const { useShellsStore } = await import('../../src/renderer/stores/shells');
+    const { useShellsStore } = await import('@ui/app/stores/shells');
     const shells = useShellsStore();
     const wrapper = await mountTerminal();
     expect(shells.shellIdFor('main')).toBe('shell-1');
@@ -125,7 +125,7 @@ describe('a shell exit clears the pane from the shells registry', () => {
   });
 
   it('never drops a registration a re-join has already replaced', async () => {
-    const { useShellsStore } = await import('../../src/renderer/stores/shells');
+    const { useShellsStore } = await import('@ui/app/stores/shells');
     const shells = useShellsStore();
     const wrapper = await mountTerminal();
 

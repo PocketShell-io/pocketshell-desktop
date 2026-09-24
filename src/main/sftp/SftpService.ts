@@ -1,3 +1,5 @@
+import type { TransferProgress } from '@pocketshell/core';
+export type { TransferProgress } from '@pocketshell/core';
 import type { SFTPWrapper } from 'ssh2';
 import { stat as fsStat } from 'node:fs';
 import type { ConnectionRegistry, ConnectionRecord } from '../ssh/ConnectionRegistry.js';
@@ -29,12 +31,6 @@ export type { DirEntry, FileStat };
  * false rather than throwing).
  */
 
-export interface TransferProgress {
-  /** Bytes transferred so far. */
-  bytes: number;
-  /** Total bytes, when known (file transfers); undefined for streams. */
-  total?: number;
-}
 
 export class SftpService {
   /** Per-connection cached SFTP wrapper. */

@@ -26,7 +26,7 @@ const fwdDiscovered = vi.fn<(id: string) => Promise<never[]>>();
 const fwdStatus = vi.fn<(id: string) => Promise<null>>();
 const fwdScan = vi.fn<(id: string) => Promise<never[]>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       onState: (h: unknown) => onState(h as never),
@@ -52,7 +52,7 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
 
 const HOST: HostEntry = {
   name: 'hetzner',

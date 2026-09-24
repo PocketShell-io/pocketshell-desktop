@@ -1,9 +1,9 @@
 import { createRouter, createMemoryHistory, type RouteRecordRaw } from 'vue-router';
-import HostPickerView from './views/HostPickerView.vue';
-import HostWorkspaceView from './views/HostWorkspaceView.vue';
-import FolderWorkspaceView from './views/FolderWorkspaceView.vue';
-import SessionPlaceholderView from './views/SessionPlaceholderView.vue';
-import SessionRedirectView from './views/SessionRedirectView.vue';
+import HostPickerView from '@ui/app/views/HostPickerView.vue';
+import HostWorkspaceView from '@ui/app/views/HostWorkspaceView.vue';
+import FolderWorkspaceView from '@ui/app/views/FolderWorkspaceView.vue';
+import SessionPlaceholderView from '@ui/app/views/SessionPlaceholderView.vue';
+import SessionRedirectView from '@ui/app/views/SessionRedirectView.vue';
 
 // Memory history (not hash/history) — Electron loads a single file, and we
 // navigate within the window without touching a real URL bar.

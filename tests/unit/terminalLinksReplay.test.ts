@@ -15,12 +15,12 @@ import type { Terminal as XtermTerminal } from '@xterm/xterm';
  * under test is the whole pipeline on bytes nobody hand-modelled.
  */
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: { sftp: {}, preview: { onStats: () => () => undefined } },
 }));
 
 const { Terminal } = await import('@xterm/headless');
-const { pathLinks, scanBufferLine } = await import('../../src/renderer/terminalLinks');
+const { pathLinks, scanBufferLine } = await import('@ui/app/terminalLinks');
 
 const SCREEN = readFileSync(
   fileURLToPath(new URL('./fixtures/aplexer-codex-screen.bin', import.meta.url)),

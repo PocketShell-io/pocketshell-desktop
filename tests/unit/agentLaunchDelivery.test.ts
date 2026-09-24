@@ -51,7 +51,7 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
 }));
 
@@ -97,13 +97,13 @@ beforeEach(() => {
 async function openWorkspace(): Promise<VueWrapper> {
   vi.resetModules();
   sessionsList.mockResolvedValue([aplexerRow()]);
-  const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-  const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
-  const { useProjectsStore } = await import('../../src/renderer/stores/projects');
+  const { useConnectionStore } = await import('@ui/app/stores/connection');
+  const { useSessionsStore } = await import('@ui/app/stores/sessions');
+  const { useProjectsStore } = await import('@ui/app/stores/projects');
   useConnectionStore().connectionId = 'conn-1';
   useProjectsStore().home = '/home/me';
   useSessionsStore().sessions = [aplexerRow()] as never;
-  const FolderWorkspaceView = (await import('../../src/renderer/views/FolderWorkspaceView.vue'))
+  const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue'))
     .default;
   const wrapper = mount(FolderWorkspaceView, {
     global: { stubs },
@@ -120,8 +120,8 @@ describe('the agent launch is delivered against a live shell only', () => {
     overrides['shell.input'] = (...a: unknown[]) => input(...a);
 
     const wrapper = await openWorkspace();
-    const { useShellsStore } = await import('../../src/renderer/stores/shells');
-    const { parkAgentLaunch } = await import('../../src/renderer/pendingAgentLaunch');
+    const { useShellsStore } = await import('@ui/app/stores/shells');
+    const { parkAgentLaunch } = await import('@ui/app/pendingAgentLaunch');
     const shells = useShellsStore();
 
     // The trap: an id already standing under the launch's key when the launch

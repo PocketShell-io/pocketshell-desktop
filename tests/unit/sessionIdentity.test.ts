@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sessionIdentityKey } from '../../src/renderer/sessionIdentity';
+import { sessionIdentityKey } from '@ui/app/sessionIdentity';
 
 /**
  * Renderer-side session identity: which registry key a session row files

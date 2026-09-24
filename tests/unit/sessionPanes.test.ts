@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prunePanes, upsertPane, type SessionPaneRecord } from '../../src/renderer/sessionPanes';
+import { prunePanes, upsertPane, type SessionPaneRecord } from '@ui/app/sessionPanes';
 
 /**
  * The folder workspace's pane records, as pure rules (src/renderer/

@@ -66,15 +66,15 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
 }));
 
-const FolderWorkspaceView = (await import('../../src/renderer/views/FolderWorkspaceView.vue'))
+const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue'))
   .default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
-const { useProjectsStore } = await import('../../src/renderer/stores/projects');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
+const { useProjectsStore } = await import('@ui/app/stores/projects');
 
 /** A session row of the shape `helper.sessionsList` returns. */
 function row(name: string, created = 1): unknown {

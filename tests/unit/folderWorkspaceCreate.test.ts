@@ -74,16 +74,16 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
 }));
 
-const FolderWorkspaceView = (await import('../../src/renderer/views/FolderWorkspaceView.vue'))
+const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue'))
   .default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
-const { useProjectsStore } = await import('../../src/renderer/stores/projects');
-const { useShellsStore } = await import('../../src/renderer/stores/shells');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
+const { useProjectsStore } = await import('@ui/app/stores/projects');
+const { useShellsStore } = await import('@ui/app/stores/shells');
 
 const CHOICE: LaunchChoice = {
   kind: 'claude',
@@ -439,7 +439,7 @@ describe('the folder workspace + menu creates a session', () => {
    * registration can never focus a dead component tree.
    */
   it('answers a focus request while mounted and stops answering after unmount', async () => {
-    const { requestWorkspaceFocus } = await import('../../src/renderer/workspaceFocus');
+    const { requestWorkspaceFocus } = await import('@ui/app/workspaceFocus');
     const wrapper = await openWorkspace();
     expect(terminalFocusCalls).toEqual(['git-x']);
 

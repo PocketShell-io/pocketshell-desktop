@@ -22,11 +22,11 @@ import {
   stat,
 } from './helpers/filesApi';
 
-vi.mock('../../src/renderer/ipc', async () => ({
+vi.mock('@ui/app/ipc', async () => ({
   api: (await import('./helpers/filesApi')).api,
 }));
 
-const { useFilesStore } = await import('../../src/renderer/stores/files');
+const { useFilesStore } = await import('@ui/app/stores/files');
 
 const CONN = 'conn-1' as never;
 

@@ -42,7 +42,7 @@ const statesPush: {
   cb: null | ((p: { connectionId: string; states: unknown[] }) => void);
 } = { cb: null };
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       onState: vi.fn(),
@@ -70,9 +70,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const HostWorkspaceView = (await import('../../src/renderer/views/HostWorkspaceView.vue')).default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useForwardsStore } = await import('../../src/renderer/stores/forwards');
+const HostWorkspaceView = (await import('@ui/app/views/HostWorkspaceView.vue')).default;
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useForwardsStore } = await import('@ui/app/stores/forwards');
 
 const HOST: HostEntry = {
   name: 'hetzner',

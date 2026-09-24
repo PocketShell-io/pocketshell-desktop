@@ -6,7 +6,7 @@ import {
   defaultHostStatus,
   markAutoConnectAttempted,
   resetAutoConnectLatch,
-} from '../../src/renderer/autoConnect';
+} from '@ui/app/autoConnect';
 
 /**
  * The launch-time auto-connect decision. Every case here is one the user can

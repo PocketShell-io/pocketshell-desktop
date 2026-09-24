@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import type { HostEntry } from '@pocketshell/core';
-import { lastFolderKey } from '../../src/renderer/workspaceState';
+import { lastFolderKey } from '@ui/app/workspaceState';
 
 /**
  * The picker's cancel affordance, tested for the promise its own header makes:
@@ -67,13 +67,13 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
 }));
 
-const HostPickerView = (await import('../../src/renderer/views/HostPickerView.vue')).default;
-const { useSettingsStore } = await import('../../src/renderer/stores/settings');
-const { resetAutoConnectLatch } = await import('../../src/renderer/autoConnect');
+const HostPickerView = (await import('@ui/app/views/HostPickerView.vue')).default;
+const { useSettingsStore } = await import('@ui/app/stores/settings');
+const { resetAutoConnectLatch } = await import('@ui/app/autoConnect');
 
 /** Terse HostEntry factory — only `name` matters to these tests. */
 function host(name: string): HostEntry {

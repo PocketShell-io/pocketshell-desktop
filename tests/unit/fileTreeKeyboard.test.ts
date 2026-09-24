@@ -34,7 +34,7 @@ const ROOT_ENTRIES: DirEntry[] = [
   entry('notes.txt', 'file', 40),
 ];
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     // Present because constructing the stores subscribes to them, not
     // because these tests exercise them.
@@ -44,9 +44,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const FileTree = (await import('../../src/renderer/components/FileTree.vue')).default;
-const { useFilesStore } = await import('../../src/renderer/stores/files');
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
+const FileTree = (await import('@ui/app/components/FileTree.vue')).default;
+const { useFilesStore } = await import('@ui/app/stores/files');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
 
 async function flush(wrapper: VueWrapper): Promise<void> {
   await nextTick();

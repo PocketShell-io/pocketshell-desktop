@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
  * the path detector's own (terminalPaths.ts), so `(url).` underlines without
  * the decoration and opens without it too.
  */
-const { findUrls } = await import('../../src/renderer/terminalUrls');
+const { findUrls } = await import('@ui/app/terminalUrls');
 
 /** The URLs of one line, as strings. */
 const urls = (line: string): string[] => findUrls(line).map((m) => m.url);

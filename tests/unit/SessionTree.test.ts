@@ -45,7 +45,7 @@ const killSession =
     (connectionId: string, name: string) => Promise<{ ok: boolean; code?: string; error?: string }>
   >();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     // The two calls the panel makes on mount.
     helper: { sessionsList: () => sessionsList() },
@@ -60,9 +60,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const SessionTree = (await import('../../src/renderer/components/SessionTree.vue')).default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useSettingsStore } = await import('../../src/renderer/stores/settings');
+const SessionTree = (await import('@ui/app/components/SessionTree.vue')).default;
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useSettingsStore } = await import('@ui/app/stores/settings');
 
 /** Terse SessionSummary factory — only the fields grouping reads. */
 function session(name: string, path: string | null, activity = 100): SessionSummary {

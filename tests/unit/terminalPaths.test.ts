@@ -3,7 +3,7 @@ import {
   continuesPath,
   findPaths,
   type PathMatch,
-} from '../../src/renderer/terminalPaths';
+} from '@ui/app/terminalPaths';
 
 /**
  * The path detector's rules, one false positive at a time.

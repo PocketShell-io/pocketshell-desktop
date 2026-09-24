@@ -7,7 +7,7 @@ import {
   workspaceMemoryKey,
   writeLastFolder,
   writeWorkspaceMemory,
-} from '../../src/renderer/workspaceState';
+} from '@ui/app/workspaceState';
 
 /**
  * The persisted half of the folder workspace's tab state

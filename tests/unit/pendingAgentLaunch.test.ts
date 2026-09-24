@@ -5,7 +5,7 @@ import {
   parkAgentLaunch,
   parkedAgentLaunch,
   takeAgentLaunch,
-} from '../../src/renderer/pendingAgentLaunch';
+} from '@ui/app/pendingAgentLaunch';
 import type { LaunchChoice } from '@pocketshell/core';
 
 /**

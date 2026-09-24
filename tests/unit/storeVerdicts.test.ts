@@ -26,12 +26,12 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(String(key)) }),
 }));
 
-const { useUpdateStore } = await import('../../src/renderer/stores/update');
-const { useForwardsStore } = await import('../../src/renderer/stores/forwards');
+const { useUpdateStore } = await import('@ui/app/stores/update');
+const { useForwardsStore } = await import('@ui/app/stores/forwards');
 
 const CHECKER = 'update.check';
 

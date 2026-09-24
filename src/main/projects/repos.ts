@@ -1,3 +1,5 @@
+import type { RepoEntry, RepoLocal, RepoRemote, ReposScopeResult, ReposScopeState } from '@pocketshell/core';
+export type { RepoEntry, RepoLocal, RepoRemote, ReposScopeResult, ReposScopeState } from '@pocketshell/core';
 /**
  * `pocketshell repos list --json` parsing and failure classification.
  *
@@ -27,55 +29,10 @@
  * Any consumer that keys on `full_name` must therefore fall back to `name`.
  */
 
-/** Where a repo lives on the host's disk. */
-interface RepoLocal {
-  path: string;
-  /** Checked-out branch, or null when it could not be read. */
-  head: string | null;
-}
 
-/** The GitHub side of a repo. Fields are best-effort — the helper passes `gh` through. */
-interface RepoRemote {
-  defaultBranch: string | null;
-  htmlUrl: string | null;
-  sshUrl: string | null;
-  updatedAt: string | null;
-}
 
-/** One row of `repos list --json`, normalised to camelCase. */
-export interface RepoEntry {
-  /** Directory basename for a local clone; GitHub repo name for a remote row. */
-  name: string;
-  /** GitHub owner, or null (non-GitHub origin / no origin). */
-  owner: string | null;
-  /** `owner/name`, or null when the owner is unknown. */
-  fullName: string | null;
-  local: RepoLocal | null;
-  remote: RepoRemote | null;
-}
 
-/**
- * Why a `repos list` scope produced no rows.
- *
- * `gh-missing` and `gh-unauthenticated` are NORMAL states, not errors: a host
- * with no GitHub CLI simply has no remote repos to offer, and the local scan
- * is unaffected. The UI should show the local list plus a hint, never a
- * failure dialog.
- */
-export type ReposScopeState =
-  | 'ok'
-  | 'gh-missing'
-  | 'gh-unauthenticated'
-  | 'helper-missing'
-  | 'failed';
 
-/** Result of one scope (`--local` or `--remote`). */
-export interface ReposScopeResult {
-  state: ReposScopeState;
-  repos: RepoEntry[];
-  /** Host-supplied reason, when there is one. */
-  error: string | null;
-}
 
 /** Result of a `projects:reposList` call. */
 export interface ReposListResult {

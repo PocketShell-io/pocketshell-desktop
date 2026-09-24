@@ -35,7 +35,7 @@ const stage = vi.fn(async (_payload: StagePayload) => ({
   failedCount: 0,
 }));
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     attachments: { stage, pickFiles: vi.fn(async () => []), readLocal: vi.fn() },
     shell: { input: vi.fn(async () => true) },
@@ -43,8 +43,8 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const PromptComposer = (await import('../../src/renderer/components/PromptComposer.vue')).default;
-const { useComposerStore } = await import('../../src/renderer/stores/composer');
+const PromptComposer = (await import('@ui/app/components/PromptComposer.vue')).default;
+const { useComposerStore } = await import('@ui/app/stores/composer');
 
 type Store = ReturnType<typeof useComposerStore>;
 let composer: Store;

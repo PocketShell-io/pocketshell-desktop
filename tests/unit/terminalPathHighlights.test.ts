@@ -10,11 +10,11 @@ import type { Terminal } from '@xterm/xterm';
  * row changing under it.
  */
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: { sftp: {}, preview: { onStats: () => () => undefined } },
 }));
 
-const { PathHighlighter } = await import('../../src/renderer/terminalPathHighlights');
+const { PathHighlighter } = await import('@ui/app/terminalPathHighlights');
 const { terminalLinkTint } = await import('@ui/themes');
 
 const FIRST =
@@ -255,7 +255,7 @@ describe('PathHighlighter', () => {
 describe('premises against the real parser (headless xterm)', () => {
   it('a tmux attach stream lands on the alternate buffer, and the join works there', async () => {
     const { Terminal: HeadlessTerminal } = (await import('@xterm/headless')).default;
-    const { pathLinks } = await import('../../src/renderer/terminalLinks');
+    const { pathLinks } = await import('@ui/app/terminalLinks');
 
     // Pane width = the fragment's exact length, so the remote CLI's hard wrap
     // broke the token at the margin — rule 1's shape.

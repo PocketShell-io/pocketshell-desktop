@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, nextTick, onMounted, ref } from 'vue';
 
-import OverlayPanel from '../../src/renderer/components/OverlayPanel.vue';
+import OverlayPanel from '@ui/app/components/OverlayPanel.vue';
 
 /**
  * OverlayPanel's focus contract — the minimal one, deliberately not a trap.

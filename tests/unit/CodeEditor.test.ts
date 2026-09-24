@@ -4,8 +4,8 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { EditorView } from '@codemirror/view';
-import CodeEditor from '../../src/renderer/components/CodeEditor.vue';
-import { useSettingsStore } from '../../src/renderer/stores/settings';
+import CodeEditor from '@ui/app/components/CodeEditor.vue';
+import { useSettingsStore } from '@ui/app/stores/settings';
 
 /**
  * The editor component's CONTRACT, tested directly rather than through

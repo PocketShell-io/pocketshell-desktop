@@ -74,7 +74,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
  */
 let join: { resolve: (result: { shellId: string; switched: boolean }) => void } | null = null;
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     shell: {
       open: vi.fn(async () => 'shell-1'),
@@ -109,7 +109,7 @@ class ResizeObserverStub {
   disconnect(): void {}
 }
 
-const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
 
 function mountTerminal() {
   return mount(TerminalView, {

@@ -27,7 +27,7 @@ import type { DiscoveredPort } from '../../src/main/portfwd/AutoForwarder';
  *      a URL anyone can reason about; the loopback is what the tunnel binds.
  */
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     // Present because constructing the connection store subscribes to it.
     ssh: { onState: vi.fn(), listConfigHosts: vi.fn().mockResolvedValue([]) },
@@ -48,9 +48,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const PortPanelView = (await import('../../src/renderer/views/PortPanelView.vue')).default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useForwardsStore } = await import('../../src/renderer/stores/forwards');
+const PortPanelView = (await import('@ui/app/views/PortPanelView.vue')).default;
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useForwardsStore } = await import('@ui/app/stores/forwards');
 
 /** A live local forward, 8080 here -> 3000 on the host, overridable. */
 function fwd(over: Partial<ForwardState> = {}): ForwardState {

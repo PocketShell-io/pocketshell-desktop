@@ -19,7 +19,7 @@ import type { HostEntry } from '@pocketshell/core';
  * and a binding that is in the DOM but not in the text is not visible.
  */
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       onState: vi.fn(() => () => {}),
@@ -34,9 +34,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const SettingsView = (await import('../../src/renderer/views/SettingsView.vue')).default;
-const { useSettingsStore } = await import('../../src/renderer/stores/settings');
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
+const SettingsView = (await import('@ui/app/views/SettingsView.vue')).default;
+const { useSettingsStore } = await import('@ui/app/stores/settings');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
 const { SHORTCUTS, formatChord, parseChord } = await import('../../src/shared/shortcuts');
 
 beforeEach(() => {

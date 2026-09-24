@@ -30,7 +30,7 @@ const envSet = vi.fn<
   (connectionId: string, dir: string, values: Record<string, string>, file?: string) => Promise<void>
 >();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     agent: {
       envList: (connectionId: string, dir: string) => envList(connectionId, dir),
@@ -45,7 +45,7 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const EnvPanelView = (await import('../../src/renderer/views/EnvPanelView.vue')).default;
+const EnvPanelView = (await import('@ui/app/views/EnvPanelView.vue')).default;
 
 const ROWS: EnvVarRow[] = [
   { file: '.env', hasValue: true, key: 'API_KEY' },

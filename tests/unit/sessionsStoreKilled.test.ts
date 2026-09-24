@@ -39,11 +39,11 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(String(key)) }),
 }));
 
-const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
 
 /** Terse row factory — only the fields the store and tree read. */
 function row(name: string, extra: Partial<SessionSummary> = {}): SessionSummary {

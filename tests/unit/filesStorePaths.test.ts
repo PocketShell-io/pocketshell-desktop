@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 const { resolveRemotePath, stripTilde, normaliseTypedPath } = await import(
-  '../../src/renderer/remotePaths'
+  '@ui/app/remotePaths'
 );
 
 describe('stripTilde', () => {

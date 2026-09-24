@@ -39,7 +39,7 @@ import type { HostEntry, SessionSummary } from '@pocketshell/core';
 const sessionsList = vi.fn<(id: string, sort: string) => Promise<SessionSummary[]>>();
 const projectsHome = vi.fn<() => Promise<{ ok: boolean; home?: string; error?: string }>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       onState: vi.fn(),
@@ -65,9 +65,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const HostWorkspaceView = (await import('../../src/renderer/views/HostWorkspaceView.vue')).default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
+const HostWorkspaceView = (await import('@ui/app/views/HostWorkspaceView.vue')).default;
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
 
 const HOME = '/home/alexey';
 

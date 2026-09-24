@@ -19,13 +19,13 @@ import type { Terminal } from '@xterm/xterm';
 
 // The files store subscribes to HTML-preview asset counts as it is created,
 // so the stub needs that surface even though nothing here opens a file.
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: { sftp: {}, preview: { onStats: () => () => undefined } },
 }));
 
-const { scanBufferLine, pathLinks, urlLinks } = await import('../../src/renderer/terminalLinks');
-const { useFilesStore } = await import('../../src/renderer/stores/files');
-const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
+const { scanBufferLine, pathLinks, urlLinks } = await import('@ui/app/terminalLinks');
+const { useFilesStore } = await import('@ui/app/stores/files');
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
 
 /** One row of the fake buffer. `cells` is one entry per CELL, not per char. */
 interface FakeRow {

@@ -13,7 +13,7 @@ import { createPinia, setActivePinia } from 'pinia';
  */
 
 const { useSettingsStore, coerceSettings, settingsDefaults } = await import(
-  '../../src/renderer/stores/settings'
+  '@ui/app/stores/settings'
 );
 
 import { chordToString, isShortcut, parseChord } from '../../src/shared/shortcuts';

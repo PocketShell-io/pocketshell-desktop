@@ -28,11 +28,11 @@ import {
   writeFile,
 } from './helpers/filesApi';
 
-vi.mock('../../src/renderer/ipc', async () => ({
+vi.mock('@ui/app/ipc', async () => ({
   api: (await import('./helpers/filesApi')).api,
 }));
 
-const { useFilesStore, MAX_TEXT_BYTES } = await import('../../src/renderer/stores/files');
+const { useFilesStore, MAX_TEXT_BYTES } = await import('@ui/app/stores/files');
 
 const CONN = 'conn-1' as never;
 

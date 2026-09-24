@@ -30,7 +30,7 @@ import { createPinia, setActivePinia } from 'pinia';
  * diag record in the component exists to catch.
  */
 
-import { forceLocalMouseSelection } from '../../src/renderer/terminalMouseSelection';
+import { forceLocalMouseSelection } from '@ui/app/terminalMouseSelection';
 
 /** A predicate with xterm's real off-macOS semantics, as shipped in 6.0.0. */
 const stockShouldForce = (event: MouseEvent): boolean => event.shiftKey;
@@ -183,7 +183,7 @@ vi.mock('@xterm/addon-fit', () => ({
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     shell: {
       open: vi.fn(async () => 'shell-1'),
@@ -214,7 +214,7 @@ describe('TerminalView applies the patch at mount', () => {
   });
 
   it('replaces the selection predicate on the terminal it mounts', async () => {
-    const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+    const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
     const wrapper = mount(TerminalView, {
       props: { connectionId: 'conn-1', sessionKey: 'main' },
       attachTo: document.body,
@@ -236,7 +236,7 @@ describe('TerminalView applies the patch at mount', () => {
     // `selecting` stayed unarmed, and a completed drag selected on screen
     // without ever reaching the clipboard — the copy-paste use case this pane
     // exists for. The listener must be CAPTURE-phase to survive that.
-    const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+    const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
     const wrapper = mount(TerminalView, {
       props: { connectionId: 'conn-1', sessionKey: 'main' },
       attachTo: document.body,
@@ -266,7 +266,7 @@ describe('TerminalView applies the patch at mount', () => {
     // The gate that keeps an unrelated click elsewhere from re-copying a
     // stale selection — pinned here so the capture-phase change above cannot
     // quietly become "copy on every mouse-up".
-    const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+    const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
     const wrapper = mount(TerminalView, {
       props: { connectionId: 'conn-1', sessionKey: 'main' },
       attachTo: document.body,

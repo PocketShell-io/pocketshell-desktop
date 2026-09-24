@@ -66,7 +66,7 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
 }));
 
@@ -110,14 +110,14 @@ async function flush(times = 6): Promise<void> {
 async function openWorkspace(live: unknown[], folder: string): Promise<VueWrapper> {
   vi.resetModules();
   sessionsList.mockResolvedValue(live);
-  const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-  const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
-  const { useProjectsStore } = await import('../../src/renderer/stores/projects');
+  const { useConnectionStore } = await import('@ui/app/stores/connection');
+  const { useSessionsStore } = await import('@ui/app/stores/sessions');
+  const { useProjectsStore } = await import('@ui/app/stores/projects');
   useConnectionStore().connectionId = 'conn-1';
   useProjectsStore().home = '/home/me';
   useSessionsStore().sessions = live as never;
   navigate(folder);
-  const FolderWorkspaceView = (await import('../../src/renderer/views/FolderWorkspaceView.vue'))
+  const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue'))
     .default;
   const wrapper = mount(FolderWorkspaceView, { global: { stubs } });
   await flush();
@@ -143,7 +143,7 @@ describe('moving between two workspaces whose sessions share a tag', () => {
 
     // Click the second folder's row in the panel: same component, new `:folder`.
     navigate('~/git/b');
-    await import('../../src/renderer/stores/sessions').then(({ useSessionsStore }) => {
+    await import('@ui/app/stores/sessions').then(({ useSessionsStore }) => {
       useSessionsStore().sessions = [aplexerRow('~/git/b', 2)] as never;
     });
     await flush();
@@ -170,7 +170,7 @@ describe('moving between two workspaces whose sessions share a tag', () => {
     expect(terminalSlots(wrapper)).toHaveLength(0);
 
     // And when B's rows arrive, B gets its own pane under its own identity.
-    await import('../../src/renderer/stores/sessions').then(({ useSessionsStore }) => {
+    await import('@ui/app/stores/sessions').then(({ useSessionsStore }) => {
       useSessionsStore().sessions = [aplexerRow('~/git/b', 2)] as never;
     });
     await flush();

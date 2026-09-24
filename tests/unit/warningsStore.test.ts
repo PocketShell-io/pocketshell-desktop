@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { useWarningsStore } from '../../src/renderer/stores/warnings';
+import { useWarningsStore } from '@ui/app/stores/warnings';
 import type { AplexerWarning } from '@pocketshell/core';
 
 const warningsApi = vi.fn<(connectionId: string) => Promise<AplexerWarning[]>>();
 const ackWarningsApi = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     helper: {
       warnings: (connectionId: string) => warningsApi(connectionId),

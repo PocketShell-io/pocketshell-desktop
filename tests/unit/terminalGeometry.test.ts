@@ -132,7 +132,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 const resize = vi.fn(async (_shellId: string, _cols: number, _rows: number) => true);
 const redraw = vi.fn(async (_shellId: string) => true);
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     shell: {
       open: vi.fn(async () => 'shell-1'),
@@ -154,7 +154,7 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
 
 /** jsdom lays nothing out, so the pane's measured size has to be asserted. */
 function setPaneSize(wrapper: VueWrapper, width: number, height: number): void {

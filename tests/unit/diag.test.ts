@@ -17,7 +17,7 @@ let logImpl: (entry: { kind: string; message: string; stack?: string }) => void 
   logged.push(entry);
 };
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     diag: {
       log: (entry: { kind: string; message: string; stack?: string }): void => logImpl(entry),
@@ -25,8 +25,8 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const { recordDiagError, diagErrors } = await import('../../src/renderer/diag');
-const DiagBanner = (await import('../../src/renderer/components/DiagBanner.vue')).default;
+const { recordDiagError, diagErrors } = await import('@ui/app/diag');
+const DiagBanner = (await import('@ui/app/components/DiagBanner.vue')).default;
 
 beforeEach(() => {
   logged.length = 0;

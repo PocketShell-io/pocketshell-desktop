@@ -6,8 +6,8 @@ import {
   FOLDER_ORDER_MAX_ROWS,
   normaliseFolderOrder,
   reorderFolders,
-} from '../../src/renderer/folderOrder';
-import { groupSessionsIntoRoots, type SessionRootFolder } from '../../src/renderer/sessionTree';
+} from '@ui/app/folderOrder';
+import { groupSessionsIntoRoots, type SessionRootFolder } from '@ui/app/sessionTree';
 import type { SessionSummary } from '@pocketshell/core';
 
 /**

@@ -4,7 +4,7 @@ import {
   FILE_ROW_CAP,
   matchesQuery,
   viewFileRows,
-} from '../../src/renderer/fileListView';
+} from '@ui/app/fileListView';
 
 /** A listing in the order the store leaves it: dirs first, then files, A-Z. */
 function listing(count: number, prefix = 'file'): { name: string }[] {

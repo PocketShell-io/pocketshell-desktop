@@ -9,7 +9,7 @@ import {
   ZOOM_PERCENT_MIN,
   ZOOM_STEPS,
   zoomFactor,
-} from '../../src/renderer/zoom';
+} from '@ui/app/zoom';
 import { zoomCommandForInput, type ZoomKeyInput } from '../../src/shared/zoomKeys';
 
 /**

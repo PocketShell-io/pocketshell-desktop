@@ -4,7 +4,7 @@ import {
   hasCompleteViewport,
   repairIncompleteViewport,
   resumeWriteBufferAfterError,
-} from '../../src/renderer/xtermWriteBuffer';
+} from '@ui/app/xtermWriteBuffer';
 
 /**
  * The write-loop recovery, against the REAL xterm internals.

@@ -1,3 +1,5 @@
+import type { UsageRow, UsageWindow } from '@pocketshell/core';
+export type { UsageRow } from '@pocketshell/core';
 /**
  * Pure parsers for `pocketshell usage --json` — NDJSON rows.
  *
@@ -9,51 +11,7 @@
 // `pocketshell usage --json` — NDJSON rows
 // ---------------------------------------------------------------------------
 
-/**
- * One quota window, resolved for display. `percent_remaining` is NULLABLE:
- * a window can be real and still report no meter (zai's 5h window has a
- * percent but no reset on some hosts; others report the reverse). Callers
- * must guard before formatting either field.
- */
-interface UsageWindow {
-  percent_remaining: number | null;
-  reset_at: string | null;
-  /**
-   * Human label, e.g. `5h` / `7d` / `weekly` / `monthly`. Never empty on a
-   * parsed row: the key is the label except when it is the slot's own name
-   * (`short_term`/`long_term`), and those fall back to the generic
-   * short-term/long-term wording here, so consumers can print it as-is.
-   */
-  window: string;
-}
 
-export interface UsageRow {
-  provider: string;
-  // `string & {}` keeps the documented literals visible to narrowing and
-  // autocomplete while still accepting values a newer helper may add. A bare
-  // `| string` would absorb the literals and enforce nothing.
-  status: 'ok' | 'limited' | 'blocked' | 'error' | (string & {});
-  /**
-   * The windows this provider actually has, shortest term first — codex and
-   * grok carry a single weekly window, copilot a single monthly one, go three
-   * (5h + weekly + monthly). Windows the helper reports as empty (both
-   * fields null) are DROPPED rather than carried as "not reported" rows: a
-   * rendered row reads as a meter, and a meter that is not there is not the
-   * same fact as a meter at zero. Same rule for the synthesized 100%-no-reset
-   * filler the helper emits beside copilot's real monthly window.
-   */
-  windows: UsageWindow[];
-  error: string | null;
-  details: Record<string, unknown>;
-  /**
-   * How many "full reset" credits the provider reports (codex's reset
-   * credits, grok's restok tokens) — null when the provider has no such
-   * concept, 0 when it does and the credit is spent. The helper spells the
-   * count under two different detail keys, one per provider; this is the
-   * normalized view of both, so consumers print one field.
-   */
-  resets_available: number | null;
-}
 
 /**
  * The wire, which is not one shape but three a host can speak: the 0.4.44

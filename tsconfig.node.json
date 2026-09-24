@@ -2,25 +2,35 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "outDir": "out/tsbuildinfo/node",
-    "types": ["node"],
-    "lib": ["ES2022", "DOM"],
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@main/*": ["src/main/*"],
-      "@ui/*": ["../pocketshell-core/packages/ui/src/*"]
+      "@main/*": [
+        "src/main/*"
+      ],
+      "@ui/*": [
+        "../pocketshell-core/packages/ui/src/*"
+      ],
+      "@pocketshell/core": [
+        "../pocketshell-core/dist/esm/index.d.ts"
+      ],
+      "@pocketshell/core/*": [
+        "../pocketshell-core/dist/esm/*"
+      ]
     }
   },
   "include": [
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
-    // The unit suite lives in this project, and one of its specs mounts a
-    // renderer component — so the `*.vue` module shim has to be visible here
-    // too, or the import is an unresolved module. It is the renderer's own
-    // declaration file rather than a second copy, so the two projects cannot
-    // drift apart on what a `.vue` import resolves to.
     "src/renderer/env.d.ts",
     "tests/unit/**/*.ts",
     "tests/integration/**/*.ts",

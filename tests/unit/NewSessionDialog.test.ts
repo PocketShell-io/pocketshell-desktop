@@ -26,7 +26,7 @@ const list = vi.fn<(id: string, path: string) => Promise<{ name: string; type: s
 const deriveName = vi.fn<() => Promise<string>>();
 const startSession = vi.fn<(id: string, req: unknown) => Promise<unknown>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     projects: {
       home: () => home(),
@@ -52,12 +52,12 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const NewSessionDialog = (await import('../../src/renderer/components/NewSessionDialog.vue'))
+const NewSessionDialog = (await import('@ui/app/components/NewSessionDialog.vue'))
   .default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useProjectsStore } = await import('../../src/renderer/stores/projects');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useProjectsStore } = await import('@ui/app/stores/projects');
 const { clearAgentLaunch, parkedAgentLaunch } = await import(
-  '../../src/renderer/pendingAgentLaunch'
+  '@ui/app/pendingAgentLaunch'
 );
 
 const HOME = '/home/alexey';

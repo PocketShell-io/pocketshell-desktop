@@ -3,9 +3,9 @@ import { createPinia } from 'pinia';
 import '@ui/styles.css';
 import App from './App.vue';
 import { router } from './router';
-import { recordDiagError } from './diag';
-import { api } from './ipc';
-import { useConnectionStore } from './stores/connection';
+import { recordDiagError } from '@ui/app/diag';
+import { provideApi, api } from '@ui/app/ipc';
+import { useConnectionStore } from '@ui/app/stores/connection';
 
 /**
  * The three nets under "an unhandled renderer error must be visible".
@@ -23,6 +23,10 @@ import { useConnectionStore } from './stores/connection';
  * raises the app-wide strip. None rethrows: the app continues past a failed
  * component rather than dying with it.
  */
+// The Electron preload bridge IS the transport. Everything above the seam
+// (@ui/app) is platform-agnostic; this is the one line that binds them.
+provideApi(window.api);
+
 const app = createApp(App);
 app.config.errorHandler = (err): void => {
   recordDiagError('render', err);

@@ -1,3 +1,5 @@
+import type { RemotePort } from '@pocketshell/core';
+export type { RemotePort } from '@pocketshell/core';
 /**
  * Pure parsers for remote port-scan output (`ss` / `netstat`) and for the
  * `/proc/<pid>/cwd` probe. Used by {@link scanRemotePorts} to discover
@@ -22,16 +24,6 @@
 
 import { MAX_PORT } from '@pocketshell/core';
 
-/** One listening TCP port on the remote host. */
-export interface RemotePort {
-  port: number;
-  /** Process name when attribution succeeded; otherwise null. */
-  process: string | null;
-  /** Owning PID when attribution succeeded; otherwise null. */
-  pid: number | null;
-  /** Working directory of {@link pid}, when readable; otherwise null. */
-  cwd: string | null;
-}
 
 /**
  * Parse one `ss` / `netstat` process blob into a name and a PID.

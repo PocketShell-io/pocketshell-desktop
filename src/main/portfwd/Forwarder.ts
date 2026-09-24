@@ -1,8 +1,9 @@
+import type { ForwardMeta, ForwardOrigin, ForwardSpec, ForwardState } from '@pocketshell/core';
+export type { ForwardMeta, ForwardOrigin, ForwardState } from '@pocketshell/core';
 import { createServer, type Server, type Socket } from 'node:net';
 import { LOOPBACK_HOST } from '@pocketshell/core';
 import type { Client } from 'ssh2';
 import type { ConnectionRegistry } from '../ssh/ConnectionRegistry.js';
-import type { ForwardSpec } from '@pocketshell/core';
 
 /**
  * A single port-forward rule over an SSH connection. Supports the three
@@ -19,40 +20,8 @@ import type { ForwardSpec } from '@pocketshell/core';
  * The Android app implements local-only; remote + dynamic are net-new here.
  */
 
-/** Where a forward came from. Drives what the UI may do with the row. */
-export type ForwardOrigin = 'auto' | 'manual' | 'ssh-config';
 
-/** Presentation metadata the AutoForwarder attaches to a live forward. */
-export interface ForwardMeta {
-  /** User-chosen friendly name for the remote port, or null. */
-  name: string | null;
-  /** Remote process name, from the port scan. */
-  process: string | null;
-  /** Remote process working directory, from the port scan. */
-  cwd: string | null;
-  /** True when listenPort !== destPort (mirroring was not possible/wanted). */
-  remapped: boolean;
-}
 
-export interface ForwardState extends ForwardMeta {
-  /** Stable identity of this forward. Always {@link forwardKey}(spec). */
-  key: string;
-  kind: ForwardSpec['kind'];
-  listenHost: string;
-  listenPort: number;
-  destHost: string;
-  destPort: number;
-  origin: ForwardOrigin;
-  active: boolean;
-  /** Bytes received FROM the remote side (download). */
-  bytesIn: number;
-  /** Bytes sent TO the remote side (upload). */
-  bytesOut: number;
-  /** Download rate, bytes/sec, since the previous snapshot. */
-  rateIn: number;
-  /** Upload rate, bytes/sec, since the previous snapshot. */
-  rateOut: number;
-}
 
 export type ForwardEventListener = (state: ForwardState) => void;
 

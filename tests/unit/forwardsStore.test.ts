@@ -35,11 +35,11 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(String(key)) }),
 }));
 
-const { useForwardsStore } = await import('../../src/renderer/stores/forwards');
+const { useForwardsStore } = await import('@ui/app/stores/forwards');
 
 /** A discovered row as the annotated branch would deliver it. */
 const ANNOTATED_PORT = {

@@ -15,7 +15,7 @@ import { nextTick } from 'vue';
  * chars to the terminal."
  */
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     attachments: { stage: vi.fn(), pickFiles: vi.fn(async () => []), readLocal: vi.fn() },
     shell: { input: vi.fn(async () => true) },
@@ -23,10 +23,10 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const PromptComposer = (await import('../../src/renderer/components/PromptComposer.vue')).default;
-const { useComposerStore } = await import('../../src/renderer/stores/composer');
-const { useShellsStore } = await import('../../src/renderer/stores/shells');
-const { api } = await import('../../src/renderer/ipc');
+const PromptComposer = (await import('@ui/app/components/PromptComposer.vue')).default;
+const { useComposerStore } = await import('@ui/app/stores/composer');
+const { useShellsStore } = await import('@ui/app/stores/shells');
+const { api } = await import('@ui/app/ipc');
 
 type Store = ReturnType<typeof useComposerStore>;
 let composer: Store;

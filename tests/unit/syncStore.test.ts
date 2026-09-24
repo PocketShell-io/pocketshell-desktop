@@ -20,7 +20,7 @@ const syncApi = vi.hoisted(() => ({
   applyHosts: vi.fn(async () => ({ added: [] })),
 }));
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     sync: syncApi,
     ssh: {
@@ -34,9 +34,9 @@ vi.mock('../../src/renderer/ipc', () => ({
 }));
 
 import { createPinia, setActivePinia } from 'pinia';
-import { useConnectionStore } from '../../src/renderer/stores/connection';
-import { useSettingsStore } from '../../src/renderer/stores/settings';
-import { useSyncStore } from '../../src/renderer/stores/sync';
+import { useConnectionStore } from '@ui/app/stores/connection';
+import { useSettingsStore } from '@ui/app/stores/settings';
+import { useSyncStore } from '@ui/app/stores/sync';
 import { serializeSyncPayload } from '@pocketshell/core';
 import type { HostEntry } from '@pocketshell/core';
 

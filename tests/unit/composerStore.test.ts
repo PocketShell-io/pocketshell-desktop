@@ -13,7 +13,7 @@ import type { StageAttachmentsResult } from '@pocketshell/core';
 const stage = vi.fn<(payload: unknown) => Promise<StageAttachmentsResult>>();
 const pickFiles = vi.fn<(payload: unknown) => Promise<string[]>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     attachments: {
       stage: (payload: unknown) => stage(payload),
@@ -22,8 +22,8 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const { useComposerStore, COMPOSER_HISTORY_LIMIT } = await import('../../src/renderer/stores/composer');
-const { sessionIdentityKey } = await import('../../src/renderer/sessionIdentity');
+const { useComposerStore, COMPOSER_HISTORY_LIMIT } = await import('@ui/app/stores/composer');
+const { sessionIdentityKey } = await import('@ui/app/sessionIdentity');
 const { defaultGeometry } = await import('../../src/shared/composerGeometry');
 const { COMPOSER_STRINGS } = await import('../../src/shared/composerText');
 const { composerTiming } = await import('@pocketshell/core');

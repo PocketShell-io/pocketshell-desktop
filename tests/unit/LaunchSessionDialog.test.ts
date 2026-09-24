@@ -22,7 +22,7 @@ const kinds = vi.fn();
 
 // Only `agent.profiles` and `agent.kinds` have behaviour; the rest is here
 // because constructing the connection/projects stores subscribes to them.
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     helper: { usage: vi.fn().mockResolvedValue([]) },
     agent: {
@@ -34,10 +34,10 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const LaunchSessionDialog = (await import('../../src/renderer/components/LaunchSessionDialog.vue'))
+const LaunchSessionDialog = (await import('@ui/app/components/LaunchSessionDialog.vue'))
   .default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useSettingsStore } = await import('../../src/renderer/stores/settings');
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useSettingsStore } = await import('@ui/app/stores/settings');
 
 /** What `pocketshell agent --help` lists on the pinned helper: no grok. */
 const PINNED_KINDS = ['claude', 'codex', 'opencode'];

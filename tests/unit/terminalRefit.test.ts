@@ -111,7 +111,7 @@ vi.mock('@xterm/addon-fit', () => ({
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     shell: {
       open: vi.fn(async () => 'shell-1'),
@@ -126,8 +126,8 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
-const { useSettingsStore } = await import('../../src/renderer/stores/settings');
+const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
+const { useSettingsStore } = await import('@ui/app/stores/settings');
 
 /**
  * Give the pane a size. jsdom lays nothing out, so `clientWidth/clientHeight`

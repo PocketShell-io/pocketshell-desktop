@@ -7,7 +7,7 @@ import {
   readLastFolder,
   readWorkspaceMemory,
   workspaceMemoryKey,
-} from '../../src/renderer/workspaceState';
+} from '@ui/app/workspaceState';
 
 /**
  * The workspace's tab state surviving a relaunch
@@ -64,7 +64,7 @@ function channel(group: string): unknown {
   );
 }
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
 }));
 
@@ -85,9 +85,9 @@ function session(name: string, created: number): unknown {
 async function openColdWorkspace(live: string[]): Promise<VueWrapper> {
   vi.resetModules();
   sessionsList.mockResolvedValue(live.map((name) => session(name, live.indexOf(name) + 1)));
-  const { useSessionsStore } = await import('../../src/renderer/stores/sessions');
+  const { useSessionsStore } = await import('@ui/app/stores/sessions');
   useSessionsStore().sessions = [];
-  const FolderWorkspaceView = (await import('../../src/renderer/views/FolderWorkspaceView.vue'))
+  const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue'))
     .default;
   const wrapper = mount(FolderWorkspaceView, { global: { stubs } });
   await flush();
@@ -145,8 +145,8 @@ beforeEach(async () => {
   localStorage.clear();
   setActivePinia(createPinia());
   sessionsList.mockReset();
-  const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-  const { useProjectsStore } = await import('../../src/renderer/stores/projects');
+  const { useConnectionStore } = await import('@ui/app/stores/connection');
+  const { useProjectsStore } = await import('@ui/app/stores/projects');
   useConnectionStore().connectionId = 'conn-1';
   useProjectsStore().home = '/home/me';
 });

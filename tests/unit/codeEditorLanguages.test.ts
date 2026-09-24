@@ -3,9 +3,9 @@ import { EditorState } from '@codemirror/state';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { classHighlighter, tags as t, type Tag } from '@lezer/highlight';
 import { highlightTree } from '@lezer/highlight';
-import { loadLanguage, supportedLanguageIds } from '../../src/renderer/codeEditorLanguages';
-import { PLAIN_TEXT, languageIdForFilename, type LanguageId } from '../../src/renderer/codeLanguage';
-import { pocketshellHighlightStyle } from '../../src/renderer/codeEditorTheme';
+import { loadLanguage, supportedLanguageIds } from '@ui/app/codeEditorLanguages';
+import { PLAIN_TEXT, languageIdForFilename, type LanguageId } from '@ui/app/codeLanguage';
+import { pocketshellHighlightStyle } from '@ui/app/codeEditorTheme';
 
 /**
  * The half of the editor that talks to CodeMirror, tested WITHOUT a DOM.

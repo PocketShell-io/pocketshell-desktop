@@ -50,9 +50,32 @@ export default defineConfig({
     root: 'src/renderer',
     plugins: [vue()],
     resolve: {
+      dedupe: [
+        // The app tree lives inside the core repo, so every shared lib it
+        // imports resolves to packages/ui's own node_modules copy — a SECOND
+        // instance of pinia/vue/xterm beside the app's, which breaks pinia's
+        // active-instance global and xterm's prototype checks. Dedupe forces
+        // one copy app-wide.
+        'vue', 'pinia', 'vue-router',
+        '@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links', '@xterm/addon-unicode11',
+        '@codemirror/commands', '@codemirror/language', '@codemirror/state', '@codemirror/view',
+        '@codemirror/legacy-modes',
+        '@codemirror/lang-cpp', '@codemirror/lang-css', '@codemirror/lang-go', '@codemirror/lang-html',
+        '@codemirror/lang-java', '@codemirror/lang-javascript', '@codemirror/lang-json',
+        '@codemirror/lang-markdown', '@codemirror/lang-php', '@codemirror/lang-python',
+        '@codemirror/lang-rust', '@codemirror/lang-sql', '@codemirror/lang-vue', '@codemirror/lang-xml',
+        '@codemirror/lang-yaml',
+        '@lezer/highlight', '@lezer/common', '@lezer/lr',
+      ],
       alias: {
         '@': resolve(__dirname, 'src/renderer'),
         '@ui': resolve(__dirname, '../pocketshell-core/packages/ui/src'),
+        // The app tree lives inside the core repo; bare imports of
+        // @pocketshell/core from there cannot see this repo's node_modules.
+        '@pocketshell/core/shared': resolve(__dirname, '../pocketshell-core/src/shared'),
+        '@pocketshell/core/attachments': resolve(__dirname, '../pocketshell-core/src/attachments'),
+        '@pocketshell/core/preview': resolve(__dirname, '../pocketshell-core/src/preview'),
+        '@pocketshell/core': resolve(__dirname, '../pocketshell-core/src'),
       },
     },
     build: {

@@ -44,7 +44,7 @@ const sshConnect =
 const sshClose = vi.fn<(id: string) => Promise<void>>();
 const sessionsList = vi.fn<(id: string, sort: string) => Promise<never[]>>();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       // Constructing the connection store subscribes to onState; the tests
@@ -76,8 +76,8 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const HostWorkspaceView = (await import('../../src/renderer/views/HostWorkspaceView.vue')).default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
+const HostWorkspaceView = (await import('@ui/app/views/HostWorkspaceView.vue')).default;
+const { useConnectionStore } = await import('@ui/app/stores/connection');
 
 /** The host the workspace believes it is connected to. */
 const HOST: HostEntry = {

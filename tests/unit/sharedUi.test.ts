@@ -56,13 +56,25 @@ describe('shared UI component contracts', () => {
     expect(wrapper.emitted('send')).toEqual([[]]);
   });
 
-  it('has no runtime or type imports from Electron, Pinia or Node', () => {
-    const forbidden =
-      /(?:from\s*|import\s*\()\s*['"](?:electron(?:\/[^'"]*)?|pinia|node:[^'"]*|fs|net)['"]|window\.api|process\.env/u;
+  it('has no runtime or type imports from Electron, Node or the window bridge', () => {
+    // The app tree (src/app) is the platform-agnostic workspace UI: its stores
+    // use pinia, and it reaches the host only through the @ui/app/ipc seam —
+    // never `window.api` directly. The primitives beside it stay store-free.
+    // Electron and Node stay banned everywhere: nothing in this package may
+    // know which platform hosts it.
+    const forbiddenEverywhere =
+      /(?:from\s*|import\s*\()\s*['"](?:electron(?:\/[^'"]*)?|node:[^'"]*|fs|net)['"]|window\.api|process\.env/u;
+    const piniaOutsideApp = /(?:from\s*|import\s*\()\s*['"]pinia['"]/u;
     const offenders = sourceFiles(UI_SOURCE)
       .filter((file) => /\.(?:ts|vue)$/.test(file))
-      .filter((file) => forbidden.test(readFileSync(file, 'utf8')))
-      .map((file) => file.slice(UI_SOURCE.length + 1));
+      .flatMap((file) => {
+        const rel = file.slice(UI_SOURCE.length + 1);
+        const text = readFileSync(file, 'utf8');
+        const hits: string[] = [];
+        if (forbiddenEverywhere.test(text)) hits.push(`${rel}: electron/node/window bridge`);
+        if (!rel.startsWith('app/') && piniaOutsideApp.test(text)) hits.push(`${rel}: pinia outside the app tree`);
+        return hits;
+      });
 
     expect(offenders).toEqual([]);
   });

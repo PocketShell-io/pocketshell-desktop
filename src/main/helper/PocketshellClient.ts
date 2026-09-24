@@ -1,3 +1,5 @@
+import type { CreateSessionVia, EnvVarRow, ExecResult, SessionSummary } from '@pocketshell/core';
+export type { CreateSessionVia } from '@pocketshell/core';
 /**
  * Client for the server-side `pocketshell` helper. Runs subcommands over an
  * existing SSH connection (via SshService.exec) and parses their output.
@@ -8,7 +10,6 @@
  */
 
 import type { SshService } from '../ssh/SshService.js';
-import type { EnvVarRow, ExecResult, SessionSummary } from '@pocketshell/core';
 import type { AplexerClient } from './AplexerClient.js';
 import {
   firstNonEmptyLine,
@@ -62,8 +63,6 @@ import {
   type ReposScopeState,
 } from '../projects/repos.js';
 
-/** How a session create was satisfied. */
-export type CreateSessionVia = 'helper' | 'tmux-fallback' | 'aplexer';
 
 /**
  * The panel order for a LEGACY list: creation order, oldest first, name

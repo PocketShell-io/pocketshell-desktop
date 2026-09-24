@@ -16,7 +16,7 @@ const syncApi = vi.hoisted(() => ({
 
 const listConfigHosts = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     win: { setTitle: vi.fn() },
     sync: syncApi,
@@ -30,7 +30,7 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-import AccountView from '../../src/renderer/views/AccountView.vue';
+import AccountView from '@ui/app/views/AccountView.vue';
 
 function host(name: string, hostname = name + '.example'): HostEntry {
   return {

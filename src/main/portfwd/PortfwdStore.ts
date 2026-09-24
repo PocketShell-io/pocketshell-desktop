@@ -1,3 +1,5 @@
+import type { PortIntent } from '@pocketshell/core';
+export type { PortIntent } from '@pocketshell/core';
 import Store from 'electron-store';
 import { MAX_PORT } from '@pocketshell/core';
 
@@ -20,8 +22,6 @@ import { MAX_PORT } from '@pocketshell/core';
  *     different hosts cannot clobber each other.
  */
 
-/** User intent for one remote port. Absent = follow the auto policy. */
-export type PortIntent = 'force-on' | 'force-off';
 
 /** All port-forward state that outlives a run, for one host. */
 export interface PortfwdState {

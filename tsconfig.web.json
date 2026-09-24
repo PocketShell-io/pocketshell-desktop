@@ -4,10 +4,22 @@
     "outDir": "out/tsbuildinfo/web",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/*"],
-      "@ui/*": ["../pocketshell-core/packages/ui/src/*"]
+      "@/*": [
+        "src/renderer/*"
+      ],
+      "@ui/*": [
+        "../pocketshell-core/packages/ui/src/*"
+      ],
+      "@pocketshell/core": [
+        "../pocketshell-core/dist/esm/index.d.ts"
+      ],
+      "@pocketshell/core/*": [
+        "../pocketshell-core/dist/esm/*"
+      ]
     },
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "src/renderer/**/*.ts",

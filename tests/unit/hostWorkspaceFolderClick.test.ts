@@ -34,7 +34,7 @@ const SessionTreeStub = { template: '<div class="stub-tree" />' };
 const FakeWorkspace = { template: '<div class="fake-workspace" />' };
 const SessionPlaceholder = { template: '<div class="fake-placeholder" />' };
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: {
       onState: vi.fn(),
@@ -56,11 +56,11 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const HostWorkspaceView = (await import('../../src/renderer/views/HostWorkspaceView.vue')).default;
+const HostWorkspaceView = (await import('@ui/app/views/HostWorkspaceView.vue')).default;
 const {
   registerWorkspaceFocus,
   unregisterWorkspaceFocus,
-} = await import('../../src/renderer/workspaceFocus');
+} = await import('@ui/app/workspaceFocus');
 
 /** Focus requests the host view made through the registration. */
 const focusCalls: string[] = [];

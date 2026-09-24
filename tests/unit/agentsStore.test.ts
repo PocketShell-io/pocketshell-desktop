@@ -20,14 +20,14 @@ const usage = vi.fn();
 
 const profiles = vi.fn();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     helper: { usage: (connectionId: string): unknown => usage(connectionId) },
     agent: { profiles: (connectionId: string): unknown => profiles(connectionId) },
   },
 }));
 
-import { useAgentsStore } from '../../src/renderer/stores/agents';
+import { useAgentsStore } from '@ui/app/stores/agents';
 
 beforeEach(() => {
   setActivePinia(createPinia());

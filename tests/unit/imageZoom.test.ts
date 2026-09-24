@@ -10,7 +10,7 @@ import {
   sliderToZoom,
   stepImageZoom,
   zoomToSlider,
-} from '../../src/renderer/imageZoom';
+} from '@ui/app/imageZoom';
 
 /**
  * The pure half of the image viewer's zoom: the clamp, the +/- ladder, the

@@ -4,7 +4,7 @@
 // mocked bridge end to end; these pin the loop's own contract: the curve,
 // the countdown, the generation guard, and what a cancellation orphans.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ReconnectLoop } from '../../src/renderer/reconnectLoop';
+import { ReconnectLoop } from '@ui/app/reconnectLoop';
 
 /**
  * The owner contract the store implements: `dial` reports success/failure,

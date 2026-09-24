@@ -100,9 +100,9 @@ const mockApi = {
     onExited: vi.fn(() => () => {}),
   },
 };
-vi.mock('../../src/renderer/ipc', () => ({ api: mockApi }));
+vi.mock('@ui/app/ipc', () => ({ api: mockApi }));
 
-const TerminalView = (await import('../../src/renderer/components/TerminalView.vue')).default;
+const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
 
 function setPaneSize(wrapper: VueWrapper, width: number, height: number): void {
   for (const [prop, value] of [

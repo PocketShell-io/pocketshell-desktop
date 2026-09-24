@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ComposerAttachmentTiles from '../../src/renderer/components/ComposerAttachmentTiles.vue';
-import type { StagedAttachment } from '../../src/renderer/stores/composer';
+import ComposerAttachmentTiles from '@ui/app/components/ComposerAttachmentTiles.vue';
+import type { StagedAttachment } from '@ui/app/stores/composer';
 
 /**
  * Which tiles offer to be annotated.

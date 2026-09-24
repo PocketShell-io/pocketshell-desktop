@@ -6,7 +6,7 @@ import {
   basename,
   languageIdForFilename,
   shouldHighlight,
-} from '../../src/renderer/codeLanguage';
+} from '@ui/app/codeLanguage';
 
 /**
  * The filename -> language rules, which is where every edge case in the Files

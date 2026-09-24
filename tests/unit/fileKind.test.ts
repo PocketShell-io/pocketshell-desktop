@@ -4,7 +4,7 @@ import {
   classifyBytes,
   looksLikeText,
   magicKind,
-} from '../../src/renderer/fileKind';
+} from '@ui/app/fileKind';
 import {
   extensionOfPath,
   mimeTypeForExtension,

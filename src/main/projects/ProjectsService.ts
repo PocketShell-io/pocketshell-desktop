@@ -1,3 +1,5 @@
+import type { AplexerSessionRecord, AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, ReposScopeResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
+export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
 /**
  * Project-folder-first session creation — the desktop half of the flow the
  * Android app already ships.
@@ -24,7 +26,6 @@ import type { SshService } from '../ssh/SshService.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
-import type { AplexerSessionRecord } from '@pocketshell/core';
 import { pathAwareCommand } from '../helper/bootstrap.js';
 import { firstNonEmptyLine, lastNonEmptyLine } from '../helper/parsers.js';
 import {
@@ -42,171 +43,22 @@ import {
 } from './commands.js';
 import { childPath, normaliseProjectFolderName } from './sessionName.js';
 import { resolveAplexerTag, resolveSessionName, sanitiseName } from '../../shared/sessionNameParts.js';
-import {
-  mergeRepos,
-  type ReposListResult,
-  type ReposScopeResult,
-  type ReposScopeState,
-} from './repos.js';
+import { mergeRepos } from './repos.js';
 
-/** Resolved remote home. */
-export interface HomeResult {
-  ok: boolean;
-  home: string | null;
-  error: string | null;
-}
 
-/** Result of creating a new empty project folder. */
-export interface CreateFolderResult {
-  ok: boolean;
-  /** Canonical absolute path of the created folder. */
-  path: string | null;
-  error: string | null;
-}
 
-/** Result of a clone request. */
-export interface CloneResult {
-  ok: boolean;
-  path: string | null;
-  /** True when the clone target was already on disk and we reused it. */
-  alreadyExists: boolean;
-  error: string | null;
-  /**
-   * On failure, WHY — so the UI can say "this host has no pocketshell" rather
-   * than dumping a git error. Absent on success.
-   */
-  state?: Exclude<ReposScopeState, 'ok'>;
-}
 
-/** Progress event pushed while a clone runs. */
-export interface CloneProgress {
-  requestId: string;
-  phase: 'started' | 'finished';
-  repository: string;
-  path?: string;
-  error?: string;
-}
 
-/**
- * What `sessionName` means for a start request.
- *
- *  - `reuse` (default): the derived name is the EXACT name to use. If a
- *    session for this folder is already open, re-open it. This is the
- *    idempotent attach-or-create semantics `create-detached` provides and the
- *    folder-first flow depends on.
- *  - `unique`: give me a genuinely NEW session for this folder, walking
- *    `<base>`, `<base>-2`, `<base>-3`… The walk runs on the host, in one exec,
- *    immediately before the create (see {@link freeSessionNameCommand}) — the
- *    phone learned the hard way that a client-side session cache answers this
- *    question wrongly.
- */
-export type SessionNamePolicy = 'reuse' | 'unique';
 
-/** Request for {@link ProjectsService.startSession}. */
-export interface StartSessionRequest {
-  /** Remote folder to start in. Absolute, or `~`-relative. */
-  folder: string;
-  /** Optional user label; blank/punctuation-only falls back to the derived name. */
-  customName?: string;
-  /** Defaults to `reuse`. */
-  namePolicy?: SessionNamePolicy;
-}
 
-/**
- * Why a start request failed, for a UI that wants to react rather than print.
- *
- * `name-unavailable` belongs only to the `unique` policy and only to the two
- * ways that policy can be defeated without anything having gone wrong on the
- * host: the free-name probe could not be read at all, or the create came back
- * under a different name than the one it was asked for. Both used to resolve
- * `ok: true` carrying the name of a session that was ALREADY OPEN — see
- * {@link ProjectsService.startSession} for why that is the worst answer this
- * call can give.
- */
-export type StartSessionFailure = 'folder-missing' | 'create-failed' | 'name-unavailable';
 
-/** Result of {@link ProjectsService.startSession}. Never thrown. */
-export interface StartSessionResult {
-  ok: boolean;
-  /** The session name on the host — what to attach to. */
-  sessionName: string | null;
-  /** The canonical folder the session was started in. */
-  folder: string | null;
-  /** True when a session for this folder was already open and got reused. */
-  reused: boolean;
-  /** Which create path ran; `tmux-fallback` means no memory cap. */
-  via: CreateSessionVia | null;
-  /**
-   * The aplexer UUID of the created session, when the host handed one over
-   * (`a start --json` echoes the record). The renderer needs it to join by id
-   * WITHOUT waiting for the next snapshot — the optimistic row it builds from
-   * this result would otherwise cost the join its exact selector and push a
-   * workspace+tag lookup onto the attach. Null whenever the create did not go
-   * through aplexer, or the host's answer was unreadable.
-   */
-  aplexerId: string | null;
-  error: string | null;
-  code: StartSessionFailure | null;
-}
 
-/** Why a rename was refused, for a UI that wants to react rather than print. */
-type RenameSessionFailure = 'illegal-name' | 'name-taken' | 'rename-failed';
 
-/** Result of {@link ProjectsService.renameSession}. Never thrown. */
-export interface RenameSessionResult {
-  ok: boolean;
-  /** The name the session now has on the host. */
-  sessionName: string | null;
-  error: string | null;
-  code: RenameSessionFailure | null;
-}
 
-/** Why a kill was refused. `not-found` is the one a stale tab bar produces. */
-type KillSessionFailure = 'not-found' | 'kill-failed';
 
-/** Result of {@link ProjectsService.killSession}. Never thrown. */
-export interface KillSessionResult {
-  ok: boolean;
-  error: string | null;
-  code: KillSessionFailure | null;
-}
 
-/** Request for {@link ProjectsService.createFolder}. */
-export interface CreateFolderRequest {
-  /** Existing parent directory. */
-  parent: string;
-  /** Single folder name to create under it. */
-  name: string;
-}
 
-/** Request for {@link ProjectsService.reposList}. */
-export interface ReposListRequest {
-  /** Which scopes to run. Defaults to `both`. */
-  scope?: 'local' | 'remote' | 'both';
-  /** Local scan roots (replaces the helper default `~/git`). */
-  roots?: string[];
-  /** Local scan depth. */
-  maxDepth?: number;
-  /** Cap on remote rows. */
-  limit?: number;
-}
 
-/**
- * What the renderer knows about an aplexer-backed session, carried alongside
- * a name-addressed kill/rename so main can aim at the right runtime.
- *
- * A tag alone is unique only within its workspace, so a bare name cannot
- * address an aplexer session the way it addresses a tmux one. The renderer
- * passes what the row already carries; main falls back to a snapshot lookup
- * when it must (a stale caller, a deep link) and refuses rather than guesses
- * when the name is ambiguous.
- */
-export interface AplexerSessionRef {
-  /** Canonical workspace the session lives in. */
-  workspace?: string | null;
-  /** Immutable session UUID. Preferred: survives renames. */
-  aplexerId?: string | null;
-}
 
 export class ProjectsService {
   /**
@@ -1088,4 +940,4 @@ function scopeOk(scope: ReposScopeResult | null): boolean {
 
 // Re-exported so the preload can type `window.api.projects` without reaching
 // into three modules.
-export type { ReposListResult, ReposCloneOptions, CreateSessionVia };
+export type { ReposCloneOptions, CreateSessionVia };

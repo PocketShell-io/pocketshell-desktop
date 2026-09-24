@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { formatImageZoom, sliderToZoom } from '../../src/renderer/imageZoom';
+import { formatImageZoom, sliderToZoom } from '@ui/app/imageZoom';
 
 /**
  * The image viewer's toolbar in FilesView: that its controls actually drive
@@ -36,7 +36,7 @@ import { formatImageZoom, sliderToZoom } from '../../src/renderer/imageZoom';
  * filesViewFocus.test.ts.
  */
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     // Present because constructing the stores subscribes to them, not
     // because these tests exercise them.
@@ -46,11 +46,11 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-vi.mock('../../src/renderer/components/FileTree.vue', () => ({
+vi.mock('@ui/app/components/FileTree.vue', () => ({
   default: { name: 'FileTree', template: '<div class="file-tree-stub" />' },
 }));
 
-vi.mock('../../src/renderer/components/CodeEditor.vue', () => ({
+vi.mock('@ui/app/components/CodeEditor.vue', () => ({
   default: {
     name: 'CodeEditor',
     props: ['modelValue', 'filename'],
@@ -79,8 +79,8 @@ class ResizeObserverStub {
 }
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 
-const FilesView = (await import('../../src/renderer/views/FilesView.vue')).default;
-const { useFilesStore } = await import('../../src/renderer/stores/files');
+const FilesView = (await import('@ui/app/views/FilesView.vue')).default;
+const { useFilesStore } = await import('@ui/app/stores/files');
 
 let wrapper: VueWrapper | null = null;
 

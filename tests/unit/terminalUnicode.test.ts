@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Terminal } from '@xterm/headless';
-import { applyUnicode11Widths } from '../../src/renderer/terminalUnicode';
+import { applyUnicode11Widths } from '@ui/app/terminalUnicode';
 
 /**
  * The width contract behind every emoji a pane draws.

@@ -20,7 +20,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 
 const usage = vi.fn();
 
-vi.mock('../../src/renderer/ipc', () => ({
+vi.mock('@ui/app/ipc', () => ({
   api: {
     helper: { usage: (connectionId: string): unknown => usage(connectionId) },
     // The connection store subscribes to transport-state events as it is
@@ -30,9 +30,9 @@ vi.mock('../../src/renderer/ipc', () => ({
   },
 }));
 
-const UsageView = (await import('../../src/renderer/views/UsageView.vue')).default;
-const { useConnectionStore } = await import('../../src/renderer/stores/connection');
-const { useAgentsStore } = await import('../../src/renderer/stores/agents');
+const UsageView = (await import('@ui/app/views/UsageView.vue')).default;
+const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { useAgentsStore } = await import('@ui/app/stores/agents');
 
 /** One well-formed parsed row — enough for the table to render a provider. */
 const ROW = {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ParseStallMonitor, PARSE_STALL_TIMEOUT_MS, type ParseStallReport } from '../../src/renderer/parseStall';
+import { ParseStallMonitor, PARSE_STALL_TIMEOUT_MS, type ParseStallReport } from '@ui/app/parseStall';
 
 /**
  * The stall monitor, against a fake terminal.

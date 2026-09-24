@@ -160,7 +160,7 @@ afterEach(() => vi.restoreAllMocks());
 
 let context = makeContext();
 
-const DoodleCanvas = (await import('../../src/renderer/components/DoodleCanvas.vue')).default;
+const DoodleCanvas = (await import('@ui/app/components/DoodleCanvas.vue')).default;
 
 async function open(): Promise<VueWrapper> {
   context = makeContext();
