@@ -70,7 +70,7 @@ describe('shared UI component contracts', () => {
       .flatMap((file) => {
         // Windows walkers hand back backslash paths; the app/ prefix test
         // is spelled forward-slash, so normalise first.
-        const rel = file.slice(UI_SOURCE.length + 1).split(join.sep).join('/');
+        const rel = file.slice(UI_SOURCE.length + 1).split(/[\\/]/).join('/');
         const text = readFileSync(file, 'utf8');
         const hits: string[] = [];
         if (forbiddenEverywhere.test(text)) hits.push(`${rel}: electron/node/window bridge`);
