@@ -482,10 +482,26 @@ function addFilesFromMenu(): void {
 async function openInVsCode(): Promise<void> {
   const path = folderPath.value;
   const host = connection.activeHost;
-  if (path === null || !host) return;
-  const absolute = absoluteRemoteFolder(path, projects.home);
+  if (path === null || !host || !connection.connectionId) return;
+  let absolute = absoluteRemoteFolder(path, projects.home);
   if (absolute === null) {
-    recordDiagDetail('editor', `No absolute path to open in VS Code for "${path}".`, {});
+    // The null can be premature: the ref is only as good as the last
+    // mount-time resolution, which may still be in flight (the session list
+    // refreshes first) or may have failed once — the store does not cache
+    // failures. One await makes a `~/`-spelled folder openable on the very
+    // click that needs it; an absolute path never gets here.
+    const home = await projects.ensureHome(connection.connectionId);
+    absolute = absoluteRemoteFolder(path, home);
+  }
+  if (absolute === null) {
+    // Two dead ends worth telling apart: a tilde path whose anchor never
+    // landed (transient — the next click retries), and a path no deep link
+    // can carry at all (relative, or another user's `~x`).
+    const reason =
+      path.startsWith('~')
+        ? `the remote $HOME could not be resolved${projects.homeError ? ` (${projects.homeError})` : ''}`
+        : 'the path is neither absolute nor home-spelled';
+    recordDiagDetail('editor', `No absolute path to open in VS Code for "${path}": ${reason}.`, {});
     return;
   }
   try {

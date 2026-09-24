@@ -398,8 +398,10 @@ the decisions the format forces:
 - **The path must be absolute.** The URL's path is resolved server-side
   with no shell in front of it, so a literal `~/git/foo` would name a
   directory `~`. The workspace's tilde-spelled folder keys are expanded
-  against the remote `$HOME` the projects store already resolved
-  (`absoluteRemoteFolder`), and refused when there is none.
+  against the remote `$HOME`, resolved at click time through the projects
+  store — retrying a failed resolution rather than trusting a value that
+  may never have landed (`absoluteRemoteFolder`) — and refused when there
+  is still none.
 - **The link asks for a new window.** Without the `windowId=_blank` query
   VS Code answers a deep link in the window that has focus, replacing the
   folder the user is working in; the query makes its protocol handler force

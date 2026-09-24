@@ -34,7 +34,7 @@
  *     a DIRECTORY NAMED `~` — the same trap `stripTilde` exists for in the
  *     SFTP channel. Workspace folder keys can be tilde-spelled, so the
  *     expansion is {@link absoluteRemoteFolder}, driven by the remote home
- *     the projects store already resolved.
+ *     the projects store resolves for the click.
  */
 
 /** The authority prefix of a Remote-SSH folder link; also main's allow-list. */
