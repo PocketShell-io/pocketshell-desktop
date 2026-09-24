@@ -1,4 +1,3 @@
-import type { RepoEntry, RepoLocal, RepoRemote, ReposScopeResult, ReposScopeState } from '@pocketshell/core';
 export type { RepoEntry, RepoLocal, RepoRemote, ReposScopeResult, ReposScopeState } from '@pocketshell/core';
 /**
  * `pocketshell repos list --json` parsing and failure classification.

@@ -4,7 +4,6 @@
  * tree registry's JSON payloads.
  */
 
-import type { EnvVarRow } from '@pocketshell/core';
 
 // `command -v` probe parsing lives in core now (see src/hostProbeParsers.ts there).
 export { parseCommandV, parseEnvVarRow } from '@pocketshell/core';
