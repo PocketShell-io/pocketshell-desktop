@@ -7,7 +7,7 @@
 import type { EnvVarRow } from '@pocketshell/core';
 
 // `command -v` probe parsing lives in core now (see src/hostProbeParsers.ts there).
-export { parseCommandV } from '@pocketshell/core';
+export { parseCommandV, parseEnvVarRow } from '@pocketshell/core';
 
 // ---------------------------------------------------------------------------
 // bootstrap probe result parsing
@@ -63,27 +63,6 @@ export function parseAgentSubcommands(stdout: string, exitCode: number): string[
   return names.length > 0 ? names : null;
 }
 
-/**
- * One row of `pocketshell env list --json`, or undefined when the row does not
- * have the shape the helper promises.
- *
- * `env list` is the env editor's SOURCE OF KEY NAMES (FEATURES.md F16), and
- * the panel renders whatever this returns — so a row missing `key`, or
- * carrying a number where the file name belongs, is dropped here rather than
- * smuggled into a list of strings downstream. Values are deliberately absent
- * from the shape: the helper's write-only default keeps them off the wire
- * until `env get --key` names them one by one (ANALYSIS.md D24).
- */
-export function parseEnvVarRow(row: unknown): EnvVarRow | undefined {
-  if (row === null || typeof row !== 'object') return undefined;
-  const doc = row as Record<string, unknown>;
-  if (typeof doc['key'] !== 'string' || doc['key'].length === 0) return undefined;
-  return {
-    file: typeof doc['file'] === 'string' ? doc['file'] : '',
-    hasValue: doc['has_value'] === true,
-    key: doc['key'],
-  };
-}
 
 /**
  * One node of the host's durable project-tree registry
