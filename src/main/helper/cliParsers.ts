@@ -6,20 +6,13 @@
 
 import type { EnvVarRow } from '@pocketshell/core';
 
+// `command -v` probe parsing lives in core now (see src/hostProbeParsers.ts there).
+export { parseCommandV } from '@pocketshell/core';
+
 // ---------------------------------------------------------------------------
 // bootstrap probe result parsing
 // ---------------------------------------------------------------------------
 
-/**
- * Parse `command -v <binary>` output into an absolute path, or null if the
- * binary is absent. The probe is run as `command -v pocketshell`; exit 0 +
- * non-empty stdout means installed, anything else means missing.
- */
-export function parseCommandV(stdout: string, exitCode: number): string | null {
-  if (exitCode !== 0) return null;
-  const path = stdout.trim().split(/\r?\n/)[0];
-  return path && path.length > 0 ? path : null;
-}
 
 /**
  * The subcommand names in the `Commands:` block of a click `--help`, or null

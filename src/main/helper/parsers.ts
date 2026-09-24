@@ -15,6 +15,10 @@
 import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
 import { agentKindFromEngine } from '@pocketshell/core';
 
+// The line helpers and the raw-tmux fallback live in core now — one copy for
+// every client (see src/hostProbeParsers.ts there).
+export { firstNonEmptyLine, lastNonEmptyLine, parseTmuxListSessionsFallback } from '@pocketshell/core';
+
 // ---------------------------------------------------------------------------
 // `pocketshell sessions list` — fixed-width table
 // ---------------------------------------------------------------------------
@@ -45,31 +49,6 @@ const SESSION_TIMESTAMP_RE = /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*$/;
  * Returns sessions in document order (the helper already sorts by activity
  * when `--by activity` is passed). Unknown/blank output -> empty list.
  */
-/**
- * The first non-empty line of [text], trimmed — or null when there is none.
- *
- * The shape every "the CLI echoes its answer on stdout" call site used to
- * re-derive: createSession's echoed name, reposClone's printed path,
- * `canonicalise`'s resolved directory.
- */
-export function firstNonEmptyLine(text: string): string | null {
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed) return trimmed;
-  }
-  return null;
-}
-
-/** The last non-empty line of [text], trimmed — or null when there is none. */
-export function lastNonEmptyLine(text: string): string | null {
-  const lines = text.split(/\r?\n/);
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const trimmed = lines[i]!.trim();
-    if (trimmed) return trimmed;
-  }
-  return null;
-}
-
 export function parseSessionsList(stdout: string): SessionSummary[] {
   const out: SessionSummary[] = [];
   for (const rawLine of stdout.split(/\r?\n/)) {
@@ -404,31 +383,3 @@ function splitPathPair(middle: string[]): [string, string] {
   return [middle[0] ?? '', middle.slice(1).join(FIELD_SEP)];
 }
 
-/**
- * Parse the `tmux list-sessions -F` fallback (`::`-delimited):
- *   session_name::created_epoch::activity_epoch::attached_count[:path]
- */
-export function parseTmuxListSessionsFallback(stdout: string): SessionSummary[] {
-  const out: SessionSummary[] = [];
-  for (const rawLine of stdout.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('no server')) continue;
-    const parts = line.split('::');
-    const [name, created, activity, attached, path] = parts;
-    if (!name || created === undefined || activity === undefined) continue;
-    const createdNum = Number.parseInt(created, 10);
-    const activityNum = Number.parseInt(activity, 10);
-    const attachedNum = attached === undefined ? NaN : Number.parseInt(attached, 10);
-    if (!name || !Number.isFinite(createdNum)) continue;
-    out.push({
-      name,
-      created: createdNum,
-      activity: Number.isFinite(activityNum) ? activityNum : createdNum,
-      attached: Number.isFinite(attachedNum) && attachedNum > 0,
-      path: path && path !== '' ? path : null,
-      // This shape carries no `@ps_agent_kind`; the companion probe supplies it.
-      agentKind: null,
-    });
-  }
-  return out;
-}
