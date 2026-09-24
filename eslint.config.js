@@ -31,6 +31,12 @@ const globals = require('globals');
 /** Build artifacts, deps and non-source fixtures. */
 const IGNORES = [
   'node_modules/**',
+  // A nested checkout (teammate worktrees live here); never lint another
+  // checkout's sources.
+  'worktrees/**',
+  // A nested checkout (teammate worktrees live here); never lint another
+  // checkout's sources.
+  'worktrees/**',
   'out/**',
   'dist/**',
   'dist-electron/**',

@@ -1,4 +1,4 @@
-import type { AplexerSessionRecord, AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, ReposScopeResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
+import type { AplexerSessionRecord, AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionResult, RenameSessionResult, ReposListRequest, ReposListResult, ReposScopeResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
 export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
 /**
  * Project-folder-first session creation — the desktop half of the flow the
