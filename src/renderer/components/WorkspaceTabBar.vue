@@ -380,22 +380,8 @@ function onRenameInput(event: Event): void {
     <!-- The `+` sits OUTSIDE the scrolling strip, which is both a fix and an
          improvement: inside it, a folder with many tabs scrolled its own
          "new tab" button off the end. Its menu is teleported (PopupMenu), so
-         the strip's clipping cannot reach it either way. The VS Code button
-         shares the seat — both are workspace-scoped actions, not tabs — and
-         sits LEFT of the `+` so the create control, the bar's primary, keeps
-         its corner. -->
+         the strip's clipping cannot reach it either way. -->
     <div class="add-wrap">
-      <!-- `.vscode-open` is its OWN hook, not a second `.tab.add`: the tests
-           (and any future selector) read `.tab.add` as "the new-tab button",
-           and two buttons wearing it would make `find` answer the wrong one. -->
-      <button
-        v-if="vsCode"
-        class="tab vscode-open"
-        title="Open this folder in VS Code"
-        @click="emit('openVsCode')"
-      >
-        <AppIcon name="code" :size="14" />
-      </button>
       <button
         ref="addButtonEl"
         class="tab add"
@@ -434,6 +420,26 @@ function onRenameInput(event: Event): void {
           </li>
         </ul>
       </PopupMenu>
+    </div>
+
+    <!-- The VS Code button sits alone at the bar's far-right corner, moved
+         there at the user's request from the `+`'s side. It used to travel
+         with the tab cluster, so its address on screen drifted whenever the
+         strip grew; pinned here it has one fixed place, the same corner
+         treatment VS Code gives its own title-bar actions. It stays OUTSIDE
+         the scrolling strip for the reason the `+` does, and it is still a
+         workspace-scoped action rather than a tab, so it keeps its own hook. -->
+    <div v-if="vsCode" class="vscode-wrap">
+      <!-- `.vscode-open` is its OWN hook, not a second `.tab.add`: the tests
+           (and any future selector) read `.tab.add` as "the new-tab button",
+           and two buttons wearing it would make `find` answer the wrong one. -->
+      <button
+        class="tab vscode-open"
+        title="Open this folder in VS Code"
+        @click="emit('openVsCode')"
+      >
+        <AppIcon name="code" :size="14" />
+      </button>
     </div>
 
     <!-- Right-clicking a session tab. Two items, and the gap between them is
@@ -641,8 +647,17 @@ function onRenameInput(event: Event): void {
   color: var(--fg);
   background: var(--state-hover);
 }
-/* The VS Code button shares the `+`'s register (muted at rest, full-height
-   tab box) without sharing its class — see the template note. */
+/* A sibling of the strip like .add-wrap, and `margin-left: auto` is the whole
+   point: it soaks up the free space between the `+` and this seat, pinning the
+   button to the bar's right edge however wide or narrow the tab strip is. */
+.vscode-wrap {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+/* The VS Code button keeps the `+`'s register (muted at rest, full-height
+   tab box) without sharing its class or its seat — see the template note. */
 .tab.vscode-open {
   color: var(--fg-muted);
 }
