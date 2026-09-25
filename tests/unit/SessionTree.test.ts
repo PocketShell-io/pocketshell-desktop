@@ -368,14 +368,14 @@ describe('SessionTree — the creation chord (sessions.new)', () => {
 });
 
 describe('SessionTree — the header strip', () => {
-  it('reads +, ports, usage, refresh, settings, back, hide', async () => {
+  it('reads +, ports, usage, refresh, settings, hide, back', async () => {
     // The user's own order for the middle four ("here have ... then refresh
     // then settings then hide"), with the `+` leading the actions group
     // because it is the panel's primary action. The header expansion made
     // their `⋯` into its two overlays at the same user's ask, so Ports and
     // Usage are two buttons between `+` and Refresh; a later screenshot of
     // the same strip circled the back arrow and hide with an arrow between,
-    // and back left the lead to sit with the chrome before hide — the words
+    // and back left the lead to close the run at its far end — the words
     // in the test are their tooltips/accessible names, as they were for the
     // kebab.
     const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
@@ -385,8 +385,8 @@ describe('SessionTree — the header strip', () => {
       'Provider usage',
       'Refresh',
       'Settings',
-      'Back to hosts',
       'Hide session panel',
+      'Back to hosts',
     ]);
   });
 
