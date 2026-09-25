@@ -47,8 +47,9 @@ or `snapshot()`s. A command that also needs to answer names itself as a
 command (`openDedicatedRevealTab(...): boolean`), not as a predicate.
 
 **6. One rule, one place.** Shared logic lives in shared modules, and the
-precedents are deliberate: `shared/shellQuote.ts` (the one POSIX escape),
-`shared/reconnectBackoff.ts`, `shared/shortcuts.ts`. A second implementation
+precedents are deliberate: `shellQuote` (the one POSIX escape),
+`reconnectBackoff`, `shortcuts` — `@pocketshell/core` modules re-exported
+through `src/shared/`. A second implementation
 of a rule is a bug that hasn't happened yet. When two copies exist "so they
 must not drift", that comment is the extraction speaking.
 
@@ -107,12 +108,14 @@ exemption list is the follow-up queue, not a licence.
 
 ## Known deviations, recorded on purpose
 
-- **Large pure-TS modules were split along their section seams** (2026-09-03
-  audit): `parsers.ts` into the session core plus `sessionPathRecovery.ts` /
-  `usageParsers.ts` / `cliParsers.ts`; `sessionGrouping.ts` into the row model
-  plus `sessionRoots.ts` and `sessionTree.ts`; `shortcuts.ts` into the engine
+- **Large pure-TS modules are split along their section seams**:
+  `parsers.ts` into the session core plus `sessionPathRecovery.ts` /
+  `usageParsers.ts` / `cliParsers.ts`; `shortcuts.ts` into the engine
   plus `shortcutTable.ts`; `ipc.ts` into a composer plus `ipc/` per-domain
-  registrars sharing an `IpcContext`.
+  registrars sharing an `IpcContext`. The session grouping algebra
+  (`sessionTree` / `sessionGrouping` / `sessionRoots`) and most of
+  `src/shared/` now live in `@pocketshell/core`; the local files are
+  import-path shims.
 - `env.d.ts` declares every `.vue` import as an `any`-typed
   `DefineComponent` (the repo's only `any`). Consequence: component props
   are unchecked at call sites, and seven call sites hand-write structural

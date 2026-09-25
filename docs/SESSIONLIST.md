@@ -6,8 +6,10 @@ the user's words:
 
 > "git -> folder -> session"
 
-The row model is `src/renderer/sessionGrouping.ts` (+ `sessionRoots.ts`,
-`sessionTree.ts`, `folderTree.ts`); the component is `SessionTree.vue`. This
+The row algebra lives in @pocketshell/core (`sessionTree` /
+`sessionGrouping` / `sessionRoots`; `src/renderer/` keeps same-named import
+shims), with `folderTree.ts` and `folderOrder.ts` beside it; the component is
+`SessionTree.vue`. This
 file holds the invariants, the rejected alternatives, and the decisions the
 code cannot show.
 
@@ -399,7 +401,8 @@ prediction, and the mkdir, the clone and `startSession` all wait behind the
 confirm; cancelling at the agent step leaves no folder, no clone and no
 session. The commit then re-points the choice at the folder the **host**
 resolved before using it — a clone can land elsewhere, and `--dir` at a
-missing directory is precisely the failure `shared/agentLaunch.ts` exists to
+missing directory is precisely the failure `agentLaunch` (in
+@pocketshell/core) exists to
 make unrepeatable (the finding: a dialog that can NAME what it is about to
 create can defer creating it; the prediction is never trusted).
 

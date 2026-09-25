@@ -15,7 +15,11 @@ Layout, three Electron processes plus shared code:
 - `src/preload/` — contextBridge; exposes the typed `window.api` surface.
 - `src/renderer/` — Vue 3 + Pinia + vue-router, xterm.js terminals,
   CodeMirror editor. Sandboxed: never imports `ssh2`, `fs`, or `net`.
-- `src/shared/` — types and pure logic used by both main and renderer.
+- `src/shared/` — import-path shims over `@pocketshell/core` (the sibling
+  repo at `../pocketshell-core`, which holds the types and pure logic shared
+  by the desktop and the other PocketShell clients). The shared visual
+  package — tokens, themes, fonts, `AppIcon` — is that repo's
+  `packages/ui`, consumed through the `@ui` Vite alias.
 
 Commands: `npm run dev` (watch), `npm run build` (→ `out/`), `npm run
 typecheck` (two tsconfigs: node = main+preload, web = renderer), `npm run

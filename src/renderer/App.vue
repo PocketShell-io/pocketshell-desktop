@@ -2,8 +2,9 @@
 // Root component: the router-outlet, plus the one place the app's typography
 // settings are written into the document.
 //
-// packages/ui/src/tokens.css supplies the no-JS default for every shared
-// token. The three typography settings are written as inline custom properties
+// @ui/styles.css (the pocketshell-core sibling's packages/ui) supplies the
+// no-JS default for every shared token. The three typography settings are
+// written as inline custom properties
 // on <html>, which outrank that stylesheet and remain visible in devtools.
 //
 // This is deliberately the whole wiring for three of the four surfaces. The
