@@ -30,7 +30,7 @@ lint`, `npm run test:unit`, `npm run test:integration` (needs Docker),
 
 Docs in `docs/`: `ARCHITECTURE.md` is the deep dive — read the relevant
 section before working in an area; feature docs (`COMPOSER`, `PORTFWD`,
-`SESSIONLIST`, `SHORTCUTS`, `SYNC`, `DESIGN`) record how each subsystem works;
+`SHORTCUTS`, `SYNC`, `DESIGN`) record how each subsystem works;
 `CLEAN_CODE.md` the rules the code is held to.
 
 Dependency rule: production `dependencies` is only what is `require()`d

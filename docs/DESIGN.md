@@ -5,7 +5,7 @@ type, colour tokens, primitives, iconography, motion, themes. The code is the
 source of truth for values: tokens, theme records and presentational CSS live
 in the shared UI package (`@ui` — the `pocketshell-core` sibling's
 `packages/ui`, §9); per-feature decisions live in the components and the
-feature docs (`SESSIONLIST.md`, `COMPOSER.md`, `SHORTCUTS.md`).
+feature docs (`COMPOSER.md`, `SHORTCUTS.md`).
 
 ---
 
@@ -99,7 +99,7 @@ hover would read as selection.
 ## 5. Layout & components
 
 Screen-level layout decisions live with their screens and components
-(`SESSIONLIST.md`, `COMPOSER.md`); this section holds only the cross-screen
+(`COMPOSER.md`); this section holds only the cross-screen
 system.
 
 ### 5.0 Global rules
