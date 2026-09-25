@@ -620,6 +620,30 @@ describe('NewSessionDialog search focus', () => {
     wrapper.unmount();
   });
 
+  it('makes the post-browse focus attempt after the input is re-enabled', async () => {
+    // The refocus is triggered from a pre-flush watcher, which runs BEFORE the
+    // template has cleared `:disabled` — and Chromium refuses to focus a
+    // disabled element (jsdom permits it, which is why the test above stayed
+    // green while the real app dropped the caret on every `startIn` open). The
+    // composable defers the attempt with nextTick, so the LAST attempt must
+    // observe the field enabled: the earlier one lands before the open browse
+    // disables it and is lost with the blur that disabling performs. The mock
+    // only records — that focus really lands when the field is enabled is the
+    // previous test's assertion, and this one is about WHEN the attempts are
+    // made.
+    const attempts: boolean[] = [];
+    const spy = vi
+      .spyOn(HTMLInputElement.prototype, 'focus')
+      .mockImplementation(function (this: HTMLInputElement) {
+        attempts.push(this.disabled);
+      });
+    const wrapper = await openAttached(`${HOME}/git`);
+    spy.mockRestore();
+    expect(attempts.length).toBeGreaterThan(0);
+    expect(attempts.at(-1)).toBe(false);
+    wrapper.unmount();
+  });
+
   it('keeps the caret in the filter after descending a folder', async () => {
     const wrapper = await openAttached(null);
     await wrapper.get('.folder-row').trigger('click');
