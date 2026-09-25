@@ -41,6 +41,13 @@ async function type(text: string): Promise<void> {
   await flushPromises();
 }
 
+// jsdom does no layout, so it never implements scrollIntoView — the palette's
+// keep-the-selection-in-view scroll (CommandPalette.vue's moveSelection) would
+// land as an unhandled TypeError inside nextTick and fail the run after every
+// assertion had already passed. The stub is the point: in a real browser the
+// call exists and only scrolls.
+Element.prototype.scrollIntoView = vi.fn();
+
 beforeEach(async () => {
   vi.clearAllMocks();
   wrapper = mount(CommandPalette, {
