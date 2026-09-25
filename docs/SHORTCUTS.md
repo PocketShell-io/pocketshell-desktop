@@ -125,7 +125,14 @@ collapsed included.
 
 | Chord | Does | Note |
 |---|---|---|
-| `Ctrl+Shift+F` | Focuses the panel's filter box — the tree cuts to the folders and sessions whose label, path or session names match; Enter opens the first survivor, Escape clears | `SessionTree.vue` |
+| `Ctrl+Shift+F` | Summons the panel's filter row — hidden until called, Escape clears and dismisses — and the tree cuts to the folders and sessions whose label, path or session names match; Enter opens the first survivor | `SessionTree.vue` |
+
+The row is never permanent: the panel's rows are the app's front door and the
+permanent strip this replaced spent 36px of their height on a tool used in
+bursts — the Files pane's summoned `Ctrl+F` box, copied whole. The sort menu
+rides in the same row while it stands, and the same setting holds a select in
+Settings' Session panel section (the zoom pair's shape: one stored value, two
+doors in).
 
 Shift is the whole choice, and it is the Files pane's `Ctrl+F` turned inside
 out: `files.filterTree` can take the bare reflex because the Files pane has no
