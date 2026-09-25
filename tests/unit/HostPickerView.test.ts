@@ -55,6 +55,15 @@ const overrides: Record<string, unknown> = {
   'sync.status': (...a: unknown[]) => syncStatus(...a),
   'sync.accountHosts': (...a: unknown[]) => syncAccountHosts(...a),
   'win.openAccount': (...a: unknown[]) => openAccount(...a),
+  // The desktop's host-source capability, byte-identical to what renderer
+  // main.ts composes over the bridge: a PLAIN object (a channel proxy would
+  // answer .groupLabel with a function), which is what the picker's copy and
+  // its empty-state action render from.
+  hosts: {
+    groupLabel: 'From ~/.ssh/config',
+    sourceName: '~/.ssh/config',
+    emptyHint: 'No hosts found in ~/.ssh/config. Add one there to get started.',
+  },
 };
 
 function channel(group: string): unknown {
@@ -68,7 +77,10 @@ function channel(group: string): unknown {
 }
 
 vi.mock('@ui/app/ipc', () => ({
-  api: new Proxy({}, { get: (_t, key: string) => channel(key) }),
+  api: new Proxy({}, {
+    get: (_t, key: string) =>
+      overrides[key] ?? channel(key),
+  }),
 }));
 
 const HostPickerView = (await import('@ui/app/views/HostPickerView.vue')).default;
