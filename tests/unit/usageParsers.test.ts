@@ -119,6 +119,16 @@ describe('parseUsageNdjson', () => {
     // `reset_credits_available`, grok `resets_available` — normalized into
     // one count; providers without the concept are null, not 0.
     expect(out.map((r) => r.resets_available)).toEqual([null, 1, null, 1, null]);
+    // Each credit also carries its own expiry, and the soonest one is what
+    // the row keeps — "when can I no longer spend these" is the fact the
+    // note dates.
+    expect(out.map((r) => r.resets_expire_at)).toEqual([
+      null,
+      '2026-09-21T00:13:17Z',
+      null,
+      '2026-09-12T18:49:00Z',
+      null,
+    ]);
   });
 
   it('reads the resets count from either detail key, or says nothing', () => {
@@ -133,6 +143,49 @@ describe('parseUsageNdjson', () => {
     // A provider with no resets concept, or a count that is not a number.
     expect(rows('').resets_available).toBeNull();
     expect(rows('"resets_available":"1"').resets_available).toBeNull();
+  });
+
+  it('reads the resets expiry from either credit array, soonest entry first', () => {
+    const line = (keys: string) =>
+      `{"provider":"x","status":"ok","error":null,"details":{${keys}},"windows":{"weekly":{"percent_remaining":1.0,"reset_at":null}}}`;
+    const rows = (keys: string) => parseUsageNdjson(line(keys))[0]!;
+
+    // codex spells the array `reset_credits`, grok `resets`.
+    expect(
+      rows(
+        '"reset_credits_available":1,' +
+          '"reset_credits":[{"expires_at":"2026-09-21T00:13:17Z","status":"available","title":"Full reset"}]',
+      ).resets_expire_at,
+    ).toBe('2026-09-21T00:13:17Z');
+    expect(
+      rows('"resets_available":1,"resets":[{"expires_at":"2026-09-12T18:49:00Z","token_id":"r"}]')
+        .resets_expire_at,
+    ).toBe('2026-09-12T18:49:00Z');
+
+    // Several credits: the soonest expiry is the useful bound.
+    expect(
+      rows(
+        '"reset_credits_available":2,"reset_credits":[' +
+          '{"expires_at":"2026-10-01T00:00:00Z","status":"available"},' +
+          '{"expires_at":"2026-09-21T00:13:17Z","status":"available"}]',
+      ).resets_expire_at,
+    ).toBe('2026-09-21T00:13:17Z');
+
+    // An entry the provider no longer counts as available does not date the
+    // note — the expiry must belong to a credit the count talks about.
+    expect(
+      rows(
+        '"reset_credits_available":1,"reset_credits":[' +
+          '{"expires_at":"2026-01-01T00:00:00Z","status":"spent"},' +
+          '{"expires_at":"2026-09-21T00:13:17Z","status":"available"}]',
+      ).resets_expire_at,
+    ).toBe('2026-09-21T00:13:17Z');
+
+    // No array, no expires_at, no parsable one: null, and the note degrades
+    // to the bare count.
+    expect(rows('"reset_credits_available":1').resets_expire_at).toBeNull();
+    expect(rows('"resets":[{"token_id":"r"}]').resets_expire_at).toBeNull();
+    expect(rows('"resets":[{"expires_at":"not a date"}]').resets_expire_at).toBeNull();
   });
 
   it('keeps all three windows of a provider like go, shortest first', () => {
