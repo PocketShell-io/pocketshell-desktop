@@ -18,6 +18,7 @@ import { fontCssVariables } from '@ui/fonts';
 import { resolveTheme } from '@ui/themes';
 import { zoomFactor } from '@ui/app/zoom';
 import { api } from '@ui/app/ipc';
+import { KEEPS_DEFAULT_MENU } from '@ui/app/defaultMenu';
 import { useUpdateStore } from '@ui/app/stores/update';
 import { useSettingsStore } from '@ui/app/stores/settings';
 import { isShortcut } from '../shared/shortcuts';
@@ -83,9 +84,6 @@ function onDeleteWordBackward(e: KeyboardEvent): void {
     target.dispatchEvent(new Event('input', { bubbles: true }));
   }
 }
-
-/** Where the platform keeps the default menu — see the stand-down above. */
-const KEEPS_DEFAULT_MENU = navigator.userAgent.includes('Mac');
 
 /**
  * The ONE place a theme becomes pixels: the chosen record's tokens are written

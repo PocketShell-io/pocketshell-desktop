@@ -38,6 +38,7 @@ down the left.
 |---|---|---|
 | `Ctrl+[` / `Ctrl+]` | The tab to the left / right; **stops** at the ends | `FolderWorkspaceView.vue` |
 | `Ctrl+↑` / `Ctrl+↓` | The folder workspace above / below; stops at the ends; crosses root headers | `HostWorkspaceView.vue` |
+| `Ctrl+Shift+R` | Rename the active session tab — the tab menu's "Rename…", field pre-filled with the name the host knows | `useWorkspaceChords.ts` |
 
 What they cost, stated rather than assumed: through xterm `Ctrl+[` IS Escape
 (readline's meta-prefix) and `Ctrl+]` is GS — Meta stays reachable through
@@ -46,6 +47,15 @@ stand down inside a real text field — but the terminal is deliberately NOT
 in that set, or the chords would do nothing in the one place they exist for.
 The removed `Ctrl+Tab` cycle, `Ctrl+1..9` and `Ctrl+Shift+PageUp/Down` each
 handed real keys back to the pane (§3.4 tabulates what those were).
+
+`Ctrl+Shift+R` costs the shell nothing (a shifted letter encodes no byte) but
+is Electron's Force Reload wherever the platform menu survives, so it claims
+the key only where that menu is gone: the handler stands down on darwin
+(`defaultMenu.ts`), the same call the text-field delete-word makes. It is
+fixed rather than rebindable because the registry refuses the chord outright —
+a user who moved it away could never move it back. Over a Files tab, which
+has no name the host knows, it stands down entirely rather than swallowing a
+keystroke for nothing.
 
 ### 1.3 The Files tab — `FilesView.vue`, `onKeydown`
 
@@ -140,6 +150,25 @@ terminal behind it, while this panel lives beside one — bare `Ctrl+F` is `^F`,
 readline forward-char, one of the most-pressed keys at a prompt. The shifted
 letter encodes nothing at the shell, so the chord takes nothing from programs
 that bind it. Stands down inside a text field, like the create pair above.
+
+---
+
+### 1.10 Quick actions — the command palette — `HostWorkspaceView.vue`, `onWindowKeydown`
+
+| Chord | Does | Note |
+|---|---|---|
+| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: every workspace verb — open a folder, new session, quick search, the Ports/Usage/Settings overlays, a sort, hide the panel, back to the host list — filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
+
+A PAIR of chords, fixed for the same reason the tab arrows are a pair: an
+override replaces a binding's chords outright and would lose one.
+`Ctrl+Shift+P` is the VS Code reflex and encodes nothing at the shell. Bare
+`Ctrl+P` is `^P` — readline previous-history — a real key taken from programs
+that bind it, claimed at the user's word ("maybe ctrl+p") for the reason the
+`Ctrl+N` create was: the palette is the one surface meant to be reachable from
+anywhere, terminal included. Stands down inside a text field, where the prose
+is. The command list is built from the same stores the panel and tabs read
+(`allFolders`, the pre-filter walk), and every verb is a handler those surfaces
+already own — the palette re-implements nothing.
 
 ---
 

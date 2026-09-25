@@ -569,3 +569,76 @@ describe('a rename onto a name with a leftover pane record inherits nothing', ()
     expect(wrapper.find('.stub-terminal').attributes('session-key')).toBe('git-y');
   });
 });
+
+describe('the Ctrl+Shift+R chord renames the active tab', () => {
+  // The keyboard door to the tab menu's "Rename…", at the user's words
+  // ("ctrl+shift+R - rename the current tab"). The chord lives in
+  // useWorkspaceChords' window-capture listener, so these drive a REAL
+  // window keydown rather than a component event — the same harness the
+  // create test uses for Ctrl+N — and read the field it opens off the bar.
+  // The return value is dispatchEvent's: false when the chord cancelled the
+  // key. The flush after the dispatch lets the field render before the read.
+  const pressRename = async (
+    target: EventTarget = window,
+    extra: Record<string, boolean> = {},
+  ): Promise<boolean> => {
+    const cancelled = !target.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'R',
+        ctrlKey: true,
+        shiftKey: true,
+        cancelable: true,
+        bubbles: true,
+        ...extra,
+      }),
+    );
+    await flush(2);
+    return cancelled;
+  };
+
+  it('opens the rename field on the active session tab, pre-filled', async () => {
+    const wrapper = await openWorkspace();
+
+    // It CLAIMS the key — cancelled, so no other surface answers it too.
+    expect(await pressRename()).toBe(true);
+    const input = wrapper.find('input.rename-input');
+    expect(input.exists()).toBe(true);
+    // The label IS the session's name, so the field starts from it.
+    expect((input.element as HTMLInputElement).value).toBe('git-x');
+    wrapper.unmount();
+  });
+
+  it('stands down while a rename is already open — the field owns the keyboard', async () => {
+    const wrapper = await openWorkspace();
+    expect(await pressRename()).toBe(true);
+    const input = wrapper.find('input.rename-input');
+    await input.setValue('half-typed');
+
+    // A second press must not reset the text the user is mid-way through —
+    // the same stand-down every chord makes while `renaming`, at the top of
+    // the handler. It does not even claim the key: the field's own Escape
+    // and Enter are the ways out, and a swallowed chord here would be a
+    // keystroke gone missing for nothing.
+    expect(await pressRename()).toBe(false);
+    expect((wrapper.find('input.rename-input').element as HTMLInputElement).value).toBe(
+      'half-typed',
+    );
+    wrapper.unmount();
+  });
+
+  it('stands down in a text field, where prose is being typed', async () => {
+    const wrapper = await openWorkspace();
+    // An ordinary field with focus — the composer's draft, the Files path
+    // box, any of them. The event is dispatched FROM it, bubbles, and the
+    // capture handler sees an editing target.
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    field.focus();
+
+    // Stands down WITHOUT claiming the key: prose is being typed.
+    expect(await pressRename(field)).toBe(false);
+    expect(wrapper.find('input.rename-input').exists()).toBe(false);
+    field.remove();
+    wrapper.unmount();
+  });
+});

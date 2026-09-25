@@ -255,6 +255,22 @@ describe('the registry', () => {
     expect(menu).toContain('Ctrl+W');
     expect(menu).toContain('Ctrl+R');
   });
+
+  it('holds the rename chord: the menu’s Force Reload, claimed once and fixed', () => {
+    // The user's ask, verbatim: "ctrl+shift+R - rename the current tab". The
+    // shifted letter encodes nothing at a shell, and on Windows and Linux the
+    // default menu that binds Force Reload is gone — but it SURVIVES on darwin,
+    // which is why the handler stands down there (defaultMenu.ts) instead of a
+    // second default existing. And the entry is fixed because the validator
+    // refuses this chord outright: a user who moved it away could never move
+    // it back, so `rebindable: true` would promise something the registry
+    // itself would not honour — the same reason the default-validation test
+    // above skips non-rebindable specs rather than blesses this chord.
+    const spec = shortcutById('tabs.rename')!;
+    expect(spec.defaults).toEqual(['Ctrl+Shift+R']);
+    expect(spec.rebindable).toBe(false);
+    expect(spec.surface).toBe('workspace');
+  });
 });
 
 /**
