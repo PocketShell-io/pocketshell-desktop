@@ -27,9 +27,9 @@ thing) across a boundary.
 function that needs its own section headers to be readable wants to be two
 functions. Flag anything over ~80 lines for splitting; flag anything whose
 doc comment needs paragraphs per branch. Accepted exception: `onCustomKey`
-(147 lines) is ~90% cited why-comment over a flat four-branch ladder —
-extracting the branches would scatter each decision record away from the code
-it argues for.
+in `TerminalView.vue` is mostly cited why-comment over a flat branch
+ladder — extracting the branches would scatter each decision record away
+from the code it argues for.
 
 **3. Guard clauses; shallow nesting.** Edges return early; the happy path
 reads top to bottom at no more than two levels of indentation. `if` ladders

@@ -12,7 +12,7 @@ hosts or real provider credentials.**
 |---|---|---|---|---|
 | **Unit** | vitest (node) | none (pure logic) | parsers, ssh-config, known_hosts, reconnect FSM logic, port-scanner parser, shell-quote | every push |
 | **Integration** | vitest + `testcontainers` | ephemeral Docker port per test | SshService, SftpService, forwarder round-trips, helper-client | every push (requires Docker) |
-| **E2E** | Playwright + Electron | fixed compose port (3205) | full UI flows: host pick → tree → terminal → files → conversation → usage | on PR + pre-release |
+| **E2E** | Playwright + Electron | fixed compose port (3205) | full UI flows: host pick → tree → terminal → composer → creation | on PR + pre-release |
 | **Manual smoke** | `scripts/smoke.sh` | compose fleet | brings everything up, runs unit+integration+E2E, tears down, prints summary | pre-release gate |
 
 ### Unit
@@ -24,8 +24,9 @@ transforms bytes → data:
   HostName, Port, User, IdentityFile, ProxyJump, ForwardAgent,
   LocalForward, RemoteForward, wildcards, `Include`).
 - `KnownHosts`: matcher accepts/rejects; TOFU path returns "unknown".
-- `parsers.ts`: `sessions list` table, `resumable` table, `usage --json`
-  NDJSON — pinned to fixture strings copied
+- The helper parsers (`parsers.ts`, `cliParsers.ts`, `usageParsers.ts`):
+  the `sessions list` table and its enrichment columns, the host CLI
+  shapes, `usage --json` NDJSON — pinned to fixture strings copied
   from the source repo so shapes stay byte-identical.
 - `AutoForwarder` port-resolution (mirror vs allocate), `PortScanner`
   output parsing (`ss`/`netstat` shapes).
@@ -69,10 +70,10 @@ Examples:
   sshd and round-trip `whoami`. Main's half of reconnect; the renderer FSM
   that decides WHEN to redial is unit-tested under fake timers
   (`connectionAutoReconnect.test.ts`).
-- `HelperIntegration`: against the `helper` image, `pocketshell sessions
-  list`, `usage --json` parse cleanly; `sessions
+- `PocketshellClientIntegration`: against the `helper` image, `pocketshell
+  sessions list`, `usage --json` parse cleanly; `sessions
   create` then `sessions list` shows it. The env-editor round trip
-  (FEATURES.md F16) rides here too: `env set` (a `{"KEY":"value"}` JSON
+  rides here too: `env set` (a `{"KEY":"value"}` JSON
   object on the command's STDIN — never argv) writes a value containing
   quotes, dollars and `=`; `env list` shows the key `hasValue`;
   `env get` reads the exact value back; an explicit `--file .envrc` write
@@ -81,17 +82,25 @@ Examples:
 ### E2E
 
 Playwright launches the **packaged** Electron app (built once per run)
-against a fixed compose service on `127.0.0.1:3205`. Scenarios:
+against a fixed compose service on `127.0.0.1:3205`. The specs:
 
-1. **Core terminal flow (Phase 1):** host picker lists the seeded
-   `pocketshell-test` host → click → bootstrap completes → session tree
-   shows seeded sessions → click one → terminal renders → type `echo hi`
-   → assert visible output.
-2. **Files (Phase 2):** open Files tab → browse `~` → open a seeded file
-   → edit → save → reopen / second-channel `cat` shows the change.
-3. **Forwards (Phase 3):** open Port panel → add a forward → curl it.
-4. **Agents (Phase 4):** open a seeded session → Conversation tab renders
-   messages → Usage tab shows cards.
+- `core-flow` — the host picker lists the seeded `pocketshell-test` host →
+  click → bootstrap completes → the session tree shows seeded sessions →
+  click one → the terminal renders → typing reaches the shell.
+- `composer` — the panel floats over the terminal without resizing it,
+  per-session drafts survive switching away and back, typing at a closed
+  composer opens it and keeps the first letter, a delivered send puts it
+  away, the multi-line paste send reaches the pane whole, and the doodle
+  stages as an image attachment.
+- `create-focus` / `create-switch-wrong-folder` — creating from the
+  workspace `+` and the panel `+` lands the keyboard and the new tab on the
+  created session, in the created folder's workspace.
+- `projects` — folder-first creation (browse, create, clone) and the port
+  panel's controls.
+- `session-nav` — session-scoped navigation and terminal wiring, including
+  the guard that the retired Conversation tab stays gone.
+- `terminal-style-escape` — the injected terminal stylesheet never becomes
+  visible content, across tab switches, hidden panes and resizes.
 
 Headless in CI; screenshots + traces on failure.
 
@@ -345,12 +354,11 @@ npm run test:coverage
 
 ### Coverage
 
-`npm run test:coverage` runs the unit tier under the v8 provider with all
-three source trees included (`src/main`, `src/preload`, `src/renderer`,
-`src/shared`) — a report that only watched `src/main` would silently claim
-the renderer was covered when it was merely unmeasured. Baseline
-(2026-09-09): **89.7% statements overall**; renderer/shared sit at 90–100%,
-and the honest gaps are deliberate:
+`npm run test:coverage` runs the unit tier under the v8 provider with every
+source tree in this repo included (`src/main`, `src/preload`,
+`src/renderer`, `src/shared`) — a report that only watched `src/main` would
+silently claim the renderer was covered when it was merely unmeasured. The
+honest gaps are deliberate:
 
 - `main/index.ts` (0%) — the Electron bootstrap: window creation, the
   single-instance lock, protocol registration. It is what the E2E tier
