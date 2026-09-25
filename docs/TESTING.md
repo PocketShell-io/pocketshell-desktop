@@ -401,3 +401,20 @@ against `main`, and manual dispatch. Three jobs:
 Plain `main` pushes and PRs run build + smoke and stop there, so the
 pipeline is exercised continuously and a release tag never triggers it for
 the first time.
+
+---
+
+## 7. Captured screenshots
+
+Screenshots are local-only reference, never committed — `docs/screenshots/`
+is gitignored. Recapture by driving the **built** app (`npm run build` →
+`out/main/index.js`) with Playwright's `_electron.launch`, viewport
+1280×800, against an isolated fake profile so the user's real
+`~/.ssh/config` is never touched. That fake profile directory **must contain
+an `AppData\Roaming` subtree**, or Electron fails to resolve
+`app.getPath('appData')`, `requestSingleInstanceLock()` returns false and
+the app exits silently with code 3 — documented nowhere else. When
+recapturing the session panel, cover: two or more `$HOME` roots, ≥10
+one-session folders under one of them, a folder holding 2+ sessions, a
+worktree-divergent name, an out-of-`$HOME` session, and a no-cwd session
+whose name names a real root.

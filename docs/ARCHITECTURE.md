@@ -252,7 +252,26 @@ canvas, for checking a picture against the ground its author assumed.
 Other binary offers hex/download. HTML,
 markdown and SVG are documents, not binaries: each opens with a
 Preview/Source toggle over the sandboxed `psview:` frame served by
-`src/main/preview/` — DESIGN.md §5.7b holds the reasoning.
+`src/main/preview/`. Every guarantee that frame rests on is a property of
+how bytes are SERVED, not of where they came from: an empty sandbox, a
+per-response CSP naming no remote scheme, and request paths always folded
+and re-resolved with `realpath` on the host. Markdown reuses the HTML
+pipeline rather than earning a second one — the converter (`marked`,
+pinned) runs in main, so a relative link to another `.md` renders too and a
+docs tree browses as a small site; its boundary is deliberately the whole
+host rather than one folder, because a README is cross-referenced by `../`
+and absolute paths — every file it can name is one the SSH user can already
+open in the Files tab. Raw HTML in markdown passes through: under this
+sandbox and CSP nothing it can spell is live, and escaping would cost every
+README that uses `<details>` while removing no threat the pipeline does not
+already accept for `.html`. SVG is served untouched at `image/svg+xml` —
+the HTML treatment with a different content type — and is reasoned about as
+a document, not a picture: rendered, it can carry `<script>`, fetch remote
+references and navigate, all refused by the same sandbox and CSP. Clicking
+an *external* link hands a web URL to the system browser (http(s)-only
+allow-list); the frame never touches the network. The preview always
+renders the host's copy, so unsaved edits are not shown — the toolbar says
+so.
 
 The active Files pane is mounted only while its workspace tab is visible, so
 the files store remembers each tab's directory and selected file across a
