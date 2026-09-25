@@ -88,7 +88,7 @@ with a checkbox each; ONLY ticked hosts are uploaded — an unticked host
 never leaves the machine, encrypted or otherwise. That is the privacy
 property, and it is why the payload is assembled rather than merged: the
 payload is the ticked set, and pushing replaces the account's content with
-it (`assembleSyncSet` in `src/shared/syncMerge.ts`).
+it (`assembleSyncSet`, in @pocketshell/core).
 
 The tick marks live in the settings store (`syncSelectedHosts`, per
 machine, persisted — a forgotten selection is the dangerous direction: a
@@ -140,7 +140,7 @@ because the store branches on the first two and an IPC rejection would
 flatten that into a string. Pull distinguishes a fresh account (`absent`)
 from a blob. `accountHosts` answers the session cache described under
 Encryption. `applyHosts` degrades its payload per entry
-(`coerceHostEntries` in `src/shared/sync.ts`) before anything reaches the
+(`coerceHostEntries`, in @pocketshell/core) before anything reaches the
 config writer.
 
 The renderer side is `src/renderer/stores/sync.ts` plus

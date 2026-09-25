@@ -333,9 +333,10 @@ owns it, so a reconnect cannot redirect the next keystroke into xterm.
 
 ## 13. Files
 
-The tree is its own documentation: `src/shared/composerText.ts`,
-`composerSend.ts`, `composerAttachments.ts`, `composerGeometry.ts`,
-`doodleGeometry.ts`, `agentCommands.ts`; `stores/composer.ts`;
+The tree is its own documentation: `composerText.ts`,
+`composerAttachments.ts`, `composerGeometry.ts`, `doodleGeometry.ts`
+(`src/shared/`), `composerSend` and `agentCommands` (in @pocketshell/core);
+`stores/composer.ts`;
 `components/PromptComposer.vue`, `ComposerAttachmentTiles.vue`,
 `SlashCommandDropdown.vue`, `DoodleCanvas.vue`; mounted by
 `views/FolderWorkspaceView.vue`.

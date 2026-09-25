@@ -51,8 +51,10 @@ Standard hardened Electron: three processes.
 The directories under `src/` are the map: `main/` groups by domain (`ssh/`,
 `sftp/`, `portfwd/`, `helper/`, `attachments/`, `preview/`, `projects/`,
 `ssh-config/`, `update/`), `renderer/` is `stores/` + `views/` +
-`components/`, `shared/` holds the types and pure logic both processes
-import, `preload/` is the bridge. Two `tsconfig.json`s:
+`components/`, `shared/` re-exports the types and pure logic both processes
+import — the implementations live in the `@pocketshell/core` sibling repo
+(`../pocketshell-core`), and these files keep the desktop's import paths
+stable — and `preload/` is the bridge. Two `tsconfig.json`s:
 `tsconfig.node.json` (main + preload, `@types/node`) and
 `tsconfig.web.json` (renderer, DOM libs), over a shared strict base.
 
@@ -275,7 +277,8 @@ The renderer is layered; each layer talks only to the one below:
 
 - **Components** (`views/`, `components/`) render. Templates do not compute;
   input policy, gestures and focus are theirs. Shared visual components,
-  theme/font policy and CSS tokens live in `packages/ui/src`; they use
+  theme/font policy and CSS tokens live in `@ui` (the `pocketshell-core`
+  sibling's `packages/ui`); they use
   platform-free props and events and do not import desktop stores or IPC.
 - **Composables and controllers** (`usePaneWidth`, `useStripDrag`,
   `useWorkspaceMemory`, `terminalPane.ts`) own reusable reactive logic and
@@ -286,7 +289,8 @@ The renderer is layered; each layer talks only to the one below:
   orchestrate their domain: the connection store drives the reconnect loop
   (§9), the files store runs the open/save pipelines over the SFTP bridge.
 - **Plain TS modules** hold the extractable logic — `reconnectLoop.ts`,
-  `remotePaths.ts`, `terminalLinks.ts`, `sessionTree.ts` and the rest — which
+  `remotePaths.ts`, `terminalLinks.ts`, and the session grouping algebra
+  shared with the other clients through `@pocketshell/core` — which
   is what keeps it unit-testable without Pinia and out of both stores and
   views.
 
