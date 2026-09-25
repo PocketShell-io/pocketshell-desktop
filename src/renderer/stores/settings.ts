@@ -7,6 +7,11 @@ import {
   TERMINAL_FONT_SIZE_DEFAULT,
 } from '@ui/fonts';
 import { type FolderOrder, normaliseFolderOrder } from '../folderOrder';
+import {
+  FOLDER_SORT_DEFAULT,
+  normaliseFolderSort,
+  type FolderSortKey,
+} from '../folderSort';
 import { normaliseRootList, normaliseRootPath, SESSION_ROOTS_MAX } from '../sessionRoots';
 import { parseThemeChoice, THEME_CHOICE_DEFAULT } from '@ui/themes';
 import { parseZoomPercent, stepZoomPercent, ZOOM_PERCENT_DEFAULT } from '../zoom';
@@ -180,6 +185,23 @@ export interface AppSettings {
    * them.
    */
   folderOrder: FolderOrder;
+  /**
+   * The sort the session panel orders its folder rows by, one of
+   * `renderer/folderSort.ts`'s keys — `host` (the listing's own order, what
+   * shipped), `activity`, `name`, `created`.
+   *
+   * GLOBAL, not per host like `folderOrder` beside it, and that is a decision
+   * rather than an omission: the arrangement is a fact about a BOX (a row's
+   * place in `git` on hetzner says nothing about `git` on aws), while the sort
+   * is a way of READING a list — the same preference everywhere, the panel
+   * width's class of setting rather than the roots'. The rules the keys obey
+   * (within roots only, stable, manual arrangement still wins on top) live in
+   * `folderSort.ts`; this store only persists the choice.
+   *
+   * No Settings screen control, by `folderOrder`'s precedent: it is written by
+   * the panel's own sort menu, next to the rows it orders.
+   */
+  sessionTreeSort: FolderSortKey;
   /**
    * What the agent-launch dialog pre-selects, carried over from last time.
    *
@@ -434,6 +456,9 @@ const SETTING_SPECS: SettingSpecs = {
   // the panel does for a user who has never dragged a row — the same rule
   // every other default here follows.
   folderOrder: { default: {}, parse: normaliseFolderOrder },
+  // 'host' is what shipped — the listing's own order, no client-side sort —
+  // so an upgrade changes nothing on screen until the user opens the sort menu.
+  sessionTreeSort: { default: FOLDER_SORT_DEFAULT, parse: normaliseFolderSort },
   // Matches the helper's own `[default: skip-permissions]` and the phone's
   // first segment, so a fresh install opens the dialog on claude / skip ON.
   agentLaunchDefaults: { default: AGENT_LAUNCH_DEFAULTS, parse: asAgentLaunchDefaults },

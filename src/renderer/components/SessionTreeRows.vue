@@ -249,14 +249,17 @@ const { dragging, dropTarget, onRowDragStart, onRowDragOver, onRowDrop, onRowDra
             >
               {{ badge }}
             </span>
-            <!-- The folder's age is its NEWEST session's, and it is now
+            <!-- The folder's age is its NEWEST session's, and it is
                  INDEPENDENT of where the row sits: the list is in the host's
-                 order plus the user's own arrangement, so times run in
-                 no particular direction down a root. That is a cost of the
-                 change and it is paid deliberately — an order you can predict
-                 is worth more than one that happened to double as a sort key
-                 — and it makes this field carry MORE than it used to rather
-                 than less, since position no longer says any of it. -->
+                 order — or the sort the user picked (folderSort.ts) — plus the
+                 user's own arrangement, so by default times run in no
+                 particular direction down a root. That is a cost of the
+                 host-order change and it is paid deliberately — an order you
+                 can predict is worth more than one that happened to double as
+                 a sort key — and it makes this field carry MORE than it used
+                 to rather than less, since position no longer says any of it.
+                 Picking the activity sort is what points position back at the
+                 timestamp. -->
             <span class="row-time">{{ fmtRelative(dir.mostRecentActivity, now) }}</span>
           </button>
         </li>

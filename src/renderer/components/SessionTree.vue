@@ -77,8 +77,14 @@ import { useProjectsStore } from '../stores/projects';
 import { useSessionsStore } from '../stores/sessions';
 import { useSettingsStore } from '../stores/settings';
 import { isShortcut } from '../../shared/shortcuts';
+import type { Box } from '../../shared/popupPlacement';
 import { editingTarget } from '../editingTarget';
 import { useFolderTree } from '../folderTree';
+import {
+  FOLDER_SORT_KEYS,
+  FOLDER_SORT_LABELS,
+  type FolderSortKey,
+} from '../folderSort';
 import { rootHostPath } from '../sessionRoots';
 import { directoryForSession, type SessionDirectory } from '../sessionTree';
 import type { SessionSummary } from '@pocketshell/core';
@@ -176,6 +182,44 @@ const creating = ref<{ startIn: string | null } | null>(null);
  */
 function openPanel(name: HostPanel): void {
   emit('panel', name);
+}
+
+// ---------------------------------------------------------------------------
+// The folder sort — one menu, four keys, `settings.sessionTreeSort`
+// ---------------------------------------------------------------------------
+
+/**
+ * The sort menu's state and trigger. The rules the keys obey live in
+ * ../folderSort.ts (within roots, stable, the manual drag still wins on top);
+ * the choice itself lives in the settings store, global rather than per host —
+ * a way of reading a list, not a fact about a box (the store's field comment
+ * holds the argument).
+ *
+ * PopupMenu with a snapshotted anchor box, exactly the collapsed rail's
+ * session switcher (HostWorkspaceView `toggleSwitcher`): the menu is
+ * teleported past every clipping ancestor and placed from a measured rect, and
+ * the button sits in the `ignore` list so the click that toggles it cannot be
+ * the click that closes it.
+ */
+const sortBtn = ref<HTMLButtonElement | null>(null);
+const sortMenu = ref<{ anchor: Box } | null>(null);
+
+function openSortMenu(): void {
+  if (sortMenu.value) {
+    sortMenu.value = null;
+    return;
+  }
+  const el = sortBtn.value;
+  sortMenu.value = {
+    anchor: el?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 },
+  };
+}
+
+const sortOptions = FOLDER_SORT_KEYS.map((key) => ({ key, label: FOLDER_SORT_LABELS[key] }));
+
+function setSort(key: FolderSortKey): void {
+  settings.sessionTreeSort = key;
+  sortMenu.value = null;
 }
 
 /**
@@ -405,6 +449,51 @@ function onSessionStarted(summary: SessionSummary): void {
          rows announce through it: a select for a click, a menu payload for a
          right-click, and the folder each `+` resolved for the ONE creation
          flow, which stays here with the dialog. -->
+    <!-- The panel's tool strip, under the header. The header row above is at
+         its exact 232px capacity (the arithmetic beside `.header-actions`), so
+         the panel's second control surface lives on a second row — and the
+         sort is the first thing that moved in. -->
+    <div class="tree-filter">
+      <!-- The sort trigger. A chevron, not a glyph that has to be learned: the
+           menu it opens names every key in words, and the tooltip doubles as
+           the accessible name. Tinted while a non-default sort is in force, so
+           a list that is not in host order says so from the strip. -->
+      <button
+        ref="sortBtn"
+        class="icon-btn sort-btn"
+        :class="{ engaged: settings.sessionTreeSort !== 'host' }"
+        title="Sort folders"
+        aria-label="Sort folders"
+        @click="openSortMenu"
+      >
+        <AppIcon name="chevron-down" :size="14" />
+      </button>
+      <PopupMenu
+        v-if="sortMenu"
+        :anchor="sortMenu.anchor"
+        :ignore="[sortBtn]"
+        label="Sort folders"
+        @close="sortMenu = null"
+      >
+        <ul>
+          <!-- One key per item, the active one ticked — a radio in menu
+               clothing. The labels are folderSort.ts's (one source, so the
+               menu and the tests read the same words). -->
+          <li v-for="opt in sortOptions" :key="opt.key">
+            <button class="menu-item" @click="setSort(opt.key)">
+              <AppIcon
+                name="check"
+                :size="14"
+                class="sort-check"
+                :class="{ on: settings.sessionTreeSort === opt.key }"
+              />
+              {{ opt.label }}
+            </button>
+          </li>
+        </ul>
+      </PopupMenu>
+    </div>
+
     <!-- Crash warnings stand ABOVE the tree on purpose: a session that
          died badly is the one fact about this host the panel must not let
          the user scroll past. No dismiss — only `a ack`, one row or all. -->
@@ -620,6 +709,36 @@ function onSessionStarted(summary: SessionSummary): void {
   align-items: center;
   gap: var(--sp-1);
   margin-left: auto;
+}
+/* The tool strip under the header. Same left/right padding split as the header
+   itself (a lone control on the left is inset differently from a run on the
+   right), one row of --control-h, and a bottom hairline so the strip reads as
+   panel chrome rather than as a first row of the list it sits above. */
+.tree-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: 0 0 auto;
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+/* Tinted while a non-default sort is in force — the panel is then drawn in an
+   order the host did not send, and a control that goes quiet about that reads
+   as decoration. */
+.sort-btn.engaged {
+  color: var(--accent);
+}
+/* The sort menu's tick column: always laid out, visible only on the active
+   key, so the items align and the tick reads as a radio rather than as an
+   action icon. `:deep` because the items arrive through PopupMenu's slot and
+   carry THIS component's scope id — the same reason the danger-item rules
+   below use it. */
+.popup-menu :deep(.sort-check) {
+  visibility: hidden;
+  color: var(--accent);
+}
+.popup-menu :deep(.sort-check.on) {
+  visibility: visible;
 }
 .error {
   padding: 0 var(--sp-3) var(--sp-2);

@@ -33,6 +33,7 @@
  */
 import { computed, type ComputedRef } from 'vue';
 import { applyFolderOrder } from './folderOrder';
+import { applyFolderSort } from './folderSort';
 import { inferHome } from './sessionRoots';
 import { groupSessionsIntoRoots, type SessionDirectory, type SessionRootFolder } from './sessionTree';
 import { useConnectionStore } from './stores/connection';
@@ -92,23 +93,37 @@ export function useFolderTree(): FolderTree {
    */
   const host = computed(() => connection.activeHost?.name ?? '');
 
-  const roots = computed(() =>
-    // Derived first, the user's own arrangement on top. The ORDER OF THE TWO
-    // STEPS is the resolution of the two halves of one request: the host's
-    // order is what a folder row gets until the user moves it, and a manual
-    // position wins once there is one. Same shape, same order, as the
-    // workspace's tab bar.
-    //
-    // A pure projection, deliberately: the sessions store refreshes every five
-    // seconds and this recomputes each time, so the arrangement has to be
-    // re-APPLIED rather than remembered. Nothing here mutates the store, holds
-    // a copy of the row list, or reconciles anything — which is what makes a
-    // drag survive the poll instead of racing it.
-    applyFolderOrder(
-      groupSessionsIntoRoots(sessions.sessions, home.value, settings.sessionRootsFor(host.value)),
-      settings.folderOrderFor(host.value),
+  /**
+   * The panel's order, in its three stages.
+   *
+   * The HOST's order first (`groupSessionsIntoRoots` folds the listing
+   * document-order), then the sort the user picked (`applyFolderSort` — a no-op
+   * for the `host` key, which is what a user who never opened the sort menu
+   * sees), then the user's own dragged arrangement on top (`applyFolderOrder`
+   * — a manual position wins over both; unranked folders keep the sorted order
+   * relative to each other, because both projections are stable).
+   *
+   * Pure projections, deliberately: the sessions store refreshes every five
+   * seconds and this recomputes each time, so every stage is re-APPLIED rather
+   * than remembered. Nothing here mutates the store, holds a copy of the row
+   * list, or reconciles anything — which is what makes a drag survive the poll
+   * instead of racing it.
+   */
+  const grouped = computed(() =>
+    applyFolderSort(
+      groupSessionsIntoRoots(
+        sessions.sessions,
+        home.value,
+        settings.sessionRootsFor(host.value),
+      ),
+      settings.sessionTreeSort,
     ),
   );
+  const arranged = computed(() =>
+    applyFolderOrder(grouped.value, settings.folderOrderFor(host.value)),
+  );
+
+  const roots = arranged;
 
   const folders = computed(() => roots.value.flatMap((root) => root.directories));
 
