@@ -157,7 +157,7 @@ that bind it. Stands down inside a text field, like the create pair above.
 
 | Chord | Does | Note |
 |---|---|---|
-| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: the host's sessions grouped by root — a folder holding several sessions gets a row per session, opening the folder with that tab in front — then the workspace verbs: new session, quick search, the Ports/Usage/Settings overlays, a sort, refresh, zoom, connect to another SSH host, hide the panel, back to the host list. Filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
+| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: the host's sessions grouped by root — a folder holding several sessions gets a row per session spelled `folder:session` (the host's own selector form), opening the folder with that tab in front — then the workspace verbs: new session, quick search, the Ports/Usage/Settings overlays, a sort, refresh, zoom, connect to another SSH host, hide the panel, back to the host list. Filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
 
 A PAIR of chords, fixed for the same reason the tab arrows are a pair: an
 override replaces a binding's chords outright and would lose one.

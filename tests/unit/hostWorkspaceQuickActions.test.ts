@@ -147,17 +147,18 @@ describe('the quick-actions palette wiring', () => {
   it('a folder holding several sessions gets one row per session', async () => {
     await summon('p');
     const labels = paletteRows().map((r) => r.textContent ?? '');
-    // `x` holds two sessions: both get their own row, labelled by the name
-    // the tab bar knows. `y` holds one — folder and session are one
-    // destination, so it gets only its folder row.
-    expect(labels.some((t) => t.includes('Open git-x-1'))).toBe(true);
-    expect(labels.some((t) => t.includes('Open git-x-2'))).toBe(true);
-    expect(labels.filter((t) => t.includes('Open git-y-1'))).toHaveLength(0);
+    // `x` holds two sessions: both get their own row, spelled
+    // `folder:session` — the host's own selector form, because a bare tag
+    // (`main`) repeats down the list. `y` holds one — folder and session are
+    // one destination, so it gets only its folder row.
+    expect(labels.some((t) => t.includes('Open x:git-x-1'))).toBe(true);
+    expect(labels.some((t) => t.includes('Open x:git-x-2'))).toBe(true);
+    expect(labels.filter((t) => t.includes('Open y:git-y-1'))).toHaveLength(0);
   });
 
   it('running a session row opens that folder with that tab asked for', async () => {
     await summon('p');
-    const row = paletteRows().find((r) => r.textContent?.includes('Open git-x-2'));
+    const row = paletteRows().find((r) => r.textContent?.includes('Open x:git-x-2'));
     expect(row).toBeDefined();
     row!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
