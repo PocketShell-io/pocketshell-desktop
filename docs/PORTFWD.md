@@ -77,9 +77,9 @@ the row inactive and is **never retried**.
 
 ## 8. Reconnect
 
-The supervisor that opened its own second connection is gone; the schedule
-survives as the pure `shared/reconnectBackoff.ts` — 5 → 10 → 20 → 40 → 60s,
-giving up after 10 attempts so a dead host does not spin forever. On a
+Reconnect dials on the shared `reconnectBackoff` schedule — 5 → 10 → 20 →
+40 → 60s, giving up after 10 attempts so a dead host does not spin forever.
+On a
 transport drop `ForwardService` suspends the engine, keeping names, remaps,
 intents and `autoEnabled`; the renderer restores auto-forward from the
 persisted preference before exposing the new connection id. Survives:

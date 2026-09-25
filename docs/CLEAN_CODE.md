@@ -3,9 +3,8 @@
 The rules this codebase is held to. Adapted from Robert C. Martin's *Clean
 Code* and tightened for what this repo actually is: TypeScript everywhere,
 Vue 3 in the renderer, an Electron main process that owns an SSH transport.
-Rules marked with a check are enforced mechanically by `eslint.config.js`
-(type-checked linting); the rest are enforced by review. Full-repo audits
-have been run; their findings became commits.
+Some rules are enforced mechanically — by `eslint.config.js` (type-checked
+linting) and the gates under Enforcement; the rest are enforced by review.
 
 The rules are additive to `AGENTS.md` (one concern per commit, rebuild before
 handoff) and `docs/TESTING.md` (a red file, never a green tick nobody
@@ -62,7 +61,7 @@ derivation comment at the site are acceptable.
 **8. Dead code is deleted.** Commented-out code, unreachable branches, unused
 exports, params accepted and ignored — gone; git remembers. Two sanctioned
 exceptions, both requiring the label in so many words: test-only surfaces
-(`/** Test-only: … */`, as `themes.ts`'s light-mode hook does) and
+(`/** Test-only: … */`) and
 deliberate cross-platform parity shims (state which platform in the doc).
 
 **9. Errors: one channel per layer.** Expected failures are result objects

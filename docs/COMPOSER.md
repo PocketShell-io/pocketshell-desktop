@@ -645,13 +645,11 @@ capture-pane` that the pane received **one** submission containing both
 lines and the `Attached
 files:` block — the bracketed-paste proof (§16.2).
 
-## 25. Dependencies, settled
+## 25. The shells registry
 
-**§25.2 The shells registry:** `src/renderer/stores/shells.ts` keeps a
-`register` / `unregister` / `shellIdFor` registry keyed by session, so the
-composer writes to the same shell the terminal shows. Everything else this
-spec once depended on — session identity, agent detection, the attachments
-IPC contract — landed.
+`shells.ts` (`@ui/app/stores`) keeps a `register` / `unregister` /
+`shellIdFor` registry keyed by session, so the composer writes to the same
+shell the terminal shows.
 
 ## 26. Two behaviours the user drives from Settings
 
@@ -831,7 +829,7 @@ on the PNG the first pass produced, not on vector items, which are not
 persisted; `doodleAttachmentName()` strips the previous decoration so the
 name is stable under any number of passes.
 
-### 27.8 Cancelling no longer destroys the drawing
+### 27.8 Cancelling does not destroy the drawing
 
 Every dismissal routes through `requestClose()`. An empty sheet still
 closes on one Escape — a doodle opened by mistake must not argue. A sheet
