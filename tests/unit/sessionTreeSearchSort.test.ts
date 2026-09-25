@@ -207,4 +207,32 @@ describe('the sort menu — in the summoned row, and in Settings', () => {
     expect(dirLabels(wrapper)).toEqual(['ate', 'wye', 'zed']);
     expect(useSettingsStore().sessionTreeSort).toBe('name');
   });
+
+  it('picking a sort clears a dragged arrangement instead of being vetoed by it', async () => {
+    // The measured failure this guards: with a manual ranking stored, the
+    // sorted projection used to be re-ranked by the stale arrangement, so
+    // "Name" moved nothing and looked broken. Ranks and sorts are one mode
+    // at a time now — the pick clears the ranks.
+    const settings = useSettingsStore();
+    settings.folderOrder = { hetzner: ['~/git/wye', '~/git/ate', '~/git/zed'] };
+
+    const wrapper = await open([
+      session('git-wye', `${HOME}/git/wye`, 300),
+      session('git-ate', `${HOME}/git/ate`, 100),
+      session('git-zed', `${HOME}/git/zed`, 200),
+    ]);
+    await summon(wrapper);
+    await wrapper.find('button.sort-btn').trigger('click');
+    await flush(wrapper);
+    const nameItem = wrapper
+      .findAll('.menu-stub .menu-item')
+      .find((b) => b.text().includes('Name'))!;
+    await nameItem.trigger('click');
+    await flush(wrapper);
+
+    expect(settings.sessionTreeSort).toBe('name');
+    expect(settings.folderOrder).toEqual({});
+    // Alphabetical, NOT rank order (which would still be wye, ate, zed).
+    expect(dirLabels(wrapper)).toEqual(['ate', 'wye', 'zed']);
+  });
 });

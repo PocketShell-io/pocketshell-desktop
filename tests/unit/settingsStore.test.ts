@@ -581,6 +581,19 @@ describe('folder order', () => {
     expect(settings.folderOrder).toEqual({});
   });
 
+  it('picking a sort clears every host’s arrangement — the two are one mode', () => {
+    // The measured failure: a stale ranking silently vetoed the picked sort,
+    // folder by folder, and the user read the feature as broken. Sorting and
+    // arranging are mutually exclusive now, and the exclusivity lives in the
+    // one action both doors call.
+    const settings = useSettingsStore();
+    settings.setFolderOrder('hetzner', ['~/git/a']);
+    settings.setFolderOrder('laptop', ['~/git/b']);
+    settings.setSessionTreeSort('name');
+    expect(settings.sessionTreeSort).toBe('name');
+    expect(settings.folderOrder).toEqual({});
+  });
+
   it('ignores a write with no host, because there is nothing to key it on', () => {
     const settings = useSettingsStore();
     settings.setFolderOrder('', ['~/git/a']);
