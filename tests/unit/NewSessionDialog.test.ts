@@ -23,14 +23,17 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 const home = vi.fn<() => Promise<{ ok: boolean; home?: string; error?: string }>>();
 const realPath = vi.fn<(id: string, path: string) => Promise<string>>();
 const list = vi.fn<(id: string, path: string) => Promise<{ name: string; type: string }[]>>();
-const deriveName = vi.fn<() => Promise<string>>();
+const deriveName = vi.fn<(id: string, folder: string, customName?: string) => Promise<string>>();
 const startSession = vi.fn<(id: string, req: unknown) => Promise<unknown>>();
 
 vi.mock('@ui/app/ipc', () => ({
   api: {
     projects: {
       home: () => home(),
-      deriveName: () => deriveName(),
+      // Forwarded, not dropped: the session-name tests assert on the override
+      // the preview threads through this call.
+      deriveName: (id: string, folder: string, customName?: string) =>
+        deriveName(id, folder, customName),
       reposList: vi.fn().mockResolvedValue({ repos: [] }),
       onCloneProgress: vi.fn(),
       startSession: (id: string, req: unknown) => startSession(id, req),
@@ -721,5 +724,156 @@ describe('NewSessionDialog roots menu', () => {
     await flush(wrapper);
     expect(wrapper.find('button[title="Project roots"]').exists()).toBe(false);
     wrapper.unmount();
+  });
+});
+
+/**
+ * The session name in the commit bar is a control, not a label.
+ *
+ * It used to be read-only: the folder derived the name and the footer only
+ * previewed it — "it is never typed", the old comment said. The user pointed
+ * at `main` and asked to change it, so the preview is now the editor: click,
+ * type, Enter. The label rides the SAME derivation the folder name takes
+ * (`customName` in useNewSessionCommit.ts) — the preview re-resolves through
+ * `deriveName` with the override in hand, so what the footer shows is what
+ * `startSession` will resolve, sanitising included.
+ */
+describe('NewSessionDialog session name', () => {
+  // Echo the derivation rule the way the host would: a custom label wins,
+  // otherwise the folder's derived name. The default mock above always says
+  // `git-dataops`, which cannot see the override at all.
+  function echoDerivation(): void {
+    deriveName.mockImplementation(async (_id: string, _folder: string, custom?: string) => {
+      return custom && /[A-Za-z0-9]/.test(custom) ? custom : 'git-dataops';
+    });
+  }
+
+  const editor = (wrapper: VueWrapper) => wrapper.get('input[aria-label="Session name"]');
+
+  async function commitEdit(wrapper: VueWrapper, name: string): Promise<void> {
+    await editor(wrapper).setValue(name);
+    await editor(wrapper).trigger('keydown', { key: 'Enter' });
+    await flush(wrapper);
+  }
+
+  it('previews the derived name and commits none', async () => {
+    const wrapper = await open(`${HOME}/git`);
+    expect(wrapper.get('.preview-name').text()).toBe('git-dataops');
+
+    await button(wrapper, 'Start shell')!.trigger('click');
+    await flush(wrapper);
+    // No override, no `customName` in the request — the store spells "derive"
+    // by leaving the field out entirely.
+    expect(startSession.mock.calls[0]![1]).not.toHaveProperty('customName');
+  });
+
+  it('click, type, Enter: the override rides the preview and the commit', async () => {
+    echoDerivation();
+    const wrapper = await open(`${HOME}/git`);
+    await wrapper.get('.preview-name').trigger('click');
+    await flush(wrapper);
+
+    // The editor opens in place, prefilled with the name on screen — editing,
+    // not naming from scratch.
+    expect(editor(wrapper).element as HTMLInputElement).toHaveProperty('value', 'git-dataops');
+    await commitEdit(wrapper, 'my-feature');
+
+    expect(wrapper.find('input[aria-label="Session name"]').exists()).toBe(false);
+    expect(wrapper.get('.preview-name').text()).toBe('my-feature');
+    // The preview went through the derivation WITH the label, not around it.
+    expect(deriveName).toHaveBeenLastCalledWith('conn-1', `${HOME}/git`, 'my-feature');
+
+    await button(wrapper, 'Start shell')!.trigger('click');
+    await flush(wrapper);
+    expect(startSession.mock.calls[0]![1]).toMatchObject({ customName: 'my-feature' });
+  });
+
+  it('commits on blur, like Enter — the click that started Start also lands', async () => {
+    // Blur fires BEFORE click: mousedown blurs the field, then the button's
+    // click runs. The name must be committed by then, or Start would create
+    // the session under the old name while the footer shows the new one.
+    echoDerivation();
+    const wrapper = await open(`${HOME}/git`);
+    await wrapper.get('.preview-name').trigger('click');
+    await flush(wrapper);
+    await editor(wrapper).setValue('renamed');
+    await editor(wrapper).trigger('blur');
+    await flush(wrapper);
+
+    await button(wrapper, 'Start shell')!.trigger('click');
+    await flush(wrapper);
+    expect(startSession.mock.calls[0]![1]).toMatchObject({ customName: 'renamed' });
+  });
+
+  it('Escape puts the derived name back and commits nothing', async () => {
+    echoDerivation();
+    const wrapper = await open(`${HOME}/git`);
+    await wrapper.get('.preview-name').trigger('click');
+    await flush(wrapper);
+    await editor(wrapper).setValue('junk');
+    await editor(wrapper).trigger('keydown', { key: 'Escape' });
+    await flush(wrapper);
+
+    expect(wrapper.find('input[aria-label="Session name"]').exists()).toBe(false);
+    expect(wrapper.get('.preview-name').text()).toBe('git-dataops');
+    expect(deriveName).toHaveBeenLastCalledWith('conn-1', `${HOME}/git`, undefined);
+
+    await button(wrapper, 'Start shell')!.trigger('click');
+    await flush(wrapper);
+    expect(startSession.mock.calls[0]![1]).not.toHaveProperty('customName');
+  });
+
+  it('emptying the field falls back to the derived name', async () => {
+    echoDerivation();
+    const wrapper = await open(`${HOME}/git`);
+    await wrapper.get('.preview-name').trigger('click');
+    await flush(wrapper);
+    await commitEdit(wrapper, 'my-feature');
+    expect(wrapper.get('.preview-name').text()).toBe('my-feature');
+
+    // Re-open: the draft starts from the override, and clearing it un-names.
+    await wrapper.get('.preview-name').trigger('click');
+    await flush(wrapper);
+    await commitEdit(wrapper, '');
+
+    expect(wrapper.get('.preview-name').text()).toBe('git-dataops');
+    await button(wrapper, 'Start shell')!.trigger('click');
+    await flush(wrapper);
+    expect(startSession.mock.calls[0]![1]).not.toHaveProperty('customName');
+  });
+
+  it('keeps the override when the folder changes', async () => {
+    // Typed before browsing or after, the label is the user's, not the
+    // folder's: descending must not silently discard it. (`unique` still
+    // guards the collision a kept label can meet on the next create.)
+    echoDerivation();
+    const wrapper = await open(`${HOME}/git`);
+    await wrapper.get('.preview-name').trigger('click');
+    await flush(wrapper);
+    await commitEdit(wrapper, 'my-feature');
+
+    await wrapper.get('.folder-row').trigger('click');
+    await flush(wrapper);
+
+    expect(useProjectsStore().cwd).toBe(`${HOME}/git/dataops`);
+    expect(wrapper.get('.preview-name').text()).toBe('my-feature');
+    expect(deriveName).toHaveBeenLastCalledWith('conn-1', `${HOME}/git/dataops`, 'my-feature');
+  });
+
+  it('is not editable before there is a folder to name', async () => {
+    // The `startIn` clear leaves no cwd and the browse fails: Start is dead,
+    // and the name with it — a field here would claim to name a session the
+    // dialog cannot yet start.
+    const projects = useProjectsStore();
+    projects.cwd = `${HOME}/git/dataops`;
+    realPath.mockRejectedValue(new Error('No such file'));
+
+    const wrapper = await open(`${HOME}/tmp`);
+    const name = wrapper.get('.preview-name');
+    expect(name.attributes('disabled')).toBeDefined();
+
+    await name.trigger('click');
+    await flush(wrapper);
+    expect(wrapper.find('input[aria-label="Session name"]').exists()).toBe(false);
   });
 });
