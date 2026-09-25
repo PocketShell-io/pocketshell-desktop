@@ -176,6 +176,20 @@ describe('the quick-actions palette wiring', () => {
     expect(labels.filter((t) => t.includes('Open y:git-y-1'))).toHaveLength(0);
   });
 
+  it('typing a folder name with several sessions presents exactly those sessions', async () => {
+    await summon('p');
+    const input = document.querySelector('.palette-input') as HTMLInputElement;
+    input.value = 'x:';
+    input.dispatchEvent(new Event('input'));
+    await flush();
+
+    // No vaguer folder row competing for Enter: the choice is the list.
+    expect(paletteRows().map((r) => r.textContent)).toEqual([
+      'Open x:git-x-1',
+      'Open x:git-x-2',
+    ]);
+  });
+
   it('running a session row opens that folder with that tab asked for', async () => {
     await summon('p');
     const row = paletteRows().find((r) => r.textContent?.includes('Open x:git-x-2'));
