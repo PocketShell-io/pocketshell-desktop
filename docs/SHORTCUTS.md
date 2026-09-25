@@ -39,6 +39,7 @@ down the left.
 | `Ctrl+[` / `Ctrl+]` | The tab to the left / right; **stops** at the ends | `FolderWorkspaceView.vue` |
 | `Ctrl+↑` / `Ctrl+↓` | The folder workspace above / below; stops at the ends; crosses root headers | `HostWorkspaceView.vue` |
 | `Ctrl+Shift+R` | Rename the active session tab — the tab menu's "Rename…", field pre-filled with the name the host knows | `useWorkspaceChords.ts` |
+| `Ctrl+F4` | Close the active tab — a Files tab closes outright; a session tab arms the same confirmed Stop dialog its `×` opens, never the kill | `useWorkspaceChords.ts` |
 
 What they cost, stated rather than assumed: through xterm `Ctrl+[` IS Escape
 (readline's meta-prefix) and `Ctrl+]` is GS — Meta stays reachable through
@@ -56,6 +57,16 @@ fixed rather than rebindable because the registry refuses the chord outright —
 a user who moved it away could never move it back. Over a Files tab, which
 has no name the host knows, it stands down entirely rather than swallowing a
 keystroke for nothing.
+
+`Ctrl+F4` is the `×`, on the keyboard, and it keeps the `×`'s two meanings:
+a Files tab closes outright, a session tab arms the Stop dialog — the kill is
+never a keystroke away, because the one control that can destroy a live
+process on another machine must say so and ask. What it costs is stated
+rather than assumed: xterm encodes `Ctrl+F4` as `ESC [ 1 ; 5 S`, a modified
+function key programs can bind, so a real key is taken from the shell —
+claimed at the user's word like `Ctrl+N`. Key repeat is refused (a held chord
+must not close Files tabs at the autorepeat rate), and the chord stands down
+inside a text field and while a rename is open, like the other tab chords.
 
 ### 1.3 The Files tab — `FilesView.vue`, `onKeydown`
 
@@ -157,7 +168,7 @@ that bind it. Stands down inside a text field, like the create pair above.
 
 | Chord | Does | Note |
 |---|---|---|
-| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: the host's sessions grouped by root — a folder holding several sessions gets a row per session spelled `folder:session` (the host's own selector form), opening the folder with that tab in front — then the workspace verbs: new session, quick search, the Ports/Usage/Settings overlays, a sort, refresh, zoom, connect to another SSH host, hide the panel, back to the host list. Filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
+| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: the host's sessions grouped by root — a folder holding several sessions gets a row per session spelled `folder:session` (the host's own selector form), opening the folder with that tab in front — then the host's local clones that are running nothing — opening one starts a plain shell there and opens its workspace — then the workspace verbs: new session, quick search, the Ports/Usage/Settings overlays, a sort, refresh, zoom, connect to another SSH host, hide the panel, back to the host list. Filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
 
 A PAIR of chords, fixed for the same reason the tab arrows are a pair: an
 override replaces a binding's chords outright and would lose one.

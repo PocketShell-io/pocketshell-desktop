@@ -44,6 +44,24 @@ vi.mock('@ui/app/ipc', () => ({
       sessionsList: () => sessionsList(),
       bootstrap: vi.fn().mockResolvedValue(null),
     },
+    projects: {
+      reposList: vi.fn().mockResolvedValue({
+        repos: [
+          // Not running: belongs in the palette as a fresh folder.
+          { name: 'zeta', owner: null, fullName: null,
+            local: { path: '/home/alexey/git/zeta', head: 'main' }, remote: null },
+          // Already running: the tree's own row is the only one.
+          { name: 'x', owner: null, fullName: null,
+            local: { path: '/home/alexey/git/x', head: 'main' }, remote: null },
+          // GitHub-only: no folder on disk, never listed.
+          { name: 'gh-only', owner: 'o', fullName: 'o/gh-only', local: null,
+            remote: { defaultBranch: null, htmlUrl: null, sshUrl: null, updatedAt: null } },
+        ],
+      }),
+      startSession: vi.fn().mockResolvedValue({
+        ok: true, sessionName: 'zeta', folder: '/home/alexey/git/zeta', via: 'aplexer',
+      }),
+    },
     win: { setTitle: vi.fn() },
     app: { onResumed: vi.fn() },
     forwards: {
@@ -56,6 +74,7 @@ vi.mock('@ui/app/ipc', () => ({
 
 const HostWorkspaceView = (await import('@ui/app/views/HostWorkspaceView.vue')).default;
 const { useSessionsStore } = await import('@ui/app/stores/sessions');
+const { useProjectsStore } = await import('@ui/app/stores/projects');
 
 function session(name: string, path: string, activity: number): SessionSummary {
   return { name, created: activity, activity, attached: false, path };
@@ -122,6 +141,7 @@ beforeEach(async () => {
     session('git-x-2', '/home/alexey/git/x', 400),
     session('git-y-1', '/home/alexey/git/y', 300),
   ]);
+  useProjectsStore().home = '/home/alexey';
   void useSessionsStore().refresh('conn-1');
   await mountWorkspace();
 });
