@@ -126,3 +126,40 @@ describe('the quick-actions palette', () => {
     expect(wrapper!.emitted('close')).toHaveLength(1);
   });
 });
+
+describe('the palette sections', () => {
+  function mountedWithGroups(): void {
+    // The module beforeEach already mounted a FLAT palette; these tests need
+    // the document to hold exactly one surface, so it goes first.
+    wrapper?.unmount();
+    const grouped: PaletteCommand[] = [
+      { id: 's:1', label: 'Open one', group: '~/git', run: vi.fn() },
+      { id: 's:2', label: 'Open two', group: '~/git', dot: true, run: vi.fn() },
+      { id: 's:3', label: 'Open three', group: '~/tmp', run: vi.fn() },
+      { id: 'v:1', label: 'Settings', group: 'Commands', run: vi.fn() },
+    ];
+    wrapper = mount(CommandPalette, { props: { commands: grouped }, attachTo: document.body });
+  }
+
+  it('rows draw under one muted head per group, first appearance first', async () => {
+    mountedWithGroups();
+    await flushPromises();
+    const heads = Array.from(document.querySelectorAll('.palette-head')).map((h) => h.textContent);
+    expect(heads).toEqual(['~/git', '~/tmp', 'Commands']);
+    // The attachment dot renders only where the builder asked for one, and
+    // carries the live state in its class.
+    const two = document.getElementById('command-palette-item-s:2')!;
+    expect(two.querySelector('.dot.active')).not.toBeNull();
+    const one = document.getElementById('command-palette-item-s:1')!;
+    expect(one.querySelector('.dot')).toBeNull();
+  });
+
+  it('a group whose rows all fail the filter disappears with them', async () => {
+    mountedWithGroups();
+    await flushPromises();
+    await type('three');
+    const heads = Array.from(document.querySelectorAll('.palette-head')).map((h) => h.textContent);
+    expect(heads).toEqual(['~/tmp']);
+    expect(rows().map((r) => r.textContent)).toEqual(['Open three']);
+  });
+});

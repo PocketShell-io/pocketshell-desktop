@@ -119,6 +119,7 @@ beforeEach(async () => {
   setActivePinia(createPinia());
   sessionsList.mockResolvedValue([
     session('git-x-1', '/home/alexey/git/x', 500),
+    session('git-x-2', '/home/alexey/git/x', 400),
     session('git-y-1', '/home/alexey/git/y', 300),
   ]);
   void useSessionsStore().refresh('conn-1');
@@ -141,6 +142,29 @@ describe('the quick-actions palette wiring', () => {
     expect(labels.some((t) => t.includes('New session…'))).toBe(true);
     expect(labels.some((t) => t.includes('Settings'))).toBe(true);
     expect(labels.some((t) => t.includes('Back to the host list'))).toBe(true);
+  });
+
+  it('a folder holding several sessions gets one row per session', async () => {
+    await summon('p');
+    const labels = paletteRows().map((r) => r.textContent ?? '');
+    // `x` holds two sessions: both get their own row, labelled by the name
+    // the tab bar knows. `y` holds one — folder and session are one
+    // destination, so it gets only its folder row.
+    expect(labels.some((t) => t.includes('Open git-x-1'))).toBe(true);
+    expect(labels.some((t) => t.includes('Open git-x-2'))).toBe(true);
+    expect(labels.filter((t) => t.includes('Open git-y-1'))).toHaveLength(0);
+  });
+
+  it('running a session row opens that folder with that tab asked for', async () => {
+    await summon('p');
+    const row = paletteRows().find((r) => r.textContent?.includes('Open git-x-2'));
+    expect(row).toBeDefined();
+    row!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    expect(document.querySelectorAll('.command-palette')).toHaveLength(0);
+    expect(decodeURIComponent(String(router.currentRoute.value.params['folder']))).toBe('~/git/x');
+    expect(router.currentRoute.value.query['tab']).toBe('git-x-2');
   });
 
   it('Ctrl+Shift+P summons the same surface', async () => {
