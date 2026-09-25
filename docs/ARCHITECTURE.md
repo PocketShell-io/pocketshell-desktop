@@ -50,15 +50,18 @@ Standard hardened Electron: three processes.
 
 The directories under `src/` are the map: `main/` groups by domain (`ssh/`,
 `sftp/`, `portfwd/`, `helper/`, `attachments/`, `preview/`, `projects/`,
-`ssh-config/`, `update/`), `renderer/` is `stores/` + `views/` +
-`components/`, `shared/` re-exports the types and pure logic both processes
+`ssh-config/`, `update/`), `renderer/` is the Electron shell (`App.vue`,
+`main.ts`, `router.ts`) over the app tree — `stores/`, `views/`,
+`components/`, composables and the terminal modules — which lives in
+`@ui/app` in the core sibling, `shared/` re-exports the types and pure logic
+both processes
 import — the implementations live in the `@pocketshell/core` sibling repo
 (`../pocketshell-core`), and these files keep the desktop's import paths
 stable — and `preload/` is the bridge. Two `tsconfig.json`s:
 `tsconfig.node.json` (main + preload, `@types/node`) and
 `tsconfig.web.json` (renderer, DOM libs), over a shared strict base.
 
-The non-obvious residents, by name: `renderer/parseStall.ts` +
+The non-obvious residents, by name: `@ui/app/parseStall.ts` +
 `xtermWriteBuffer.ts` are the xterm stall watchdog and write-loop repair
 (§9.1); `terminalPaths.ts` / `terminalUrls.ts` / `terminalLinks.ts` are
 terminal path and URL detection and click-to-Files; `terminalPane.ts` is the terminal pane's PTY-lifecycle
@@ -246,7 +249,7 @@ progress). The renderer's `CodeEditor` is CodeMirror 6 (Monaco was
 considered and dropped); save calls `window.api.sftp.writeFile`. Binary
 detection by extension + stat; images get an `<img>` preview with a zoom
 bar — Fit / 100% / slider over a scrollable pane, pure arithmetic in
-`src/renderer/imageZoom.ts` — drag-to-pan with a grab cursor whenever the
+`@ui/app/imageZoom.ts` — drag-to-pan with a grab cursor whenever the
 zoomed picture exceeds the pane, and a Dark/Light backdrop toggle on the
 canvas, for checking a picture against the ground its author assumed.
 Other binary offers hex/download. HTML,
@@ -309,7 +312,7 @@ The renderer is layered; each layer talks only to the one below:
   views.
 
 Everything crosses to main through the one typed bridge: components import
-`window.api` only as `src/renderer/ipc.ts`, whose type is the preload's
+`window.api` only as `@ui/app/ipc.ts`, whose type is the preload's
 `Api`. A view or pane MAY call `api` directly for a self-contained concern no
 other surface shares (UpdateBanner's open-the-release actions, a tree's
 one-shot probe); anything two surfaces need goes through a store. Streams
@@ -369,10 +372,10 @@ it: a byte sequence that makes the parser throw — an xterm-internal
 buffer invariant, exposed by region/scroll-heavy TUI output arriving
 mid-fit (the xterm 6.0.0 `Buffer.resize`/write ordering bug behind
 `start argument out of range`). The pane fed by that loop then silently
-stops rendering; the error reaches the desktop log (`renderer/diag.ts`)
+stops rendering; the error reaches the desktop log (`@ui/app/diag.ts`)
 but looks like a one-off glitch.
 
-`ParseStallMonitor` (`renderer/parseStall.ts`) wraps every chunk a
+`ParseStallMonitor` (`@ui/app/parseStall.ts`) wraps every chunk a
 `TerminalView` feeds xterm with the completion callback xterm already
 supports: no callback within two seconds (`PARSE_STALL_TIMEOUT_MS`) means
 a dead loop, reported as `terminal-stall` with the session and
@@ -380,7 +383,7 @@ connection, buffer state (line count, baseY, cursor), the stalled bytes
 in printable and hex form, and the queue behind them. The diag banner
 shows the same report, so a frozen pane says so instead of just stopping.
 
-Repair lives in `renderer/xtermWriteBuffer.ts`: every fit and chunk
+Repair lives in `@ui/app/xtermWriteBuffer.ts`: every fit and chunk
 checks the active core buffer's `lines.length >= ybase + core.rows`, and
 an incomplete viewport gets the blank lines xterm's own resize path
 appends, before the next chunk parses. It reads `_core.buffers.active`,

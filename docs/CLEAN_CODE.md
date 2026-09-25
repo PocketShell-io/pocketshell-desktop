@@ -111,10 +111,10 @@ exemption list is the follow-up queue, not a licence.
   `parsers.ts` into the session core plus `sessionPathRecovery.ts` /
   `usageParsers.ts` / `cliParsers.ts`; `shortcuts.ts` into the engine
   plus `shortcutTable.ts`; `ipc.ts` into a composer plus `ipc/` per-domain
-  registrars sharing an `IpcContext`. The session grouping algebra
-  (`sessionTree` / `sessionGrouping` / `sessionRoots`) and most of
-  `src/shared/` now live in `@pocketshell/core`; the local files are
-  import-path shims.
+  registrars sharing an `IpcContext`. The pure modules the clients share —
+  the session grouping algebra, most of `src/shared/`, the usage and CLI
+  parsers — have been lifted into `@pocketshell/core`; the desktop-side
+  copies are import-path shims.
 - `env.d.ts` declares every `.vue` import as an `any`-typed
   `DefineComponent` (the repo's only `any`). Consequence: component props
   are unchecked at call sites, and seven call sites hand-write structural

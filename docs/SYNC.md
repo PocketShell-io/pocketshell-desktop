@@ -143,7 +143,7 @@ Encryption. `applyHosts` degrades its payload per entry
 (`coerceHostEntries`, in @pocketshell/core) before anything reaches the
 config writer.
 
-The renderer side is `src/renderer/stores/sync.ts` plus
-`views/AccountView.vue`; the tick marks themselves are the settings store's
+The renderer side is `@ui/app/stores/sync.ts` plus
+`@ui/app/views/AccountView.vue`; the tick marks themselves are the settings store's
 `syncSelectedHosts`. Local application preferences remain in
 `views/SettingsView.vue`.

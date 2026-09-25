@@ -13,8 +13,12 @@ Layout, three Electron processes plus shared code:
   keys, fs, and the network: `SshService`, `SftpService`, port forwarding,
   `pocketshell` helper client, ipcMain handlers (`ipc.ts`).
 - `src/preload/` — contextBridge; exposes the typed `window.api` surface.
-- `src/renderer/` — Vue 3 + Pinia + vue-router, xterm.js terminals,
-  CodeMirror editor. Sandboxed: never imports `ssh2`, `fs`, or `net`.
+- `src/renderer/` — the renderer's Electron shell: `App.vue`, `main.ts`,
+  `router.ts` (Vue 3 + Pinia + vue-router, xterm.js terminals, CodeMirror
+  editor). The app tree itself — `stores/`, `views/`, `components/`,
+  composables, terminal modules — lives in the core sibling's
+  `packages/ui/src/app`, consumed through the `@ui` Vite alias.
+  Sandboxed: never imports `ssh2`, `fs`, or `net`.
 - `src/shared/` — import-path shims over `@pocketshell/core` (the sibling
   repo at `../pocketshell-core`, which holds the types and pure logic shared
   by the desktop and the other PocketShell clients). The shared visual

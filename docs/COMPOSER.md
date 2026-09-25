@@ -1,7 +1,7 @@
 # Prompt Composer — decision record
 
-Status: **built.** `src/renderer/components/PromptComposer.vue` +
-`src/renderer/stores/composer.ts` (+ the pure modules in
+Status: **built.** `@ui/app/components/PromptComposer.vue` +
+`@ui/app/stores/composer.ts` (+ the pure modules in
 `src/shared/composer*.ts`) implement everything below; where code and this
 document ever diverged, the code won. What remains here is the contract, the
 divergences from the Android original, and the reasoning.
@@ -351,7 +351,7 @@ the blank-draft check is Kotlin `isBlank()`, not `isEmpty()` — a
 whitespace-only draft is *replaced* by the attachment block, not appended
 to.
 
-## 15. The store (`src/renderer/stores/composer.ts`)
+## 15. The store (`@ui/app/stores/composer.ts`)
 
 Per-session records keyed by `` `${connectionId}/${sessionName}` ``
 (draft, attachments, error, send/upload state, caret, history). **Not
