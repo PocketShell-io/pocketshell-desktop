@@ -1,10 +1,7 @@
 # Port forwarding — decision record
 
-The Python tool **`ssh-auto-forward`** (v0.0.4) is fully reimplemented in
-`src/main/portfwd/`; references to `forwarder.py` / `dashboard.py` are
-provenance — nothing remains to be ported from it.
-
-**The decision this document implements.** The Python tool is not embedded,
+**The decision this document implements.** The Python tool
+`ssh-auto-forward` is not embedded,
 shelled out to, or shipped. It opens its own paramiko connection per host;
 PocketShell holds exactly **one authenticated `ssh2` connection per host**,
 and that property is load-bearing (one auth, one keepalive, one TOFU prompt,
@@ -142,26 +139,6 @@ Behaviours better than the Python, or net-new here:
 
 Current behaviour, not a bug: a bare `-R` inbound connection stays
 byte-count-only — there is no local destination for it.
-
----
-
-## 15. Bugs found while reading
-
-In `ssh-auto-forward`, kept for provenance (each fixed here or deliberately
-not ported): the `awk $7` wrong-column bug (§10), never-expiring
-`failed_ports` (§2), dead `-p/--port-range` and `--include-configs` config,
-a dashboard that ignores `--interval` and tears down manual tunnels, remaps
-that die with the process, and a config parser that stops at the second
-`Host` match.
-
-In `pocketshell-electron`, two fixed defects are still cited by number from
-tests, so their names are kept. **§15.6** — a `client.on('tcp')` handler was
-registered per `-R` forward on the shared client, so every inbound channel
-was handled N times; fixed by the per-client `RemoteChannelDispatcher`,
-pinned by `tests/unit/Forwarder.test.ts`. **§15.7** — `bytesIn`/`bytesOut`
-were swapped relative to the panel's In/Out headers; fixed, pinned by an
-asymmetric-traffic test in
-`tests/integration/ForwardService.integration.test.ts`.
 
 ---
 

@@ -84,16 +84,14 @@ has it (`a`), with the tmux helper path as the fallback:
    normal SSH exec
    channels (fast, cheap, pollable) — the host sorts the list (its own
    default; `a list --sort name|created|accessed|activity` is the surface)
-   and the app keeps that order for the panel, falling back to a
+   the app keeps that order for the panel, falling back to a
    client-sorted unsorted snapshot on a host whose `a` predates the flag. On
    a host with aplexer the snapshot is
-   the WHOLE list — no tmux rows are merged beside it (merging used to list
-   every session twice: once under its workspace, once as a name-only row
-   from the tmux side that could not be placed, which is where the tree's
-   `other` bucket came from). aplexer addresses `workspace + tag` under an
+   the WHOLE list — no tmux rows are merged beside it. aplexer addresses
+   `workspace + tag` under an
    immutable UUID, so its workspace is the folder-grouping key with no
-   inference, and its declared engine/profile replaces the `@ps_agent_kind`
-   probe. On a host without `a`, the legacy path runs instead:
+   inference, and its declared engine/profile is the agent kind. On a host
+   without `a`, the legacy path runs instead:
    `pocketshell sessions list` preferred, `tmux list-sessions` beneath it,
    both straightened to creation order.
    A session this app JUST created does not wait for a listing: the start
@@ -119,9 +117,6 @@ has it (`a`), with the tmux helper path as the fallback:
    therefore a renderer visibility change, not a remote switch or repaint.
 4. Input goes over the PTY (`shell.stdin.write`); resize calls
    `shell.setWindow(cols, rows)`.
-5. For resumable AI conversations, the tree offers `pocketshell sessions
-   resume <id>` which creates a capped tmux session and attaches it the
-   same way.
 
 `TmuxClientPool` keeps one client per visited session tab, keyed beneath the
 SSH connection — by session name for tmux, by `workspace:tag` for aplexer,
@@ -384,7 +379,8 @@ break (seed 32) and the tool to rerun when upgrading xterm.
 
 ## 10. Open in VS Code
 
-The folder workspace's bar carries a `code` button (left of the `+`): it
+The folder workspace's tab bar carries a `code` button pinned to the bar's
+right corner: it
 hands the OS the deep link that makes VS Code desktop open THIS folder
 through its Remote-SSH extension, in a NEW window:
 

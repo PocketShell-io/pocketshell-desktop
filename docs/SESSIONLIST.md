@@ -178,16 +178,16 @@ first — siblings in one folder share a derived prefix, so end-ellipsis
 renders `pocketshell` and `pocketshell-desktop` identically — and the user
 overturned it: a squeezed `course-manage…nt-agent` reads as a mangled
 single name, and the tooltip redeems whatever the ellipsis hides. The
-`splitLabel` helpers are still exported but no longer consumed by the
-renderer.
+`splitLabel` helpers survive in the one place character-level overflow is
+still the right cut: the Files tree's filename rule (`FileTree.vue`).
 
 ## 6. Timestamp, order, and finding "the session I was just in"
 
 Timestamps render compact-relative (`12m`, `3h`, `2d`, then a date), max ~6
 characters; the absolute form lives in the tooltip, and the strings refresh
-from a `now` ref ticked every 60s. Times run in no particular direction
-down a root — a real loss, paid deliberately, because there is no
-client-side sort at all.
+from a `now` ref ticked every 60s. By default times run in no particular
+direction down a root, because the default order is the host's (§6.0); a
+user who picks a sort (§6.1) makes the direction mean something again.
 
 ### 6.0 What ships: the host's order
 
