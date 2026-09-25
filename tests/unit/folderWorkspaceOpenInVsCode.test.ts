@@ -41,10 +41,15 @@ const overrides: Record<string, unknown> = {
   'preview.onStats': () => () => undefined,
 };
 
+/** Api groups the CURRENT test pretends the platform does not provide —
+ * the seam's optional capabilities, omitted the way the web omits them. */
+const omittedGroups = new Set<string>();
+
 /** The `$HOME` RPC, replaced per-test: some cases need to fail first. */
 let homeRpc: ReturnType<typeof vi.fn>;
 
 function channel(group: string): unknown {
+  if (omittedGroups.has(group)) return undefined;
   return new Proxy(
     {},
     {
@@ -109,6 +114,7 @@ beforeEach(() => {
   localStorage.clear();
   setActivePinia(createPinia());
   diagErrors.value = [];
+  omittedGroups.clear();
   homeRpc = vi.fn().mockResolvedValue({ ok: true, home: '/home/alexey', error: null });
   overrides['projects.home'] = homeRpc;
   openVsCode.mockClear();
@@ -189,5 +195,19 @@ describe('Open in VS Code on a tilde-spelled folder', () => {
       hostToken: 'hetzner',
       path: '/home/alexey/tmp/rasa',
     });
+  });
+});
+
+describe('Open in VS Code when the platform omits the capability', () => {
+  it('hides the bar button — the alias is only provable where ~/.ssh/config is readable', async () => {
+    // The web omits `editors` at the seam: the deep link's host token
+    // resolves against the dispatched machine's LOCAL config, which a
+    // browser cannot see. The workspace's folder is real here, so the
+    // button's absence is the capability's doing, not the path's.
+    omittedGroups.add('editors');
+    const wrapper = await openWorkspace();
+
+    expect(codeButton(wrapper).exists()).toBe(false);
+    expect(openVsCode).not.toHaveBeenCalled();
   });
 });
