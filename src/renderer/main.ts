@@ -24,8 +24,17 @@ import { useConnectionStore } from '@ui/app/stores/connection';
  * component rather than dying with it.
  */
 // The Electron preload bridge IS the transport. Everything above the seam
-// (@ui/app) is platform-agnostic; this is the one line that binds them.
-provideApi(window.api);
+// (@ui/app) is platform-agnostic; this is the one line that binds them. The
+// hosts capability is composed here rather than living in the bridge: it is
+// platform COPY, not transport — this platform names the config file it reads.
+provideApi({
+  ...window.api,
+  hosts: {
+    groupLabel: 'From ~/.ssh/config',
+    sourceName: '~/.ssh/config',
+    emptyHint: 'No hosts found in ~/.ssh/config. Add one there to get started.',
+  },
+});
 
 const app = createApp(App);
 app.config.errorHandler = (err): void => {
