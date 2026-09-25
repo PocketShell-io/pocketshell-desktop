@@ -29,8 +29,9 @@ rows became 11, and the count no longer grows when a folder gains a second
 session. The surviving principle, from the design that retired the level:
 **a level must earn its rows.**
 
-Three later corrections, each owning its section: the panel stops sorting —
-the order is the host's (§6.0); the panel stops truncating creatively —
+Three later corrections, each owning its section: the panel stops sorting on
+its own — the order is the host's (§6.0) until the user picks a sort (§6.1);
+the panel stops truncating creatively —
 ordinary end-ellipsis plus the row tooltip (§5); and rows are draggable (§14),
 the root header names its directory (§15). One fix the three-level design
 could not make: a session whose cwd probe went quiet used to render as an
@@ -195,11 +196,11 @@ user who picks a sort (§6.1) makes the direction mean something again.
 > let's use wheveer order we had when creating."
 
 That sentence produced creation order, and its successor ships now: **the
-panel orders nothing at all.** Main asks the host to sort the listing (`a
+panel orders nothing of its own.** Main asks the host to sort the listing (`a
 list --sort`, default `accessed`) and every level of the panel preserves the
 document order of the list the store receives — the projection
 (`buildRows` / `buildDirectories` / `groupSessionsIntoRoots`) is a fold, not
-a sort; there is not one comparator left in the path. `a` owns the
+a sort; `a` owns the
 timestamps, so it owns the order they produce. Compatibility: a host whose
 `a` predates `--sort` has its unsorted snapshot straightened oldest-first in
 `PocketshellClient`; the legacy no-`a` path is pinned to that same creation
@@ -211,9 +212,49 @@ the general lesson: rows that are HIT TARGETS may not reorder themselves
 under the cursor — the recency sort died the day arrow-key navigation made
 the panel's rows targets too. The panel's rows are the host's list; the
 bar's rows are hit targets. `Ctrl+↑` / `Ctrl+↓` walk the panel's list,
-which is exactly why nothing client-side may rearrange it. The marks that
-answer "the session I was just in" without moving anything: the green dot,
-the semibold label, the accent rail on the open folder.
+which is exactly why nothing client-side may rearrange it ON ITS OWN. The
+marks that answer "the session I was just in" without moving anything: the
+green dot, the semibold label, the accent rail on the open folder.
+
+### 6.1 The sort the user picks
+
+> "let's add some sorting options to the session tree (aplexer has support —
+> but we can also do this on the client side)"
+
+The panel gained a sort menu, and the sort runs CLIENT-SIDE
+(`folderSort.ts`, in core beside the rest of the row algebra), deliberately,
+for three reasons:
+
+- **The panel draws folders; the host sorts sessions.** A host-side
+  `--sort name` orders the session list, and the folder projection then orders
+  folders by first encounter in that list — the session names' order, which
+  falls apart wherever folder and session names diverge (a worktree, a renamed
+  tag, a folder holding two sessions that sort apart). The sort has to run at
+  the level the user sees, and that level exists only here.
+- **One behaviour for both backends.** The tmux-fallback path has no
+  `--sort` to pass, and the panel never says which backend it is showing.
+- **It survives the poll** the way §14's arrangement does: a pure projection
+  re-applied on every five-second recompute, never a remembered mutation.
+
+The keys are `host` (the default — indistinguishable from no sort, what
+shipped), `activity` (newest folder first, by the aggregate the row already
+displays), `name` (case-insensitive), and `created` (the folder's oldest
+session, oldest first — the "order we had when creating" this section's
+quote asked for, still available under a name that says what it does). The
+choice persists in `settings.sessionTreeSort`, GLOBAL rather than per host:
+the arrangement is a fact about a box, the sort is a way of reading a list.
+
+Three rules bind it, each inherited rather than invented: it sorts WITHIN
+roots and never reorders the roots themselves (§14.2's filesystem argument);
+it is STABLE, so folders the key cannot tell apart keep their host order; and
+the user's dragged arrangement still wins on top of it (§14) — the pipeline
+is grouping → sort → manual order (folderTree.ts), and unranked folders keep
+the chosen sort's order among themselves.
+
+The host's listing keeps its own default and keeps owning the order the tab
+bar and the create flow read; §6.0's contract is untouched. What the panel
+does with the list after it arrives is the panel's business, on the user's
+say-so.
 
 ## 7. Panel width
 
@@ -286,10 +327,12 @@ check per row to acknowledge; with several standing, a head row offers
    `[folder: SessionDirectory, session?: string]`, handled by
    `HostWorkspaceView.onSelectFolder`). The payload is stable across panel
    redesigns — the workspace side learns nothing of what changed here.
-4. **The client never rearranges the list.** The order is the host's (§6.0)
-   with the user's arrangement (§14) on top, and the projection is a fold of
-   the list, not a sort of it. A row moves only when the host says so or the
-   user does, and both are on purpose.
+4. **The client never rearranges the list unprompted.** The order is the
+   host's (§6.0) with the user's sort (§6.1) and arrangement (§14) on top —
+   every movement is chosen, never a side effect of the poll. The projection
+   itself remains a fold of the list; the sort and the arrangement are pure
+   projections applied after it, and both are re-applied on every recompute
+   rather than remembered.
 
 ## 11. Still open, and the alternative we did not build
 
@@ -494,3 +537,6 @@ empty remainder); a registered root outside `$HOME` renders its absolute key
 verbatim. The count sits beside the label, not the right edge — the right
 edge belongs to the `+` and the timestamp, each a column the eye reads down;
 folder rows match, so one list carries one convention.
+
+The pipeline named in §6.1 ends at the manual arrangement; the quick search
+that follows it is recorded in §16.
