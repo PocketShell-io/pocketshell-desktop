@@ -493,10 +493,14 @@ describe('shortcut overrides', () => {
 
   it('survives a restart', () => {
     const first = useSettingsStore();
-    first.rebindShortcut('composer.attach', parseChord('Ctrl+Shift+P')!);
+    // Ctrl+Shift+P is the command palette's fixed chord now — a rebind onto
+    // it is a refusal, not an override. B is free; the null asserts the
+    // rebind actually took, so the restart check tests persistence and not
+    // a silently refused write.
+    expect(first.rebindShortcut('composer.attach', parseChord('Ctrl+Shift+B')!)).toBeNull();
     setActivePinia(createPinia());
     const second = useSettingsStore();
-    expect(chordToString(second.shortcutBindings.get('composer.attach')![0]!)).toBe('Ctrl+Shift+P');
+    expect(chordToString(second.shortcutBindings.get('composer.attach')![0]!)).toBe('Ctrl+Shift+B');
   });
 
   it('degrades a hand-edited blob per ENTRY', () => {
