@@ -121,6 +121,21 @@ collapsed included.
 
 ---
 
+### 1.9 The session panel's quick search — `SessionTree.vue`, `onWindowKeydown`
+
+| Chord | Does | Note |
+|---|---|---|
+| `Ctrl+Shift+F` | Focuses the panel's filter box — the tree cuts to the folders and sessions whose label, path or session names match; Enter opens the first survivor, Escape clears | `SessionTree.vue` |
+
+Shift is the whole choice, and it is the Files pane's `Ctrl+F` turned inside
+out: `files.filterTree` can take the bare reflex because the Files pane has no
+terminal behind it, while this panel lives beside one — bare `Ctrl+F` is `^F`,
+readline forward-char, one of the most-pressed keys at a prompt. The shifted
+letter encodes nothing at the shell, so the chord takes nothing from programs
+that bind it. Stands down inside a text field, like the create pair above.
+
+---
+
 ## 2. The registry
 
 `src/shared/shortcuts.ts` — one `ShortcutSpec` per binding: stable `id` (the

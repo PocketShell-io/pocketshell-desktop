@@ -465,8 +465,12 @@ describe('resolveBindings', () => {
   });
 
   it('replaces a binding rather than adding to it', () => {
-    const resolved = resolveBindings({ 'files.filterTree': 'Ctrl+Shift+F' });
-    expect(chordsFor(resolved, 'files.filterTree').map(chordToString)).toEqual(['Ctrl+Shift+F']);
+    // Ctrl+Shift+B, not the shifted-F a fixture once used: the session
+    // panel's quick search now holds Ctrl+Shift+F as a DEFAULT, and an
+    // override onto a held chord is refused, not resolved — which is the
+    // registry working, not this test failing.
+    const resolved = resolveBindings({ 'files.filterTree': 'Ctrl+Shift+B' });
+    expect(chordsFor(resolved, 'files.filterTree').map(chordToString)).toEqual(['Ctrl+Shift+B']);
   });
 
   it('frees the chord the moved binding used to hold', () => {

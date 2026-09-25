@@ -438,15 +438,15 @@ describe('shortcut overrides', () => {
     // first opened the screen, and a later build that moved a chord would never
     // reach them.
     const settings = useSettingsStore();
-    expect(settings.rebindShortcut('files.filterTree', parseChord('Ctrl+Shift+F')!)).toBeNull();
-    expect(stored()['shortcutOverrides']).toEqual({ 'files.filterTree': 'Ctrl+Shift+F' });
+    expect(settings.rebindShortcut('files.filterTree', parseChord('Ctrl+Shift+B')!)).toBeNull();
+    expect(stored()['shortcutOverrides']).toEqual({ 'files.filterTree': 'Ctrl+Shift+B' });
   });
 
   it('puts the new chord in force immediately, for the handlers reading it', () => {
     const settings = useSettingsStore();
-    settings.rebindShortcut('files.filterTree', parseChord('Ctrl+Shift+F')!);
-    expect(isShortcut(settings.shortcutBindings, 'files.filterTree', { key: 'F', ctrlKey: true, shiftKey: true })).toBe(true);
-    expect(isShortcut(settings.shortcutBindings, 'files.filterTree', { key: 'f', ctrlKey: true })).toBe(false);
+    settings.rebindShortcut('files.filterTree', parseChord('Ctrl+Shift+B')!);
+    expect(isShortcut(settings.shortcutBindings, 'files.filterTree', { key: 'B', ctrlKey: true, shiftKey: true })).toBe(true);
+    expect(isShortcut(settings.shortcutBindings, 'files.filterTree', { key: 'b', ctrlKey: true })).toBe(false);
   });
 
   it('hands the refusal back rather than throwing out of a click handler', () => {
@@ -485,7 +485,7 @@ describe('shortcut overrides', () => {
   it('resets everything in one write', () => {
     const settings = useSettingsStore();
     settings.rebindShortcut('files.save', parseChord('Ctrl+Shift+S')!);
-    settings.rebindShortcut('files.filterTree', parseChord('Ctrl+Shift+F')!);
+    settings.rebindShortcut('files.filterTree', parseChord('Ctrl+Shift+B')!);
     settings.resetAllShortcuts();
     expect(settings.hasShortcutOverrides).toBe(false);
     expect(stored()['shortcutOverrides']).toEqual({});

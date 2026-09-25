@@ -248,8 +248,8 @@ Three rules bind it, each inherited rather than invented: it sorts WITHIN
 roots and never reorders the roots themselves (§14.2's filesystem argument);
 it is STABLE, so folders the key cannot tell apart keep their host order; and
 the user's dragged arrangement still wins on top of it (§14) — the pipeline
-is grouping → sort → manual order (folderTree.ts), and unranked folders keep
-the chosen sort's order among themselves.
+is grouping → sort → manual order → quick search (folderTree.ts, §16), and
+unranked folders keep the chosen sort's order among themselves.
 
 The host's listing keeps its own default and keeps owning the order the tab
 bar and the create flow read; §6.0's contract is untouched. What the panel
@@ -512,6 +512,11 @@ entry" are one state. A key that is not on screen is dropped: a drag writes
 the whole panel's rows in draw order, and retaining stale keys would buy the
 same position at the price of a list that only grows.
 
+The one state where no drag happens at all: a filter is up (§16) — the
+draw order a filtered panel would emit is the survivors', and writing it
+would silently drop every hidden folder's rank. The rows refuse the grip
+rather than have the gesture say something false.
+
 ### 14.4 One derivation, or the chord and the panel disagree
 
 The ranking is applied in `src/renderer/folderTree.ts` — on top of
@@ -538,5 +543,61 @@ verbatim. The count sits beside the label, not the right edge — the right
 edge belongs to the `+` and the timestamp, each a column the eye reads down;
 folder rows match, so one list carries one convention.
 
-The pipeline named in §6.1 ends at the manual arrangement; the quick search
-that follows it is recorded in §16.
+---
+
+## 16. Quick search
+
+> "plus quick search somewhere"
+
+The filter box lives in a tool strip under the header — permanent, not
+summoned, because the header row itself is at its exact 232px capacity (the
+arithmetic beside SessionTree's `.header-actions`) and because a panel whose
+job is "find the folder I was just in" should not put that answer behind a
+chord first. One 28px row of chrome; the crash-warning strip (§9) already
+established that the tree can be pushed down by chrome that earns its place.
+
+**The rules are `folderFilter.ts`'s, and they are short.** A case-insensitive
+substring match against the three strings a row can be found by: the folder's
+label, its full home-relative path, and the NAMES of the sessions inside it —
+the names matter because the rows no longer show them (§3b's tooltip and the
+tab bar are where they live), so "the session I was just in" is often only
+reachable through them. A query naming a ROOT keeps the root whole — matching
+the header is a statement about the root, not one folder under it.
+
+**It removes rows and never rearranges them.** The filter is the LAST stage
+of the derivation (§6.1's pipeline, plus this) and the only one that only
+subtracts, so it composes with the host's order, the picked sort and the
+manual arrangement without an opinion about any of them. Because it runs in
+the SHARED derivation (`folderTree.ts`), everything downstream sees exactly
+the tree the panel draws: `Ctrl+↑`/`Ctrl+↓` and the collapsed rail's
+switcher walk the survivors — a chord that opened a workspace whose row the
+filter hides would be the two-derivations bug this panel already paid for
+once. The one reader exempted is a count that describes the HOST:
+`allFolders` is published beside `folders` for it, so the collapsed rail's
+"N sessions" does not shrink because a box the collapsed panel is not even
+showing holds a query.
+
+Three consequences, each deliberate:
+
+- **Drag is refused while the filter is up** (§14.3's rule, met head-on): a
+  drag writes the whole panel's keys in draw order, and under a filter that
+  draw order is the SURVIVORS' — dropping a row mid-search would silently
+  erase every hidden folder's rank. The rows say so by not offering the grip.
+- **A filter that matches nothing says so** in its own words — `no folders
+  match "…"` — and offers no create: an empty filtered tree must never read
+  as a host with nothing running, and creating is not the next step of a
+  search (a row born under an active filter would be a row the filter
+  immediately hides). Empty registered roots (§12) drop under a filter for
+  the same reason: a filter asks what is RUNNING, and "registered, nothing
+  here" is not an answer to it.
+- **Creating clears the filter.** The create path reveals the folder the user
+  just chose; a filter left active could hide exactly that folder, the row
+  lookup would miss, and the workspace the dialog promised would never open
+  — reading as the create having done nothing.
+
+The query itself is memory-only — a module ref in `folderTree.ts`, not a
+setting: a filter is where the user is looking right now, not a preference
+(the line §6.1's sort draws on the other side of its own persistence). The
+chord that focuses the box is `sessions.filterTree` (SHORTCUTS §1.9); Enter
+opens the first visible folder, so the box doubles as a quick open, and
+Escape clears.
