@@ -326,6 +326,11 @@ Both are header buttons opening `OverlayPanel.vue`. The decisions:
   has nothing to say: the cell reads a quiet italic `not reported` and the
   **reset becomes the row's primary content**. Never coerce null to 0: a
   0%-wide bar reads as "quota exhausted".
+- **The resets footnote is a resource line, not an alarm** — the spendable
+  count, dated with the soonest expiry the helper reports for those credits
+  ("1 reset available · expires in 26d"; absolute timestamp on hover). A
+  spent count (0) renders no line: the meter and the status badge already
+  say the provider is out.
 - **`ok` renders no chip** — a row of "ok" badges is noise, and the meter
   already says so.
 

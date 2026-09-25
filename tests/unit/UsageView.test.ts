@@ -138,15 +138,30 @@ describe('UsageView states', () => {
     expect(wrapper.text()).not.toContain('`');
   });
 
-  it('shows the resets count when the provider reports one, nothing when not', async () => {
+  it('dates a positive resets count, keeps the bare count undated, hides a spent one', async () => {
     usage.mockResolvedValue([
-      { ...ROW, provider: 'codex', resets_available: 1 },
+      {
+        ...ROW,
+        provider: 'codex',
+        resets_available: 1,
+        resets_expire_at: '2099-01-01T00:00:00Z',
+      },
+      { ...ROW, provider: 'grok', resets_available: 2 },
+      // Spent: the meter and the status badge already say the provider is
+      // out — the footnote adds a standing zero, so it renders no line.
+      { ...ROW, provider: 'zai', resets_available: 0 },
       { ...ROW, provider: 'claude' },
     ]);
     const wrapper = await show();
 
     const notes = wrapper.findAll('.note').map((c) => c.text());
-    expect(notes).toEqual(['1 reset available']);
+    // The count, dated when the provider says when — relative form, like the
+    // resets column (the absolute timestamp is the hover title).
+    expect(notes[0]).toMatch(/^1 reset available · expires in \d+d/);
+    // No expiry reported: the bare count.
+    expect(notes[1]).toBe('2 resets available');
+    // 0 and no-concept both stay silent.
+    expect(notes).toHaveLength(2);
   });
 
   it('shows the failure, not the empty-state accusation, when the fetch rejects', async () => {

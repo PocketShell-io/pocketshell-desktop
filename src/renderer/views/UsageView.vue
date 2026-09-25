@@ -17,7 +17,12 @@
 // panel never shows a "not reported" placeholder for a window that does not
 // exist. A window label (`5h`/`7d`/`weekly`/`monthly`) is always present.
 // A `resets_available` count (codex's reset credits, grok's restok tokens)
-// renders as a plain per-provider note line when the provider has one.
+// renders as a plain per-provider note line when the provider has a POSITIVE
+// count, dated with the soonest expiry the helper reports ("1 reset
+// available · expires in 26d"; the absolute timestamp is the hover title).
+// A spent count (0) renders no line at all: the meter and the status badge
+// already say the provider is out, and a standing "0 resets available" is
+// one more zero on a screen whose job is comparison.
 //
 // A null percentage is NOT an empty row. It means the meter is unknown, not
 // that the provider has nothing to say: the reset time is still real and is
@@ -96,12 +101,34 @@ function pctText(p: number): string {
 /**
  * The "how many full resets can I still spend" line — codex's reset credits,
  * grok's restok tokens — normalized by the parser into one count. Null when
- * the provider has no such concept (claude, copilot, zai), so no line.
+ * the provider has no such concept (claude, copilot, zai), and now also when
+ * the count is spent (0): the meter at zero and the limited/blocked badge
+ * already say "out", and the footnote's job is the resource that remains.
+ * When the parser could read an expiry for the soonest credit, the count is
+ * dated — the same relative form the resets column uses.
  */
 function resetsNote(row: UsageRow): string | null {
   const n = row.resets_available;
-  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
-  return `${n} reset${n === 1 ? '' : 's'} available`;
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return null;
+  const base = `${n} reset${n === 1 ? '' : 's'} available`;
+  const expiry = resetsExpiry(row);
+  return expiry ? `${base} · expires ${fmtRel(expiry)}` : base;
+}
+
+/**
+ * The note's expiry, when the provider reported a parsable one. Guarded here
+ * rather than trusted: rows that bypassed the parser must degrade to the
+ * bare count, not to "expires " followed by nothing.
+ */
+function resetsExpiry(row: UsageRow): string | null {
+  const iso = row.resets_expire_at;
+  return typeof iso === 'string' && Number.isFinite(Date.parse(iso)) ? iso : null;
+}
+
+/** The hover title for the note: the absolute expiry, when there is one. */
+function resetsTitle(row: UsageRow): string | undefined {
+  const expiry = resetsExpiry(row);
+  return expiry ? fmtAbs(expiry) : undefined;
 }
 
 /**
@@ -228,10 +255,18 @@ async function onRefresh(): Promise<void> {
           {{ row.error || 'not reported' }}
         </p>
 
-        <!-- The spendable full-reset count, when the provider reports one:
-             the fact that answers "am I out, and can I do anything about
-             it?" — a resource, so it reads as a plain count, not an alarm. -->
-        <p v-if="resetsNote(row)" class="note">{{ resetsNote(row) }}</p>
+        <!-- The spendable full-reset count, when the provider reports a
+             positive one: the fact that answers "am I out, and can I do
+             anything about it?" — a resource, so it reads as a plain count,
+             not an alarm. Dated when the provider says when; the absolute
+             timestamp is the hover title. -->
+        <p
+          v-if="resetsNote(row)"
+          class="note"
+          :title="resetsTitle(row)"
+        >
+          {{ resetsNote(row) }}
+        </p>
 
         <p v-if="blockNote(row)" class="note">{{ blockNote(row) }}</p>
       </template>

@@ -53,6 +53,13 @@ export interface UsageRow {
    * normalized view of both, so consumers print one field.
    */
   resets_available: number | null;
+  /**
+   * When the soonest of those credits is withdrawn — the `expires_at` each
+   * entry of the per-provider credit arrays carries (codex `reset_credits`,
+   * grok `resets`). Null when the provider names no expiry the parser can
+   * read, so the note degrades to the bare count.
+   */
+  resets_expire_at: string | null;
 }
 
 /**
@@ -88,6 +95,34 @@ function termRank(label: string): number {
 function resetsAvailable(details: Record<string, unknown> | undefined): number | null {
   const n = details?.['reset_credits_available'] ?? details?.['resets_available'];
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The soonest expiry across the provider's reset credits. The arrays ride
+ * beside the counts under one detail key per provider (codex `reset_credits`,
+ * grok `resets`), each entry an `{expires_at}`; entries the provider no
+ * longer counts as available are skipped, so the date always belongs to a
+ * credit the count is actually talking about.
+ */
+function resetsExpireAt(details: Record<string, unknown> | undefined): string | null {
+  const credits = details?.['reset_credits'] ?? details?.['resets'];
+  if (!Array.isArray(credits)) return null;
+  let soonest: { t: number; iso: string } | null = null;
+  for (const credit of credits) {
+    if (!credit || typeof credit !== 'object') continue;
+    const { status, expires_at: expiresAt } = credit as {
+      status?: unknown;
+      expires_at?: unknown;
+    };
+    // Grok's entries carry no status at all; only a positive one (spent)
+    // disqualifies an entry.
+    if (typeof status === 'string' && status !== 'available') continue;
+    if (typeof expiresAt !== 'string') continue;
+    const t = Date.parse(expiresAt);
+    if (!Number.isFinite(t)) continue;
+    if (!soonest || t < soonest.t) soonest = { t, iso: expiresAt };
+  }
+  return soonest?.iso ?? null;
 }
 
 /**
@@ -137,7 +172,7 @@ function normalizeUsageRow(row: WireRow): UsageRow {
       window: label ?? generic,
     }))
     .sort((a, b) => termRank(a.window) - termRank(b.window));
-  return { ...row, windows, resets_available: resetsAvailable(row.details) };
+  return { ...row, windows, resets_available: resetsAvailable(row.details), resets_expire_at: resetsExpireAt(row.details) };
 }
 
 /** Parse `pocketshell usage --json` (one JSON object per line). */
