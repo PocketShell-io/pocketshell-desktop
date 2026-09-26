@@ -252,7 +252,11 @@ bar — Fit / 100% / slider over a scrollable pane, pure arithmetic in
 `@ui/app/imageZoom.ts` — drag-to-pan with a grab cursor whenever the
 zoomed picture exceeds the pane, and a Dark/Light backdrop toggle on the
 canvas, for checking a picture against the ground its author assumed.
-Other binary offers hex/download. HTML,
+Other binary offers hex/download. Whatever is open also carries a
+Download… in its header bar — the native save dialog over the host's
+saved copy, never the unsaved buffer, as the tooltip says — so taking a
+file out does not depend on finding its row in the tree; the tree's
+context menu keeps the same channel for files that are not open. HTML,
 markdown and SVG are documents, not binaries: each opens with a
 Preview/Source toggle over the sandboxed `psview:` frame served by
 `src/main/preview/`. Every guarantee that frame rests on is a property of
