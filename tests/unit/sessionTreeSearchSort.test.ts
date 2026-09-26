@@ -77,13 +77,16 @@ async function summon(wrapper: VueWrapper): Promise<void> {
   await flush(wrapper);
 }
 
-async function open(sessions: SessionSummary[]): Promise<VueWrapper> {
+async function open(
+  sessions: SessionSummary[],
+  roots: Record<string, string[]> = {},
+): Promise<VueWrapper> {
   sessionsList.mockResolvedValue(sessions);
   projectsHome.mockResolvedValue({ ok: true, home: HOME });
   const connection = useConnectionStore();
   connection.connectionId = 'conn-1';
   connection.activeHost = { name: 'hetzner' } as HostEntry;
-  useSettingsStore().sessionRoots = {};
+  useSettingsStore().sessionRoots = roots;
 
   const wrapper = mount(SessionTree, {
     global: { stubs: { NewSessionDialog: DialogStub, PopupMenu: MenuStub } },
@@ -100,6 +103,10 @@ function dirLabels(wrapper: VueWrapper): string[] {
 
 beforeEach(() => {
   setActivePinia(createPinia());
+  // The settings store rehydrates from localStorage and the jsdom environment
+  // is shared across this file's tests: without the clear, the first test
+  // that picks a sort makes every later test open with it.
+  localStorage.clear();
   vi.clearAllMocks();
 });
 
@@ -234,5 +241,100 @@ describe('the sort menu — in the summoned row, and in Settings', () => {
     expect(settings.folderOrder).toEqual({});
     // Alphabetical, NOT rank order (which would still be wye, ate, zed).
     expect(dirLabels(wrapper)).toEqual(['ate', 'wye', 'zed']);
+  });
+});
+
+describe('the sort mark on the root rows', () => {
+  it('every root row carries the door, and the menu opens from it with the search row closed', async () => {
+    const wrapper = await open([
+      session('git-a', `${HOME}/git/a`),
+      session('tmp-b', `${HOME}/tmp/b`),
+    ]);
+    // The point of the door: the sort is reachable WITHOUT summoning anything.
+    expect(wrapper.find('.tree-filter').exists()).toBe(false);
+    const marks = wrapper.findAll('button.root-sort');
+    expect(marks).toHaveLength(2);
+    await marks[0]!.trigger('click');
+    await flush(wrapper);
+    const items = wrapper.findAll('.menu-stub .menu-item').map((b) => b.text().trim());
+    expect(items).toEqual(['Host order', 'Newest activity', 'Name', 'Created']);
+  });
+
+  it('picking a key through the row-opened menu reorders the rows and writes the store', async () => {
+    const wrapper = await open([
+      session('git-wye', `${HOME}/git/wye`, 300),
+      session('git-ate', `${HOME}/git/ate`, 100),
+      session('git-zed', `${HOME}/git/zed`, 200),
+    ]);
+    expect(dirLabels(wrapper)).toEqual(['wye', 'ate', 'zed']);
+
+    await wrapper.find('button.root-sort').trigger('click');
+    await flush(wrapper);
+    const nameItem = wrapper
+      .findAll('.menu-stub .menu-item')
+      .find((b) => b.text().includes('Name'))!;
+    await nameItem.trigger('click');
+    await flush(wrapper);
+
+    expect(dirLabels(wrapper)).toEqual(['ate', 'wye', 'zed']);
+    expect(useSettingsStore().sessionTreeSort).toBe('name');
+  });
+
+  it('the bucket row carries the door too — its rows are sorted like any root\'s', async () => {
+    // One registered root, one session outside it: the panel shows ~/git and
+    // the `other` bucket, and both rows must offer the sort (the `+` skips
+    // the bucket; the sort does not — applyFolderSort reorders its rows).
+    const wrapper = await open(
+      [session('git-a', `${HOME}/git/a`), session('tmp-b', `${HOME}/tmp/b`)],
+      { hetzner: ['~/git'] },
+    );
+    const marks = wrapper.findAll('button.root-sort');
+    expect(marks).toHaveLength(2);
+    await marks[1]!.trigger('click');
+    await flush(wrapper);
+    expect(wrapper.findAll('.menu-stub .menu-item')).toHaveLength(4);
+  });
+
+  it('the mark is engaged exactly while a non-default sort is in force', async () => {
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
+    expect(wrapper.find('button.root-sort').classes()).not.toContain('engaged');
+
+    useSettingsStore().sessionTreeSort = 'name';
+    await flush(wrapper);
+    for (const mark of wrapper.findAll('button.root-sort')) {
+      expect(mark.classes()).toContain('engaged');
+    }
+  });
+
+  it('the doors share one menu: a second door moves it, the holding door closes it', async () => {
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
+    await summon(wrapper);
+    await wrapper.find('button.sort-btn').trigger('click');
+    await flush(wrapper);
+    expect(wrapper.findAll('.menu-stub')).toHaveLength(1);
+
+    // The row's mark MOVES the open menu rather than dismissing it — doors
+    // are equal, so naming another reads as "open here", not "put it away".
+    await wrapper.find('button.root-sort').trigger('click');
+    await flush(wrapper);
+    expect(wrapper.findAll('.menu-stub')).toHaveLength(1);
+
+    // ...and the door that holds it toggles it shut.
+    await wrapper.find('button.root-sort').trigger('click');
+    await flush(wrapper);
+    expect(wrapper.findAll('.menu-stub')).toHaveLength(0);
+  });
+
+  it('dismissing the search row takes a menu the chevron opened with it', async () => {
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
+    await summon(wrapper);
+    await wrapper.find('button.sort-btn').trigger('click');
+    await flush(wrapper);
+    expect(wrapper.findAll('.menu-stub')).toHaveLength(1);
+
+    await wrapper.find('.tree-filter input').trigger('keydown.esc');
+    await flush(wrapper);
+    expect(wrapper.find('.tree-filter').exists()).toBe(false);
+    expect(wrapper.findAll('.menu-stub')).toHaveLength(0);
   });
 });

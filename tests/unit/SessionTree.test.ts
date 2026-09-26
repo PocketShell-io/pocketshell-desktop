@@ -996,8 +996,10 @@ describe('SessionTree — the root header row', () => {
   });
 
   it('puts the count beside the label and leaves the right edge to the +', async () => {
-    // DOM order is the assertion: label, then count, then the `+`. "Move 10
-    // closer to git" is a layout request, and the layout is what carries it.
+    // DOM order is the assertion: label, then count, then the sort mark, then
+    // the `+`. "Move 10 closer to git" is a layout request, and the layout is
+    // what carries it; the sort mark sits beside the count because that is
+    // where the reorder it opens is visible — the rows under this header.
     const wrapper = await open([
       session('git-a', `${HOME}/git/a`, 100),
       session('git-b', `${HOME}/git/b`, 200),
@@ -1009,9 +1011,11 @@ describe('SessionTree — the root header row', () => {
       'folder-label',
       'folder-count',
       'icon-btn',
+      'icon-btn',
     ]);
-    // The `+` is still there and still reachable — it took over the right edge
-    // rather than being displaced by the count arriving.
+    // The first control is the sort mark, the second the `+` — which still
+    // keeps the right edge rather than being displaced by the sort mark.
+    expect(header.get('.root-sort').attributes('title')).toBe('Sort folders');
     expect(header.get('.root-add').attributes('title')).toBe('New session in ~/git');
   });
 
