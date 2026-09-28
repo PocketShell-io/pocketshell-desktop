@@ -184,19 +184,25 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     expect(scanBufferLine(term, 3).text).toBe(first);
   });
 
-  it('linkifies the split path, underlining from the first row into the second', () => {
+  it('linkifies the split path, one fragment per row it spans', () => {
     const term = fakeScreen(GUTTER_ROWS, 100);
     const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
 
+    // The two matches of the flattened line, cut at the row breaks: each
+    // fragment covers exactly its own row's cells, so the hover underline
+    // stops at the cut and, on the continuation, starts after the gutter —
+    // the gutter's four cells and the columns after a cut sit outside every
+    // range and are never underlined.
     expect(links.map((l) => l.text)).toEqual([
-      PNG,
       '/home/alexey/.codex/generated_images/01a03e3d-62c0-70c1-83aa-2597285478fd/',
+      'exec-62ab287b-39b5-461a-9d45-69e2eae3d41a.png',
+      '/home/alexey/.codex/',
+      'generated_images/01a03e3d-62c0-70c1-83aa-2597285478fd/',
     ]);
-    // 1-based and inclusive: the path starts at column 14 of row 1 and ends at
-    // column 49 of row 2 — the gutter's four cells sit inside the underline
-    // because an xterm range is a span of cells, which is equally true of the
-    // wrapped web links this decoration was copied from.
-    expect(links[0]?.range).toEqual({ start: { x: 14, y: 1 }, end: { x: 49, y: 2 } });
+    // 1-based and inclusive: the first fragment runs from column 14 of row 1
+    // to the row's cut, the second begins after the gutter on row 2.
+    expect(links[0]?.range).toEqual({ start: { x: 14, y: 1 }, end: { x: GUTTER_ROWS[0]!.length, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 5, y: 2 }, end: { x: 49, y: 2 } });
   });
 
   it('opens the whole path, not the directory the first row ended at', () => {
@@ -221,7 +227,10 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const term = fakeScreen([first, '4d2d-8a44-c5da743f849e.png'], first.length);
 
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(`    └ ${TILDE_PNG}`);
-    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(TILDE_PNG);
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      '~/.codex/generated_images/01a03e3d-62c0-70c1-83aa-2597285478fd/exec-de1a03f1-2d3f-',
+      '4d2d-8a44-c5da743f849e.png',
+    ]);
   });
 
   it('joins a hyphen wrap that left the row short of the margin', () => {
@@ -234,10 +243,13 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const term = fakeScreen([first, 'og.png'], first.length + 5);
 
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(`${first}og.png`);
-    // Asked about the continuation row, too: the walk-up applies the same rule.
-    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(
-      `${first}og.png`,
-    );
+    // Asked about the continuation row, too: the same logical line, cut at the
+    // break — the row-one fragment ends at the hyphen, four columns short of
+    // the pane, and those four columns are underlined by nobody.
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      first,
+      'og.png',
+    ]);
   });
 
   it('joins a slash wrap that left the row short of the margin', () => {
@@ -273,8 +285,12 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const term = fakeScreen([FIRST, '60a6cb317/scratchpad/maven_webhook_url.txt'], FIRST.length + 2);
 
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(`! cat ${PATH}`);
-    // Hovered on the continuation row: the same logical line.
-    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(PATH);
+    // Hovered on the continuation row: the same logical line, one fragment
+    // per row.
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      PATH.slice(0, PATH.indexOf('60a6cb317')),
+      '60a6cb317/scratchpad/maven_webhook_url.txt',
+    ]);
   });
 
   it('opens the whole mid-token-joined path, not the fragment a row ends at', () => {
@@ -305,21 +321,24 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const term = fakeScreen([FIRST, '           regeneration-workflow.md'], 91);
 
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(`${FIRST}regeneration-workflow.md`);
-    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(
-      'docs/image-regeneration-workflow.md',
-    );
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      'docs/image-',
+      'regeneration-workflow.md',
+    ]);
   });
 
-  it('drops the indent cells from the underline range', () => {
+  it('drops the indent cells from the underline ranges', () => {
     const FIRST =
       '    Search decision|screenshot|conceptual|merge|reviewer|imagegen|list in docs/image-';
     const term = fakeScreen([FIRST, '           regeneration-workflow.md'], 91);
 
     const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
-    // The path starts on the cut row at `docs/` (cell 75, 1-based) and ends on
-    // the indented row after `regeneration-workflow.md` — the eleven indent
-    // cells are skipped, not underlined.
-    expect(links[0]?.range).toEqual({ start: { x: 75, y: 1 }, end: { x: 35, y: 2 } });
+    // The path's row-one fragment starts at `docs/` (cell 75, 1-based) and
+    // ends at the cut; the row-two fragment starts after the eleven indent
+    // cells and ends at the last `md` character — the indent itself is
+    // skipped, not underlined, and neither is the column after the cut.
+    expect(links[0]?.range).toEqual({ start: { x: 75, y: 1 }, end: { x: FIRST.length, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 12, y: 2 }, end: { x: 35, y: 2 } });
   });
 
   it('still refuses an indented row when the tail carries no cut evidence', () => {
@@ -369,18 +388,21 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     // whose quoted path wraps after `01a07b59-81f1-`, the continuation row
     // beginning at the block's two-space indent. Near-full row, hyphen cut,
     // indent-skipped head — rules 1a and 1b both reach it, and the whole
-    // absolute path linkifies.
+    // absolute path linkifies, one fragment per row.
     const FIRST =
       '  └ The second imagegen candidate at /home/alexey/.codex/generated_images/01a07b59-81f1-';
-    const PATH =
-      '/home/alexey/.codex/generated_images/01a07b59-81f1-7ad0-8caf-684763eaf05e/exec-a36d8454-8b3d-4ba2-b160-646af7b766fc.png';
     const term = fakeScreen([FIRST, '  7ad0-8caf-684763eaf05e/exec-a36d8454-8b3d-4ba2-b160-646af7b766fc.png is t…'], 91);
 
     const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
-    expect(links.map((l) => l.text)).toEqual([PATH]);
-    // From `/home` (after the candidate-at prose, cell 38) through the
-    // indented row to the last `png` cell before ` is t…`.
-    expect(links[0]?.range).toEqual({ start: { x: 38, y: 1 }, end: { x: 70, y: 2 } });
+    expect(links.map((l) => l.text)).toEqual([
+      '/home/alexey/.codex/generated_images/01a07b59-81f1-',
+      '7ad0-8caf-684763eaf05e/exec-a36d8454-8b3d-4ba2-b160-646af7b766fc.png',
+    ]);
+    // From `/home` (after the candidate-at prose, cell 38) to the row's cut,
+    // then on the indented row from its first content cell to the last `png`
+    // cell before ` is t…` — the two indent cells outside every range.
+    expect(links[0]?.range).toEqual({ start: { x: 38, y: 1 }, end: { x: FIRST.length, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 3, y: 2 }, end: { x: 70, y: 2 } });
   });
 
   it('joins the hang-indented wrap of a markdown link and opens its target', () => {
@@ -397,12 +419,15 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const term = fakeScreen([FIRST, SECOND], FIRST.length);
 
     const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
-    expect(links.map((l) => l.text)).toEqual([TARGET]);
-    // The underline spans the target across the wrap: from `/home` (cell 58)
-    // to the end of row 1, then through row 2 up to the last `png` character
-    // before the closing `)` — the indent's two cells skipped, the label and
-    // brackets left out.
-    expect(links[0]?.range).toEqual({ start: { x: 58, y: 1 }, end: { x: 86, y: 2 } });
+    expect(links.map((l) => l.text)).toEqual([
+      '/home/alexey/git/machine-learning-',
+      'zoomcamp/cohorts/2026/04-evaluation/images/02-accuracy-02-accuracy-example-crisp.png',
+    ]);
+    // The underline runs to the end of row 1, then on row 2 from its first
+    // content cell to the last `png` character before the closing `)` — the
+    // indent's two cells skipped, the label and brackets left out.
+    expect(links[0]?.range).toEqual({ start: { x: 58, y: 1 }, end: { x: FIRST.length, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 3, y: 2 }, end: { x: 86, y: 2 } });
 
     const files = useFilesStore();
     links[0]?.activate(CLICK, TARGET);
@@ -416,22 +441,26 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const term = fakeScreen([FIRST, SECOND, THIRD], FIRST.length + 3);
 
     const links = pathLinks(term, 2, () => ({ sessionName: 'git-foo' }));
-    // The whole of each path, not the directory the first row of it ended at;
-    // the `:9` suffix underlines and the `(` and `).` do not.
+    // The whole of each path, not the directory the first row of it ended at
+    // — every fragment opens the joined path — with the `:9` suffix underlined
+    // and the `(` and `).` left out.
     expect(links.map((l) => l.text)).toEqual([
-      '2026/2026-06-17-cloudflare-workers-vectorize-agent/diagrams',
-      '2026/2026-06-17-cloudflare-workers-vectorize-agent/README.md:9',
+      '2026/2026-06-17-cloudflare-workers-vectorize-agent/',
+      'diagrams',
+      '2026/2026-06-17-cloudflare-workers-vectorize-agent/',
+      'README.md:9',
     ]);
-    // From the `2026` on the first row (after the `(`) into `diagrams` on the
-    // second — the cells, not the string offsets.
-    expect(links[0]?.range).toEqual({ start: { x: 31, y: 1 }, end: { x: 8, y: 2 } });
+    // From the `2026` on the first row (after the `(`) to the row's cut, then
+    // `diagrams` on the second — the cells, not the string offsets.
+    expect(links[0]?.range).toEqual({ start: { x: 31, y: 1 }, end: { x: FIRST.length, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 1, y: 2 }, end: { x: 8, y: 2 } });
 
     const files = useFilesStore();
     const sessions = useSessionsStore();
     sessions.sessions = [
       { name: 'git-foo', created: 0, activity: 0, attached: true, path: '~/git/vect' },
     ];
-    links[1]?.activate(CLICK, links[1].text);
+    links[3]?.activate(CLICK, links[3].text);
     // Relative, so the session's cwd resolves it — the file, not the
     // `-agent/` directory the row above ends at.
     expect(files.reveal).toBe(
@@ -451,8 +480,12 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const joined = `${FIRST}overview.png`;
 
     expect(scanBufferLine(term, 1).text.trimEnd()).toBe(joined);
-    // Hovered on the continuation row: the same logical line.
-    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(joined);
+    // Hovered on the continuation row: the same logical line, one fragment
+    // per row.
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      FIRST,
+      'overview.png',
+    ]);
   });
 
   it('joins after the pane was resized wider than the render width', () => {
@@ -467,7 +500,10 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const joined = `${FIRST}overview.png`;
 
     expect(scanBufferLine(term, 3).text.trimEnd()).toBe(joined);
-    expect(pathLinks(term, 3, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(joined);
+    expect(pathLinks(term, 3, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      FIRST,
+      'overview.png',
+    ]);
   });
 
   it('joins two paths that wrap on consecutive rows of one summary', () => {
@@ -485,13 +521,18 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
 
     expect(links.map((l) => l.text)).toEqual([
-      '/home/alexey/git/diagram-creator/skills/diagram-creator/SKILL.md',
-      '/home/alexey/git/diagram-creator/skills/diagram-creator/rubric.md',
+      '/home/alexey/git/diagram-creator/skills/',
+      'diagram-creator/SKILL.md',
+      '/home/alexey/git/diagram-creator/skills/diagram-',
+      'creator/rubric.md',
     ]);
     // The first runs from row one into row two, the second from row two into
-    // row three — 1-based, inclusive, the opening `(` never underlined.
-    expect(links[0]?.range).toEqual({ start: { x: 48, y: 1 }, end: { x: 24, y: 2 } });
-    expect(links[1]?.range).toEqual({ start: { x: 39, y: 2 }, end: { x: 17, y: 3 } });
+    // row three — 1-based, inclusive, the opening `(` never underlined, each
+    // fragment stopping at its own row's edge.
+    expect(links[0]?.range).toEqual({ start: { x: 48, y: 1 }, end: { x: ROWS[0]!.length, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 1, y: 2 }, end: { x: 24, y: 2 } });
+    expect(links[2]?.range).toEqual({ start: { x: 39, y: 2 }, end: { x: ROWS[1]!.length, y: 2 } });
+    expect(links[3]?.range).toEqual({ start: { x: 1, y: 3 }, end: { x: 17, y: 3 } });
   });
 
   it('joins with a full-width footer rule two rows below the block', () => {
@@ -514,7 +555,10 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     const joined = `${FIRST}overview.png`;
 
     expect(scanBufferLine(term, 3).text.trimEnd()).toBe(joined);
-    expect(pathLinks(term, 3, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(joined);
+    expect(pathLinks(term, 3, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      FIRST,
+      'overview.png',
+    ]);
   });
 
   it('does not let a bare fill rule beside the block set the render width', () => {
@@ -561,18 +605,26 @@ describe('scanBufferLine — a file:// URL a TUI broke across two rows', () => {
   const FULL = `${FIRST_ROW}${SECOND_ROW}`;
   const PATH = FULL.slice('file://'.length);
 
-  it('joins the hard wrap and linkifies the whole URL', () => {
+  it('joins the hard wrap and linkifies the whole URL, one fragment per row', () => {
     const term = fakeScreen([FIRST_ROW, SECOND_ROW], FIRST_ROW.length);
     const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
 
-    expect(links[0]?.text).toBe(FULL);
-    // From the first cell of row 1 to the last cell of row 2, scheme included.
+    expect(links.map((l) => l.text)).toEqual([FIRST_ROW, SECOND_ROW]);
+    // From the first cell of row 1 to the row's last cell, then row 2's
+    // fragment — the scheme included in the first.
     expect(links[0]?.range).toEqual({
       start: { x: 1, y: 1 },
+      end: { x: FIRST_ROW.length, y: 1 },
+    });
+    expect(links[1]?.range).toEqual({
+      start: { x: 1, y: 2 },
       end: { x: SECOND_ROW.length, y: 2 },
     });
-    // Hovered on the continuation row instead: the same logical line.
-    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(FULL);
+    // Hovered on the continuation row instead: the same two fragments.
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      FIRST_ROW,
+      SECOND_ROW,
+    ]);
   });
 
   it('opens the path under the scheme, not the URL itself', () => {
@@ -613,8 +665,6 @@ describe('scanBufferLine — a file:// URL a TUI broke across two rows', () => {
  */
 describe('scanBufferLine — a web URL a TUI broke across rows', () => {
   const HOME = 'https://www.comet.com/opik/alexey-grigorev/';
-  const TRACES = 'https://www.comet.com/opik/alexey-grigorev/projects/01a081da-ba69-7235-9ea8-f0037e30994f/traces';
-  const AUTOMATION = 'https://www.comet.com/opik/alexey-grigorev/projects/01a081da-b529-74c6-b2a4-9afe2fa88e74/traces';
   const COMPARE =
     'https://www.comet.com/opik/alexey-grigorev/experiments/01a08215-d194-7638-b00b-9ee98652c456/compare?experiments=%5B%2201a08216-068c-7ee9-9f16-7f6892a78cb6%22%2C%2201a08216-77c3-73df-9873-5ba1e479057f%22%5D';
 
@@ -632,17 +682,25 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
   ];
   const term = (): Terminal => fakeScreen(ROWS, 85);
 
-  it('joins the four-row compare URL and linkifies it whole', () => {
+  it('joins the four-row compare URL and linkifies it whole, one fragment per row', () => {
     const links = urlLinks(term(), 6, () => undefined);
-    // One address, not a `/opik/alexey-` fragment plus three orphan rows.
-    expect(links.map((l) => l.text)).toEqual([COMPARE]);
+    // The one address, not a `/opik/alexey-` fragment plus three orphan rows —
+    // reported as one link per row it covers, each opening the whole address.
+    expect(links.map((l) => l.text)).toEqual([
+      'https://www.comet.com/opik/alexey-',
+      'grigorev/experiments/01a08215-d194-7638-b00b-9ee98652c456/compare?',
+      'experiments=%5B%2201a08216-068c-7ee9-9f16-7f6892a78cb6%22%2C%2201a08216-77c3-73df-',
+      '9873-5ba1e479057f%22%5D',
+    ]);
     // From the `h` of `https` (after the prose and its space) on the bullet
-    // row to the last `%5D` cell of the fourth row.
+    // row to that row's cut, then each continuation from its first content
+    // cell to the last `%5D` cell of the fourth row.
     expect(links[0]?.range.start).toEqual({ x: 50, y: 6 });
-    expect(links[0]?.range.end).toEqual({ x: 23, y: 9 });
+    expect(links[0]?.range.end).toEqual({ x: ROWS[5]!.length, y: 6 });
+    expect(links[3]?.range.end).toEqual({ x: 23, y: 9 });
   });
 
-  it('gives the same whole link whichever of its rows the mouse is over', () => {
+  it('gives the same fragments whichever of its rows the mouse is over', () => {
     const span = (links: ReturnType<typeof urlLinks>): unknown =>
       links.map((l) => ({ text: l.text, range: l.range }));
     const first = span(urlLinks(term(), 6, () => undefined));
@@ -659,14 +717,22 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
   it('joins the two-row trace URL that the wrapper indented', () => {
     // The `Assistant traces` bullet: the continuation row carries the
     // renderer's two-space hanging indent, dropped the way the path rules
-    // drop it, and the address spans the break.
+    // drop it, and the address spans the break — one fragment per row, the
+    // first ending at the row's cut, three columns before the pane's margin.
     const links = urlLinks(term(), 2, () => undefined);
-    expect(links.map((l) => l.text)).toEqual([TRACES]);
-    expect(links[0]?.range).toEqual({ start: { x: 55, y: 2 }, end: { x: 70, y: 3 } });
+    expect(links.map((l) => l.text)).toEqual([
+      'https://www.comet.com/opik/',
+      'alexey-grigorev/projects/01a081da-ba69-7235-9ea8-f0037e30994f/traces',
+    ]);
+    expect(links[0]?.range).toEqual({ start: { x: 55, y: 2 }, end: { x: ROWS[1]!.length, y: 2 } });
+    expect(links[1]?.range).toEqual({ start: { x: 3, y: 3 }, end: { x: 70, y: 3 } });
   });
 
   it('joins the UUID the wrapper cut at its hyphen', () => {
-    expect(urlLinks(term(), 4, () => undefined).map((l) => l.text)).toEqual([AUTOMATION]);
+    expect(urlLinks(term(), 4, () => undefined).map((l) => l.text)).toEqual([
+      'https://www.comet.com/opik/alexey-grigorev/projects/01a081da-',
+      'b529-74c6-b2a4-9afe2fa88e74/traces',
+    ]);
   });
 
   it('leaves the single-row Home URL to WebLinksAddon', () => {
@@ -689,9 +755,13 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
     const t = fakeScreen([FIRST, SECOND], FIRST.length);
 
     const links = urlLinks(t, 1, () => undefined);
-    expect(links.map((l) => l.text)).toEqual([URL_TEXT]);
+    expect(links.map((l) => l.text)).toEqual([FIRST.slice(1), SECOND.slice(0, -2)]);
     expect(links[0]?.range).toEqual({
       start: { x: 2, y: 1 },
+      end: { x: FIRST.length, y: 1 },
+    });
+    expect(links[1]?.range).toEqual({
+      start: { x: 1, y: 2 },
       end: { x: SECOND.length - 2, y: 2 },
     });
 
@@ -709,9 +779,13 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
     const t = fakeScreen([first, second], first.length);
 
     const links = urlLinks(t, 1, () => undefined);
-    expect(links.map((l) => l.text)).toEqual([url]);
+    expect(links.map((l) => l.text)).toEqual(['https://github.', 'com/AI-Shipping-Labs/website/issues/1680']);
     expect(links[0]?.range).toEqual({
       start: { x: first.indexOf('https') + 1, y: 1 },
+      end: { x: first.length, y: 1 },
+    });
+    expect(links[1]?.range).toEqual({
+      start: { x: 5, y: 2 },
       end: { x: second.indexOf(')'), y: 2 },
     });
 
@@ -749,7 +823,8 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
       'see https://x.io/a/b/c/commits/01a08215-d194',
     );
     expect(urlLinks(t, 1, () => undefined).map((l) => l.text)).toEqual([
-      'https://x.io/a/b/c/commits/01a08215-d194',
+      'https://x.io/a',
+      '/b/c/commits/01a08215-d194',
     ]);
   });
 
@@ -787,16 +862,24 @@ describe('scanBufferLine — commit URLs the transcript cut before a segment', (
   ];
   const ONE =
     'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/59e075671c560483bcc2a16e19535475a26e3102';
-  const TWO =
-    'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/c7d76742a1419a68a6ed5a6e7ca71ce7c60c04d7';
 
   it('joins both cut-before-a-segment addresses whole, from either row', () => {
     // The rows end within the inset of the margin, so rule 1a reads them;
-    // the head starting with `/` is the cut's own shape.
+    // the head starting with `/` is the cut's own shape. One fragment per
+    // row, each opening the whole commit address.
     const t = fakeScreen(ROWS, 92);
-    expect(urlLinks(t, 2, () => undefined).map((l) => l.text)).toEqual([ONE]);
-    expect(urlLinks(t, 3, () => undefined).map((l) => l.text)).toEqual([ONE]);
-    expect(urlLinks(t, 5, () => undefined).map((l) => l.text)).toEqual([TWO]);
+    expect(urlLinks(t, 2, () => undefined).map((l) => l.text)).toEqual([
+      'https://github.com',
+      '/AI-Shipping-Labs/ai-buildcamp-course/commit/59e075671c560483bcc2a16e19535475a26e3102',
+    ]);
+    expect(urlLinks(t, 3, () => undefined).map((l) => l.text)).toEqual([
+      'https://github.com',
+      '/AI-Shipping-Labs/ai-buildcamp-course/commit/59e075671c560483bcc2a16e19535475a26e3102',
+    ]);
+    expect(urlLinks(t, 5, () => undefined).map((l) => l.text)).toEqual([
+      'https://github.com/AI-Shipping-Labs',
+      '/ai-buildcamp-course/commit/c7d76742a1419a68a6ed5a6e7ca71ce7c60c04d7',
+    ]);
   });
 
   it('opens the whole commit address', () => {
@@ -821,13 +904,16 @@ describe('scanBufferLine — commit URLs the transcript cut before a segment', (
     ];
     const t = fakeScreen(INSET, 92);
     expect(urlLinks(t, 1, () => undefined).map((l) => l.text)).toEqual([
-      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/f5d5c1cfdd7799eecedf4f5c0c6870e14ed272b0',
+      'https://github.com/AI-Shipping-L',
+      'abs/ai-buildcamp-course/commit/f5d5c1cfdd7799eecedf4f5c0c6870e14ed272b0',
     ]);
     expect(urlLinks(t, 4, () => undefined).map((l) => l.text)).toEqual([
-      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/39677034b76fd2a349a7519fdf6912cd7dd03802',
+      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/39677034b76fd2a349a7519fdf',
+      '6912cd7dd03802',
     ]);
     expect(urlLinks(t, 6, () => undefined).map((l) => l.text)).toEqual([
-      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/7a19db67030aabbb77b440450fdedf49eca080ab',
+      'https://github.com/AI-Shipping-Labs/ai-buildcamp-c',
+      'ourse/commit/7a19db67030aabbb77b440450fdedf49eca080ab',
     ]);
   });
 });
@@ -850,10 +936,11 @@ describe('scanBufferLine — a relative path a TUI broke across two rows', () =>
     const term = fakeScreen(ROWS, `│ ${DIR}`.length);
     const links = pathLinks(term, 2, () => ({ sessionName: 'git-foo' }));
 
-    // One link, from `assets/` through `.png` — not a directory on row one
-    // and a bare word on row two. The bullet line above the block stays
-    // separate: its tail is `\`, which is no path to continue.
-    expect(links.map((l) => l.text)).toEqual([FULL]);
+    // The whole relative path across the break — one fragment per row, each
+    // opening the whole of it — not a directory on row one and a bare word on
+    // row two. The bullet line above the block stays separate: its tail is
+    // `\`, which is no path to continue.
+    expect(links.map((l) => l.text)).toEqual([DIR, 'quizgen-landing-page.png']);
   });
 
   it('opens the relative path for the session cwd to resolve', () => {
@@ -877,9 +964,10 @@ describe('scanBufferLine — a relative path a TUI broke across two rows', () =>
     const first = 'montage assets/images/exam-questions-generator/';
     const term = fakeScreen([first, 'quizgen-landing-page.png \\'], first.length);
 
-    expect(pathLinks(term, 1, () => ({ sessionName: 'git-foo' }))[0]?.text).toBe(
-      'assets/images/exam-questions-generator/quizgen-landing-page.png',
-    );
+    expect(pathLinks(term, 1, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
+      'assets/images/exam-questions-generator/',
+      'quizgen-landing-page.png',
+    ]);
   });
 });
 
@@ -916,14 +1004,20 @@ describe('scanBufferLine — a command echo wrapped inside a KEY=" assignment', 
 
   it('linkifies the whole path across the break, from either row', () => {
     const fromRow1 = pathLinks(term(), 1, () => ({ sessionName: 'git-foo' }));
-    expect(fromRow1.map((l) => l.text)).toEqual([PATH]);
-    // From `/home` (after `• Ran PKG="`, cell 12) through `linkedin_api` —
-    // the `";` that closes the assignment stays outside the underline.
-    expect(fromRow1[0]?.range).toEqual({ start: { x: 12, y: 1 }, end: { x: 30, y: 2 } });
+    expect(fromRow1.map((l) => l.text)).toEqual([
+      '/home/alexey/.cache/uv/archive-v0/jxlQadaEgujN7Zj_8P0GJ/lib/python3.12/',
+      'site-packages/linkedin_api',
+    ]);
+    // From `/home` (after `• Ran PKG="`, cell 12) to the row's cut, then the
+    // gutter row's fragment — the `";` that closes the assignment stays
+    // outside the underline.
+    expect(fromRow1[0]?.range).toEqual({ start: { x: 12, y: 1 }, end: { x: ROW1.length, y: 1 } });
+    expect(fromRow1[1]?.range).toEqual({ start: { x: 5, y: 2 }, end: { x: 30, y: 2 } });
 
-    // Hovered on the continuation row: the same logical line.
+    // Hovered on the continuation row: the same fragments.
     expect(pathLinks(term(), 2, () => ({ sessionName: 'git-foo' })).map((l) => l.text)).toEqual([
-      PATH,
+      '/home/alexey/.cache/uv/archive-v0/jxlQadaEgujN7Zj_8P0GJ/lib/python3.12/',
+      'site-packages/linkedin_api',
     ]);
   });
 
@@ -966,11 +1060,16 @@ describe('scanBufferLine — a single-quoted assignment wrapped inside a gutter 
       expect(scanBufferLine(t, 1).text.trimEnd()).toBe(ROW0);
 
       // The assignment row opens the echo; the path runs across the break
-      // with gutter, `GEN_IMG='` and the closing quote all outside it.
+      // with gutter, `GEN_IMG='` and the closing quote all outside it, one
+      // fragment per row.
       for (const line of [2, 3]) {
         const links = pathLinks(t, line, context);
-        expect(links.map((l) => l.text)).toEqual([PATH]);
-        expect(links[0]?.range).toEqual({ start: { x: 14, y: 2 }, end: { x: 49, y: 3 } });
+        expect(links.map((l) => l.text)).toEqual([
+          '/home/alexey/.codex/generated_images/01a091cc-f6e4-7791-91ad-4c47f4a3f9e4/',
+          'exec-194bb016-1c73-4021-88fd-5212a4a4fdec.png',
+        ]);
+        expect(links[0]?.range).toEqual({ start: { x: 14, y: 2 }, end: { x: ROW1.length, y: 2 } });
+        expect(links[1]?.range).toEqual({ start: { x: 5, y: 3 }, end: { x: 49, y: 3 } });
       }
     }
   });
@@ -1135,11 +1234,13 @@ describe('pathLinks', () => {
     expect(links[0]?.text).toBe('docs/runbooks/production-data-migration.md');
   });
 
-  it('spans two rows when the path is wrapped across them', () => {
+  it('underlines one fragment per row when the path is wrapped across them', () => {
     const term = fakeTerminal(['tmp/voice-p', 'reviews/a.mp3'], [1]);
     const links = pathLinks(term, 1, context);
 
-    expect(links[0]?.range).toEqual({ start: { x: 1, y: 1 }, end: { x: 13, y: 2 } });
+    expect(links.map((l) => l.text)).toEqual(['tmp/voice-p', 'reviews/a.mp3']);
+    expect(links[0]?.range).toEqual({ start: { x: 1, y: 1 }, end: { x: 11, y: 1 } });
+    expect(links[1]?.range).toEqual({ start: { x: 1, y: 2 }, end: { x: 13, y: 2 } });
   });
 
   it('underlines the :line:col suffix but opens the path without it', () => {

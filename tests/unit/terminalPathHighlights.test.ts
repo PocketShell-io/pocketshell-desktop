@@ -277,12 +277,16 @@ describe('premises against the real parser (headless xterm)', () => {
     expect(term.buffer.active).toBe(term.buffer.alternate);
 
     const links = pathLinks(term as unknown as Terminal, 2, context);
-    expect(links).toHaveLength(1);
+    expect(links.map((l) => l.text)).toEqual([FIRST, 'overview.png']);
+    // One fragment per row, each covering exactly that row's cells.
     expect(links[0]?.range).toEqual({
       start: { x: 1, y: 2 },
+      end: { x: FIRST.length, y: 2 },
+    });
+    expect(links[1]?.range).toEqual({
+      start: { x: 1, y: 3 },
       end: { x: 'overview.png'.length, y: 3 },
     });
-    expect(links[0]?.text).toBe(FIRST + 'overview.png');
   });
 });
 

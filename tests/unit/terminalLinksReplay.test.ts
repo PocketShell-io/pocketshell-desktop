@@ -99,13 +99,22 @@ describe('a captured Codex screen, replayed into a real buffer', () => {
     const y = rowOf(term, '16384 Sep');
     expect(y).toBeGreaterThan(0);
 
-    const PATH = 'cohorts/2026/05-monitoring/images/12-grafana-01-docker-run-command.jpg';
     const links = pathLinks(term, y, () => ({ sessionName: 'git' }));
-    expect(links.map((l) => l.text)).toEqual([PATH]);
-    // From `cohorts/` (after the `10:15 ` stamp) through the indented row to
-    // the last `jpg` cell — the four indent cells skipped.
-    expect(links[0]?.range).toEqual({ start: { x: 51, y }, end: { x: 47, y: y + 1 } });
-    expect(pathLinks(term, y + 1, () => ({ sessionName: 'git' }))[0]?.text).toBe(PATH);
+    // The whole relative path, one fragment per row it spans.
+    expect(links.map((l) => l.text)).toEqual([
+      'cohorts/2026/05-monitoring/',
+      'images/12-grafana-01-docker-run-command.jpg',
+    ]);
+    // From `cohorts/` (after the `10:15 ` stamp) to the row's cut — column
+    // 77, fourteen short of the 91-column pane — then the indented row's
+    // fragment to the last `jpg` cell. The four indent cells and the fourteen
+    // padding columns are outside every range.
+    expect(links[0]?.range).toEqual({ start: { x: 51, y }, end: { x: 77, y } });
+    expect(links[1]?.range).toEqual({ start: { x: 5, y: y + 1 }, end: { x: 47, y: y + 1 } });
+    expect(pathLinks(term, y + 1, () => ({ sessionName: 'git' })).map((l) => l.text)).toEqual([
+      'cohorts/2026/05-monitoring/',
+      'images/12-grafana-01-docker-run-command.jpg',
+    ]);
   });
 
   it('links the same path when the agent later names it whole', async () => {
