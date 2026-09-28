@@ -71,6 +71,8 @@ inside a text field and while a rename is open, like the other tab chords.
 ### 1.3 The Files tab — `FilesView.vue`, `onKeydown`
 
 `Ctrl+S` save-when-dirty · `Ctrl+L` path bar · `Ctrl+F` tree filter ·
+`Ctrl+Shift+H` jump to the workspace root — the strip's home button, one move
+back to the folder the workspace is about (the login home when it has none) ·
 arrows/Home/End step the list (roving focus). Inside the tree's two fields,
 Enter commits and Escape cancels. An open file runs CodeMirror's own keymaps
 (configured, not written by this app).
