@@ -309,6 +309,204 @@ describe('attachments', () => {
   });
 });
 
+/**
+ * Parked attachments — what a dismissal with nothing typed does to staged
+ * tiles. The user's flow: paste a screenshot into the composer, get called
+ * away, close it — and the next prompt, written later, must not carry the
+ * orphaned attachment silently. The tiles are parked OFF the send path and
+ * offered back on the next visit (Include / Discard); nothing is included by
+ * default, and the bytes are already on the host either way.
+ */
+describe('parked attachments', () => {
+  it('a bare dismissal parks the tiles off the send path', async () => {
+    await attach(KEY, [A, B]);
+    composer.parkAttachments(KEY);
+    const s = composer.states[KEY]!;
+    expect(s.attachments).toEqual([]);
+    expect(s.parked.map((a) => a.remotePath)).toEqual([A, B]);
+    // Off the send path by default: nothing is included unless it is Included.
+    expect(composer.canSend(KEY)).toBe(false);
+    expect(composer.composedPayload(KEY)).toBe('');
+  });
+
+  it('refuses once something is typed — a typed draft keeps its tiles', async () => {
+    composer.setDraft(KEY, 'look at this');
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    expect(composer.states[KEY]?.attachments.map((a) => a.remotePath)).toEqual([A]);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+  });
+
+  it('a whitespace-only draft counts as nothing typed — the store’s own blank rule', async () => {
+    composer.setDraft(KEY, '   ');
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    expect(composer.states[KEY]?.parked.map((a) => a.remotePath)).toEqual([A]);
+    expect(composer.states[KEY]?.attachments).toEqual([]);
+  });
+
+  it('the store dismiss() alone never parks — parking is the user-close path’s act', async () => {
+    // The click-outside dismissal (an EMPTY composer, so it cannot hold tiles)
+    // and the mode machine share plain `dismiss`; only the component's close
+    // routes, which know the session key, park.
+    await attach(KEY, [A]);
+    composer.dismiss();
+    expect(composer.states[KEY]?.attachments.map((a) => a.remotePath)).toEqual([A]);
+  });
+
+  it('Include moves a parked tile back onto the send path WITHOUT re-uploading', async () => {
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    stage.mockClear();
+    composer.includeParked(KEY, A);
+    expect(stage).not.toHaveBeenCalled(); // a seed — the bytes are already on the host
+    expect(composer.states[KEY]?.attachments.map((a) => a.remotePath)).toEqual([A]);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+    expect(composer.canSend(KEY)).toBe(true);
+  });
+
+  it('Discard on the offer removes the parked tile for good', async () => {
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    composer.discardParked(KEY, A);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+    composer.includeParked(KEY, A); // too late
+    expect(composer.states[KEY]?.attachments).toEqual([]);
+  });
+
+  it('the same path never parks twice', async () => {
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    await attach(KEY, [A]); // re-attached while the offer was already showing
+    composer.parkAttachments(KEY);
+    expect(composer.states[KEY]?.parked.map((a) => a.remotePath)).toEqual([A]);
+  });
+
+  it('including a path that got staged meanwhile does not duplicate the tile', async () => {
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    await attach(KEY, [A]);
+    composer.includeParked(KEY, A);
+    expect(composer.states[KEY]?.attachments.map((a) => a.remotePath)).toEqual([A]);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+  });
+
+  it('Discard (the armed one) throws the parked offer away with everything else', async () => {
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    composer.discard(KEY);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+  });
+
+  it('a delivered send leaves the parked offer alone', async () => {
+    // The parked tiles were never part of the payload — the send neither
+    // includes nor clears them.
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    composer.setDraft(KEY, 'fresh prompt');
+    await composer.send(KEY, async () => true);
+    expect(composer.states[KEY]?.draft).toBe('');
+    expect(composer.states[KEY]?.attachments).toEqual([]);
+    expect(composer.states[KEY]?.parked.map((a) => a.remotePath)).toEqual([A]);
+  });
+
+  it('parks past the limit drop off the oldest end', async () => {
+    const paths = Array.from(
+      { length: 12 },
+      (_, i) => `~/.pocketshell/attachments/main/parked-${i}.png`,
+    );
+    await attach(KEY, paths);
+    composer.parkAttachments(KEY);
+    const parked = composer.states[KEY]?.parked.map((a) => a.remotePath) ?? [];
+    expect(parked).toHaveLength(10);
+    expect(parked[0]).toBe(paths[2]);
+  });
+
+  it('a rename carries the parked offer; a kill drops it', async () => {
+    await attach(KEY, [A]);
+    composer.parkAttachments(KEY);
+    composer.rekey(KEY, OTHER);
+    expect(composer.states[OTHER]?.parked.map((a) => a.remotePath)).toEqual([A]);
+    composer.forget(OTHER);
+    expect(composer.ensure(OTHER).parked).toEqual([]);
+  });
+
+  it('the parked offer survives an app restart, previewless', async () => {
+    const backing = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => backing.get(k) ?? null,
+      setItem: (k: string, v: string) => void backing.set(k, v),
+    };
+    try {
+      await attach(KEY, [A]);
+      composer.states[KEY]!.attachments[0]!.previewDataUrl = 'data:image/png;base64,xxx';
+      composer.parkAttachments(KEY);
+      composer.persistNow();
+
+      setActivePinia(createPinia());
+      const revived = useComposerStore();
+      const parked = revived.states[KEY]?.parked ?? [];
+      expect(parked.map((a) => a.remotePath)).toEqual([A]);
+      // The megabyte preview does not persist; the tile re-includes without it.
+      expect(parked[0]?.previewDataUrl).toBeUndefined();
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
+
+  it('a batch landing while the card is hidden parks instead of staging', async () => {
+    // The paste-then-close race: staging was already on the wire when the user
+    // dismissed. Landing it into the staged list would light the pip with the
+    // exact orphaned tile parking exists to keep out of the next prompt.
+    composer.setMode('hidden');
+    let release!: (r: StageAttachmentsResult) => void;
+    stage.mockReturnValueOnce(
+      new Promise<StageAttachmentsResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const staging = composer.stage(KEY, {
+      connectionId: CONN,
+      scopeKey: 'main',
+      sources: [{ kind: 'file', path: 'shot.png' }],
+    });
+    release(okResult([A]));
+    await staging;
+    expect(composer.states[KEY]?.attachments).toEqual([]);
+    expect(composer.states[KEY]?.parked.map((a) => a.remotePath)).toEqual([A]);
+  });
+
+  it('a batch landing after the card is re-opened stages where the user can see it', async () => {
+    composer.setMode('hidden');
+    let release!: (r: StageAttachmentsResult) => void;
+    stage.mockReturnValueOnce(
+      new Promise<StageAttachmentsResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const staging = composer.stage(KEY, {
+      connectionId: CONN,
+      scopeKey: 'main',
+      sources: [{ kind: 'file', path: 'shot.png' }],
+    });
+    composer.setMode('docked');
+    release(okResult([A]));
+    await staging;
+    expect(composer.states[KEY]?.attachments.map((a) => a.remotePath)).toEqual([A]);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+  });
+
+  it('a batch landing while hidden still stages when the draft has text', async () => {
+    // A typed draft with an upload behind it is work in progress; the
+    // dismissal rules keep it, and so does this landing rule.
+    composer.setMode('hidden');
+    composer.setDraft(KEY, 'written before the upload landed');
+    await attach(KEY, [A]);
+    expect(composer.states[KEY]?.attachments.map((a) => a.remotePath)).toEqual([A]);
+    expect(composer.states[KEY]?.parked).toEqual([]);
+  });
+});
+
 describe('send', () => {
   it('composes text + attachment paths at SEND time', async () => {
     composer.setDraft(KEY, 'what is wrong here');

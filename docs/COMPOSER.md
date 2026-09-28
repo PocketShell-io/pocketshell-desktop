@@ -260,7 +260,7 @@ session*. Only the second group is keyed by `targetKey` (§15).
 | `docked` | same toggle / chords / `Ctrl+Shift+↓` | `hidden` |
 | `docked` | `Ctrl+Shift+↑` / maximize button / header double-click | `expanded` |
 | `expanded` | `Ctrl+Shift+↓` / restore button | `docked` |
-| any non-hidden | `Escape` (§12.2) | `hidden`, focus to the terminal; draft kept — unless the short-draft hand-off applies |
+| any non-hidden | `Escape` (§12.2) | `hidden`, focus to the terminal; draft kept — unless the short-draft hand-off applies; untyped attachments park (§17.1) |
 | any | **successful** send | unchanged — stays open and focused (§12.3); with `closeComposerOnSend` (§26.2), `hidden` |
 | any | failed send | unchanged, banner shown |
 | any | session switch | **unchanged** — only which draft it shows changes |
@@ -287,9 +287,19 @@ moving text to nowhere is losing it. Home: the store's `flushToTerminal`;
 the stood-down state is `terminalOwnsTyping`, cleared the moment the panel
 is summoned again.
 
+The hand-off has one attachment twin, for the mirror complaint: close the
+composer with an attachment staged and NOTHING typed, and the tiles must
+not ride silently along with the next prompt. That dismissal parks them —
+moved aside, never destroyed, offered back on the next visit. The mechanism
+lives in §17.1; this section only records the division of labour: a
+dismissal moves untyped attachments the way the hand-off moves a short
+draft, and keeps everything a typed draft made into work in progress.
+
 **Clicking outside closes it — but only when it is empty** (no draft text,
 no staged attachments, no banner, nothing in flight; whitespace-only counts
-as empty, by the store's own send rule). Three guards are the whole safety:
+as empty, by the store's own send rule; parked attachments do not count —
+they are off the send path and a dismissal loses nothing, §17.1). Three
+guards are the whole safety:
 keyed on `mousedown` and where it LANDED (the card is draggable and a drag
 routinely travels outside its own bounds); "inside" means inside
 `.composer-root` — the card, grips, header, pinned toggle and doodle
@@ -318,7 +328,8 @@ deliberate, recorded divergence from Part I.
 ### 12.4 What persists — and the one mechanism NOT to port
 
 Per session key, everything persists across every mode transition and tab
-switch: draft, caret, staged attachments, error, scroll. Mode and geometry
+switch: draft, caret, staged attachments, parked attachments (§17.1), error,
+scroll. Mode and geometry
 are app-level (§15). **Do not port the #746 owner-stamp
 discard-on-switch mechanism**: it exists solely because the Android
 ViewModel is one shared instance. A Pinia store holds a
@@ -361,7 +372,8 @@ bump of `pocketshell.composer.v1`, so drafts already on disk survive, and
 **the key keeps its `visibility` name even though the payload has since
 grown `geometry`**: renaming it would orphan the blob and silently reopen
 every user's composer, and a stale name is cheaper than a lost preference.
-A record with no draft and no attachments is not written at all — `ensure()`
+A record with no draft, no attachments and nothing parked is not written at
+all — `ensure()`
 touches a key for every session merely visited, and without that filter the
 blob grows one empty entry per session forever. `geometry` is stored RAW
 and never re-clamped: a window briefly made small must not permanently
@@ -472,6 +484,37 @@ text-only Send stay live); removing a tile never touches the draft; after
 a failed send the tiles are gone and their paths live in the draft text —
 the resend must not re-append them. Staging is EAGER — bytes upload when
 the file is attached, not when the prompt is sent (§27.7 relies on this).
+
+### 17.1 Parked attachments — the untyped dismissal's hand-off
+
+The user's flow: paste a screenshot into the composer, get called away,
+close it — and the next prompt, written perhaps a day later, must not carry
+the orphaned attachment along silently. But `Esc` never destroys work
+(§12.2), and the bytes are already on the host (staging is eager), so a
+dismissal with a BLANK draft (whitespace-only counts — the store's own blank
+rule) and staged tiles PARKS them: `hideComposer` calls the store's
+`parkAttachments` on every user-close route, and the tiles move off the send
+path into the record's `parked` list. A draft with text in it is work in
+progress, and its dismissal keeps its tiles exactly as before.
+
+**By default not included.** `canSend`, `composedPayload` and Send never
+read the parked list; a parked attachment re-enters the send path only
+through an explicit click. The next visit shows a quiet row — file name,
+"from last time", then **Include** and **Discard**: Include is a seed (the
+`seedAttachment` path — a list move, never a re-upload), Discard removes the
+offer for good. A delivered send neither includes nor clears parked
+attachments; the armed Discard throws them away with everything else.
+
+The races are pinned by rules, not timers. A staging batch still on the wire
+when the dismissal fires LANDS while the card is hidden; `stageBatch` checks
+at landing time and parks the result when the card is closed and the draft
+is still blank — landing it as staged would light the pip with the exact
+orphan the parking exists to keep out of the next prompt. Reopening before
+the batch lands flips the check: the tile stages where the user can see it.
+Parked tiles light the toggle's pip (§21.4's "a draft or attachment is
+waiting" — the offer must stay discoverable), dedupe by remote path, cap at
+10 with the oldest falling off, and persist with the per-session blob minus
+their preview URLs, exactly as staged tiles do.
 
 ## 18. Slash commands (desktop)
 
@@ -636,9 +679,10 @@ asserted end-to-end in `tests/e2e/composer.spec.ts`.
 
 The contracts live in `tests/unit/`: `composerText` (§14),
 `composerSend` (§16.2–16.3), `composerAttachments`, `composerGeometry`
-(§21.1), `composerStore` (the §4/§12 state rules), `composerOutsideClick`
-(§12.2 guards), `composerDiscardControls` (§15.1), `composerHistoryRecall`
-(§28), `DoodleCanvas` / `doodleGeometry` (§27); `tests/e2e/composer.spec.ts`
+(§21.1), `composerStore` (the §4/§12/§17.1 state rules), `composerOutsideClick`
+(§12.2 guards), `composerParkedOffer` (the §17.1 row, as rendered),
+`composerDiscardControls` (§15.1), `composerHistoryRecall` (§28),
+`DoodleCanvas` / `doodleGeometry` (§27); `tests/e2e/composer.spec.ts`
 drives the composed surface. The integration invariant: compose a two-line
 prompt with one staged attachment, send it, and assert with `tmux
 capture-pane` that the pane received **one** submission containing both
