@@ -160,20 +160,12 @@ whole URL; `file://host/…` is refused, and any other scheme is left to
 nobody. Web addresses (`http(s)://`) belong to WebLinksAddon — except a
 URL the remote CLI's wrapper broke across rows, which the addon, reading
 one row at a time, sees only as its first-row fragment. The same
-reconstruction that heals paths rejoins the address (a `?` after a query
-separator joins the break opportunities; a cut right before a segment —
-`https://github.com` / `/AI-Shipping-Labs/…` — joins at a full row, and
-at the transcript's near-full inset rows when the continuation is the
-URL's own rest: a segment, a slashed fragment, a run of hex, never the
-bare word a space-wrap moves down after a complete address; the
-finished-address trace is an extension on the URL's path, for an
-authority's `.com` is no filename; an opencode hanging-list wrap cut
-inside a hostname is accepted when its continuation carries the URL's
-path), `terminalUrls.ts`
-finds the address in the flattened line, and that link is registered BEFORE
-the addon, which xterm's
-priority rule lets claim every row of the URL; a single-row URL answers
-nothing and stays the addon's. A path
+reconstruction that heals paths rejoins the address, `terminalUrls.ts`
+finds the address in the flattened line, and that link is registered
+BEFORE the addon, which xterm's priority rule lets claim every row of
+the URL; a single-row URL answers nothing and stays the addon's. The
+shapes the join accepts and the evidence each needs are documented
+where the rules live — `terminalLinks.ts`'s module doc. A path
 a TUI split across rows (this pane is always a tmux client, so nothing is
 ever flagged `isWrapped`) is reconstructed from geometry — hard wrap,
 box-gutter continuation, break at a hyphen or slash inside the token —
