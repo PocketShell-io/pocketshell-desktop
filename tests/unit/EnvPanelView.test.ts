@@ -13,17 +13,21 @@ import type { EnvVarRow } from '@pocketshell/core';
  *
  *   1. **Names load; values do not travel until asked for.** A mounted panel
  *      makes exactly ONE call (`env list`) and no row holds a value.
- *   2. **Reveal fetches that row's value and only that row's.**
- *   3. **Fetched is not on screen.** The fetched value lands in the field
- *      masked; the row's eye shows and re-hides it, and editing unmasks the
- *      field outright and retires the eye — there is no editing a secret you
- *      cannot see.
- *   4. **Reveal all fetches the whole env in one call** (the helper charges
- *      `env list` + one `env get` for it; the panel must not pay per row).
- *   5. **Save writes only the dirty row, targets the file it came from**, and
- *      a rejection lands as a sentence next to the form rather than a throw.
- *   6. **The new-key form refuses a key that would mangle the dotenv file**
+ *   2. **The eye is the reveal, in ONE press.** The first press fetches the
+ *      value AND shows it — the click is the ask — and the same eye puts the
+ *      mask back. Reveal all fetches the whole env in one call (the helper
+ *      charges `env list` + one `env get` for it; the panel must not pay per
+ *      row).
+ *   3. **Editing unmasks and retires the eye** (there is no editing a secret
+ *      you cannot see), **Save writes only the dirty row, targets the file it
+ *      came from**, and a rejection lands as a sentence next to the form
+ *      rather than a throw.
+ *   4. **The new-key form refuses a key that would mangle the dotenv file**
  *      (whitespace, `=`) before the host ever sees it.
+ *
+ * Rows are one line each — key, file chip, value field, one action — the
+ * Ports table's construction; the tests walk it by row, not by index, so the
+ * layout can keep changing without rewriting the behaviour claims.
  */
 
 const envList = vi.fn<(connectionId: string, dir: string) => Promise<EnvVarRow[]>>();
@@ -69,6 +73,13 @@ async function show(dir = '$HOME/bug'): Promise<VueWrapper> {
   return wrapper;
 }
 
+/** A row <tr> by its key — the tests walk the table, never raw indexes. */
+function rowByKey(wrapper: VueWrapper, key: string) {
+  const row = wrapper.findAll('tbody tr').find((tr) => tr.text().includes(key));
+  if (!row) throw new Error(`no row for ${key}`);
+  return row;
+}
+
 beforeEach(() => {
   setActivePinia(createPinia());
   envList.mockReset().mockResolvedValue(ROWS);
@@ -81,87 +92,68 @@ describe('EnvPanelView', () => {
     const wrapper = await show();
     expect(envList).toHaveBeenCalledWith('conn-1', '$HOME/bug');
     expect(envGet).not.toHaveBeenCalled();
-    // The names are on screen; no input carries a value yet.
+    // The names are on screen; no field holds a value yet. Fetched-value rows
+    // wait disabled behind the dots placeholder; the unset row is an empty
+    // field ready to type into (absence is not a secret).
     const text = wrapper.text();
     expect(text).toContain('API_KEY');
     expect(text).toContain('DIRENV_VAR');
     expect(text).toContain('EMPTY_ONE');
-    expect(wrapper.findAll('input.value-input').length).toBeGreaterThan(0);
-    for (const input of wrapper.findAll('input.value-input')) {
-      expect((input.element as HTMLInputElement).value).toBe('');
-    }
+    const apiKey = rowByKey(wrapper, 'API_KEY').find('input.value-input').element as HTMLInputElement;
+    expect(apiKey.value).toBe('');
+    expect(apiKey.disabled).toBe(true);
+    const unset = rowByKey(wrapper, 'EMPTY_ONE').find('input.value-input').element as HTMLInputElement;
+    expect(unset.disabled).toBe(false);
+    expect(unset.placeholder).toBe('not set');
   });
 
-  it('reveal fetches exactly that row and fills its field', async () => {
+  it('the eye fetches and shows a value in ONE press, and hides it again', async () => {
     envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
     const wrapper = await show();
 
-    await wrapper.findAll('button.reveal-btn')[0]!.trigger('click');
+    const eye = rowByKey(wrapper, 'API_KEY').find('button.eye-btn');
+    await eye.trigger('click');
     await flush(wrapper);
 
     expect(envGet).toHaveBeenCalledTimes(1);
     expect(envGet).toHaveBeenCalledWith('conn-1', '$HOME/bug', ['API_KEY']);
-    const input = wrapper.findAll('input.value-input')[0]!.element as HTMLInputElement;
+    const input = rowByKey(wrapper, 'API_KEY').find('input.value-input').element as HTMLInputElement;
     expect(input.value).toBe('s3cr3t');
-  });
-
-  it('a fetched value stays masked until the eye opens it', async () => {
-    envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
-    const wrapper = await show();
-    await wrapper.findAll('button.reveal-btn')[0]!.trigger('click');
-    await flush(wrapper);
-
-    const input = wrapper.findAll('input.value-input')[0]!.element as HTMLInputElement;
-    // The fetch is not the reveal: the value is in the field, masked.
-    expect(input.value).toBe('s3cr3t');
-    expect(input.type).toBe('password');
-    const eye = wrapper.find('button.eye-btn');
-    expect(eye.attributes('aria-pressed')).toBe('false');
-
-    await eye.trigger('click');
     expect(input.type).toBe('text');
     expect(eye.attributes('aria-pressed')).toBe('true');
 
-    // And the eye closes again — the mask is a toggle, not a one-way door.
+    // The same eye closes again — the mask is a toggle, not a one-way door.
     await eye.trigger('click');
     expect(input.type).toBe('password');
   });
 
-  it('editing unmasks the field and retires the eye', async () => {
-    envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
-    const wrapper = await show();
-    await wrapper.findAll('button.reveal-btn')[0]!.trigger('click');
-    await flush(wrapper);
-
-    const input = wrapper.findAll('input.value-input')[0]!;
-    await input.setValue('s3cr3t-edited');
-    await flush(wrapper);
-
-    expect((input.element as HTMLInputElement).type).toBe('text');
-    expect(wrapper.find('button.eye-btn').exists()).toBe(false);
-  });
-
-  it('reveal all fills every row in ONE host round trip', async () => {
+  it('Reveal all fills every row in ONE host round trip and shows them', async () => {
     envGet.mockResolvedValue({ API_KEY: 'a', DIRENV_VAR: 'd', EMPTY_ONE: '' });
     const wrapper = await show();
 
-    await wrapper.find('.panel-actions button.reveal-btn').trigger('click');
+    await wrapper.find('button.reveal-all').trigger('click');
     await flush(wrapper);
 
     expect(envGet).toHaveBeenCalledTimes(1);
     // Omitted `keys` = the whole env (main's envGet then runs `env list` itself).
     expect(envGet).toHaveBeenCalledWith('conn-1', '$HOME/bug', undefined);
+    for (const key of ['API_KEY', 'DIRENV_VAR']) {
+      const input = rowByKey(wrapper, key).find('input.value-input').element as HTMLInputElement;
+      expect(input.type).toBe('text');
+      expect(input.value).not.toBe('');
+    }
   });
 
   it('save writes the dirty row to its own file, and a refusal shows as text', async () => {
     envGet.mockResolvedValue({ API_KEY: 'old' });
     const wrapper = await show();
-    await wrapper.findAll('button.reveal-btn')[0]!.trigger('click');
+    const row = rowByKey(wrapper, 'API_KEY');
+    await row.find('button.eye-btn').trigger('click');
     await flush(wrapper);
 
-    const input = wrapper.findAll('input.value-input')[0]!;
+    const input = row.find('input.value-input');
     await input.setValue('new-value');
-    await wrapper.findAll('button.save-btn')[0]!.trigger('click');
+    await row.find('button.row-save').trigger('click');
     await flush(wrapper);
 
     expect(envSet).toHaveBeenCalledTimes(1);
@@ -170,9 +162,28 @@ describe('EnvPanelView', () => {
     // Now the helper refuses a second write.
     envSet.mockRejectedValue(new Error('permission denied'));
     await input.setValue('newer');
-    await wrapper.findAll('button.save-btn')[0]!.trigger('click');
+    await rowByKey(wrapper, 'API_KEY').find('button.row-save').trigger('click');
     await flush(wrapper);
     expect(wrapper.text()).toContain('API_KEY: permission denied');
+  });
+
+  it('editing unmasks the field and retires the eye', async () => {
+    envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
+    const wrapper = await show();
+    await rowByKey(wrapper, 'API_KEY').find('button.eye-btn').trigger('click');
+    await flush(wrapper);
+
+    const row = rowByKey(wrapper, 'API_KEY');
+    const input = row.find('input.value-input');
+    await input.setValue('s3cr3t-edited');
+    await flush(wrapper);
+
+    expect((input.element as HTMLInputElement).type).toBe('text');
+    // The eye is gone from the screen — its slot stays, so the action column
+    // cannot shift under the caret.
+    expect(row.find('button.eye-btn').isVisible()).toBe(false);
+    // And Save is the visible action now.
+    expect(row.find('button.row-save').isVisible()).toBe(true);
   });
 
   it('refuses a key that would mangle the dotenv file, before the host sees it', async () => {
