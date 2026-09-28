@@ -732,13 +732,25 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
     expect(urlLinks(t, 1, () => undefined)).toEqual([]);
   });
 
-  it('refuses a full row whose URL is whole and whose head starts a second address', () => {
-    // Two addresses, one per row: the `/` head check refuses the glue even
-    // at rule 1's full geometry, or the link would read `x.io/a/b/c`.
+  it('joins a full row whose URL is cut right before its next segment', () => {
+    // The eleventh report's shape at rule 1's geometry: the wrapper filled
+    // the row to its last column and cut the address right before a segment,
+    // so the row below starts with `/`. The head-`/` refusal this shape once
+    // sat behind is gone: a FULL row that ends at a token boundary is cut
+    // evidence in itself — a word-wrap leaves the row short of the margin —
+    // so two whole addresses can only land end-to-margin by coincidence.
+    // What refuses instead is the finished-address trace: an extension on
+    // the path's last segment, which the `saved https://example.com/a/b.png`
+    // test in the file:// block above exercises.
     const first = 'see https://x.io/a';
-    const t = fakeScreen([first, '/b/c is another'], first.length);
+    const t = fakeScreen([first, '/b/c/commits/01a08215-d194'], first.length);
 
-    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(first);
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(
+      'see https://x.io/a/b/c/commits/01a08215-d194',
+    );
+    expect(urlLinks(t, 1, () => undefined).map((l) => l.text)).toEqual([
+      'https://x.io/a/b/c/commits/01a08215-d194',
+    ]);
   });
 
   it('leaves a question-mark cut inert when no scheme ever opened', () => {
@@ -750,6 +762,73 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
 
     expect(urlLinks(t, 1, () => undefined)).toEqual([]);
     expect(pathLinks(t, 1, () => ({ sessionName: 'git-foo' }))).toEqual([]);
+  });
+});
+
+/**
+ * The eleventh report, transcribed from the pane: the agent transcript
+ * renders a commit summary whose GitHub addresses its wrapper cuts right
+ * BEFORE a path segment — the row above ends `https://github.com` or
+ * `…/AI-Shipping-Labs`, the row below starts `/AI-Shipping-Labs/…` — and,
+ * at the transcript's inset rows, mid-segment (`…AI-Shipping-L` / `abs/…`)
+ * and mid-hash (`…7519fdf` / `6912cd7dd03802`). Every fragment used to sit
+ * dead: the near-full rows are rule 1a's, which web tails were barred from,
+ * and a leading-`/` head read as "a second address". The authority's
+ * `.com` is no extension, so the finished-address guard never fired either.
+ */
+describe('scanBufferLine — commit URLs the transcript cut before a segment', () => {
+  const ROWS = [
+    '- Style pass 1, 147 files. It renames the question-word headings, removes filler and "Now',
+    'let\'s", turns bare URLs into links, and adds languages to code blocks: https://github.com',
+    '/AI-Shipping-Labs/ai-buildcamp-course/commit/59e075671c560483bcc2a16e19535475a26e3102',
+    '- Style pass 2, 115 files. It fixes the AI tells stylint flags: "agent decides", rhetorical',
+    'questions, flat openers, and "The Problem" headings: https://github.com/AI-Shipping-Labs',
+    '/ai-buildcamp-course/commit/c7d76742a1419a68a6ed5a6e7ca71ce7c60c04d7',
+  ];
+  const ONE =
+    'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/59e075671c560483bcc2a16e19535475a26e3102';
+  const TWO =
+    'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/c7d76742a1419a68a6ed5a6e7ca71ce7c60c04d7';
+
+  it('joins both cut-before-a-segment addresses whole, from either row', () => {
+    // The rows end within the inset of the margin, so rule 1a reads them;
+    // the head starting with `/` is the cut's own shape.
+    const t = fakeScreen(ROWS, 92);
+    expect(urlLinks(t, 2, () => undefined).map((l) => l.text)).toEqual([ONE]);
+    expect(urlLinks(t, 3, () => undefined).map((l) => l.text)).toEqual([ONE]);
+    expect(urlLinks(t, 5, () => undefined).map((l) => l.text)).toEqual([TWO]);
+  });
+
+  it('opens the whole commit address', () => {
+    const open = vi.fn();
+    urlLinks(fakeScreen(ROWS, 92), 2, open)[0]?.activate(CLICK, ONE);
+    expect(open).toHaveBeenCalledWith(ONE);
+  });
+
+  it('joins the inset rows cut mid-segment and mid-hash', () => {
+    // The transcript's rows end one or two columns short of the margin, so
+    // rule 1's exact-full evidence is missing and rule 1a reads them: the
+    // head is the URL's own rest — `abs/…`, `6912cd7dd03802`, `ourse/…` —
+    // never the bare word a space-wrap leaves below a complete address.
+    const INSET = [
+      '- CalendarEvent attribution and the Project Work headings: https://github.com/AI-Shipping-L',
+      'abs/ai-buildcamp-course/commit/f5d5c1cfdd7799eecedf4f5c0c6870e14ed272b0',
+      '- More heading renames, the old homework form links removed, and "signal" replaced:',
+      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/39677034b76fd2a349a7519fdf',
+      '6912cd7dd03802',
+      '- {#how-to-join} removed from "Joining": https://github.com/AI-Shipping-Labs/ai-buildcamp-c',
+      'ourse/commit/7a19db67030aabbb77b440450fdedf49eca080ab',
+    ];
+    const t = fakeScreen(INSET, 92);
+    expect(urlLinks(t, 1, () => undefined).map((l) => l.text)).toEqual([
+      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/f5d5c1cfdd7799eecedf4f5c0c6870e14ed272b0',
+    ]);
+    expect(urlLinks(t, 4, () => undefined).map((l) => l.text)).toEqual([
+      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/39677034b76fd2a349a7519fdf6912cd7dd03802',
+    ]);
+    expect(urlLinks(t, 6, () => undefined).map((l) => l.text)).toEqual([
+      'https://github.com/AI-Shipping-Labs/ai-buildcamp-course/commit/7a19db67030aabbb77b440450fdedf49eca080ab',
+    ]);
   });
 });
 
