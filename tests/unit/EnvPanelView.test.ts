@@ -14,11 +14,15 @@ import type { EnvVarRow } from '@pocketshell/core';
  *   1. **Names load; values do not travel until asked for.** A mounted panel
  *      makes exactly ONE call (`env list`) and no row holds a value.
  *   2. **Reveal fetches that row's value and only that row's.**
- *   3. **Reveal all fetches the whole env in one call** (the helper charges
+ *   3. **Fetched is not on screen.** The fetched value lands in the field
+ *      masked; the row's eye shows and re-hides it, and editing unmasks the
+ *      field outright and retires the eye — there is no editing a secret you
+ *      cannot see.
+ *   4. **Reveal all fetches the whole env in one call** (the helper charges
  *      `env list` + one `env get` for it; the panel must not pay per row).
- *   4. **Save writes only the dirty row, targets the file it came from**, and
+ *   5. **Save writes only the dirty row, targets the file it came from**, and
  *      a rejection lands as a sentence next to the form rather than a throw.
- *   5. **The new-key form refuses a key that would mangle the dotenv file**
+ *   6. **The new-key form refuses a key that would mangle the dotenv file**
  *      (whitespace, `=`) before the host ever sees it.
  */
 
@@ -99,6 +103,42 @@ describe('EnvPanelView', () => {
     expect(envGet).toHaveBeenCalledWith('conn-1', '$HOME/bug', ['API_KEY']);
     const input = wrapper.findAll('input.value-input')[0]!.element as HTMLInputElement;
     expect(input.value).toBe('s3cr3t');
+  });
+
+  it('a fetched value stays masked until the eye opens it', async () => {
+    envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
+    const wrapper = await show();
+    await wrapper.findAll('button.reveal-btn')[0]!.trigger('click');
+    await flush(wrapper);
+
+    const input = wrapper.findAll('input.value-input')[0]!.element as HTMLInputElement;
+    // The fetch is not the reveal: the value is in the field, masked.
+    expect(input.value).toBe('s3cr3t');
+    expect(input.type).toBe('password');
+    const eye = wrapper.find('button.eye-btn');
+    expect(eye.attributes('aria-pressed')).toBe('false');
+
+    await eye.trigger('click');
+    expect(input.type).toBe('text');
+    expect(eye.attributes('aria-pressed')).toBe('true');
+
+    // And the eye closes again — the mask is a toggle, not a one-way door.
+    await eye.trigger('click');
+    expect(input.type).toBe('password');
+  });
+
+  it('editing unmasks the field and retires the eye', async () => {
+    envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
+    const wrapper = await show();
+    await wrapper.findAll('button.reveal-btn')[0]!.trigger('click');
+    await flush(wrapper);
+
+    const input = wrapper.findAll('input.value-input')[0]!;
+    await input.setValue('s3cr3t-edited');
+    await flush(wrapper);
+
+    expect((input.element as HTMLInputElement).type).toBe('text');
+    expect(wrapper.find('button.eye-btn').exists()).toBe(false);
   });
 
   it('reveal all fills every row in ONE host round trip', async () => {
