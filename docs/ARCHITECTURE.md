@@ -179,6 +179,13 @@ stay in memory so a tab switch cannot discard unsaved work. The helper's
 channel (the env panel layers that secret-via-stdin safety on for the
 `.env` case).
 
+The env editor is docked, not floating: it takes over the Files pane's
+editor area — the surface that otherwise shows the open file or the empty
+placeholder — opened from the tree toolbar's type button or by clicking a
+`.env`/`.envrc` row. It pins the folder it was opened for, so the tree
+stays live underneath an open panel and browsing on never moves its
+target; asking again in another folder re-pins it there.
+
 ---
 
 ## 7. State management
