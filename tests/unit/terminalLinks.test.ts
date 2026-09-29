@@ -1083,6 +1083,72 @@ describe('scanBufferLine — a single-quoted assignment wrapped inside a gutter 
   });
 });
 
+describe('scanBufferLine — an attachment path wrapped inside a bar-marked block', () => {
+  // The Space Bunny transcript renders every echoed message as a block whose
+  // rows all open with its left border bar (`▏ `), and the block's own wrapper
+  // broke the long attachment path at the hyphen inside the timestamp — the
+  // row full to the block's edge, `Webpage_3.pdf` carried below. Transcribed
+  // from the pane of the report where the unrecognised bar rode along on the
+  // join: the flattened token was `…01-▏`, the link opened a path that exists
+  // nowhere, the bar cell sprouted a link of its own, and the filename
+  // fragment stayed bare.
+  const ATTACH =
+    '~/.pocketshell/attachments/lukurban-github-io/lukurban-github-io/20260929-162110-01-Webpage_3.pdf';
+  const ROWS = [
+    '▏ more feedback: привет, пусть еще и картинка на верху не сливается с фоном но яркая',
+    '▏ была как другая внизу нормально выглядит.',
+    '▏',
+    '▏ Attached files:',
+    `▏ - ${ATTACH.slice(0, ATTACH.length - 'Webpage_3.pdf'.length)}`,
+    '▏ Webpage_3.pdf',
+    '▏',
+    '',
+  ];
+
+  it('joins the bar-marked continuation and drops the bar itself', () => {
+    const term = fakeScreen(ROWS, 120);
+    // The blank rows of the block carry the bar too, which keeps them from
+    // reading as paragraph separators to the width inference — and changes
+    // nothing here: `Attached files:` ends a token of its own and never joins
+    // anything, and the attachment line alone is the wrapped one.
+    expect(scanBufferLine(term, 4).text.trimEnd()).toBe('▏ Attached files:');
+    for (const line of [5, 6]) {
+      expect(scanBufferLine(term, line).text.trimEnd()).toBe(`▏ - ${ATTACH}`);
+    }
+  });
+
+  it('linkifies the whole path, the bar outside every range', () => {
+    const term = fakeScreen(ROWS, 120);
+    const context = (): { sessionName: string } => ({ sessionName: 'lukurban-github-io' });
+
+    // Whichever row the mouse is over: one fragment per row, each opening the
+    // whole attachment path.
+    for (const line of [5, 6]) {
+      expect(pathLinks(term, line, context).map((l) => l.text)).toEqual([
+        '~/.pocketshell/attachments/lukurban-github-io/lukurban-github-io/20260929-162110-01-',
+        'Webpage_3.pdf',
+      ]);
+    }
+    // Row one's fragment runs from the `~` to the cut; row two's begins at the
+    // content column and ends at the last `f`. The bar cell and the columns
+    // after the cut are underlined by nobody — no link rides on the bar.
+    const links = pathLinks(term, 5, context);
+    expect(links[0]?.range).toEqual({ start: { x: 5, y: 5 }, end: { x: 88, y: 5 } });
+    expect(links[1]?.range).toEqual({ start: { x: 3, y: 6 }, end: { x: 15, y: 6 } });
+  });
+
+  it('opens the whole pdf, not the directory the first row ended at', () => {
+    const files = useFilesStore();
+    pathLinks(fakeScreen(ROWS, 120), 5, () => ({ sessionName: 'lukurban-github-io' }))[0]
+      ?.activate(CLICK, ATTACH);
+    // `~/` is home-anchored, so the reveal resolves relative to the login home
+    // (stripTilde) and needs no session cwd — the assertion that matters is the
+    // WHOLE name under it, `Webpage_3.pdf` and all, not the `…01-▏` the join
+    // used to open.
+    expect(files.reveal).toBe(ATTACH.slice('~/'.length));
+  });
+});
+
 /**
  * The other half of the joining rules, and the half that decides whether this
  * feature is trustworthy: two rows that merely follow one another must stay two
@@ -1199,6 +1265,25 @@ describe('scanBufferLine — rows that must NOT be joined', () => {
 
   it('refuses a gutter row that starts a path of its own', () => {
     expect(scan(['  │ cp /tmp/out/', '  │ /srv/media/b.mp3'], 80)).toBe('  │ cp /tmp/out/');
+  });
+
+  it('refuses a bar-marked row whose first token would have fitted above', () => {
+    // The border bar is a gutter and the tail ends in a hyphen, so both gates
+    // the `  │ ` shape answers to are open — the fit guard is what refuses:
+    // the block's own longer row sets the render width, and `done` had room.
+    // The bar must not lower the standard the `  │ ` gutter is held to.
+    expect(
+      scan(
+        ['▏ created /tmp/out/', '▏ done', 'a much longer row that sets the render width'],
+        60,
+      ),
+    ).toBe('▏ created /tmp/out/');
+  });
+
+  it('refuses a bar-marked row when the path above is already finished', () => {
+    // No trailing slash or hyphen: `/tmp/out` is a whole name, and gluing
+    // `done` onto it would silently rename it — bar or no bar.
+    expect(scan(['▏ wrote /tmp/out', '▏ done and dusted'], 80)).toBe('▏ wrote /tmp/out');
   });
 
   it('refuses an ASCII pipe, which is a table or a shell pipeline', () => {
