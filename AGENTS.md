@@ -27,8 +27,9 @@ Layout, three Electron processes plus shared code:
   `packages/ui`, consumed through the `@ui` Vite alias.
 
 Commands: `npm run dev` (watch), `npm run build` (→ `out/`), `npm run
-typecheck` (two tsconfigs: node = main+preload, web = renderer), `npm run
-lint`, `npm run test:unit`, `npm run test:integration` (needs Docker),
+typecheck` (three tsconfigs: node = main+preload, web = renderer, ui = the
+core sibling's `packages/ui`), `npm run lint`, `npm run test:unit`,
+`npm run test:integration` (needs Docker),
 `npm run test:e2e` (Playwright + Electron, needs the Docker compose fleet),
 `npm run smoke` (pre-release gate). Test tiers are described in
 `docs/TESTING.md`.
