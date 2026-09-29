@@ -3,9 +3,10 @@
 ## 0. What this project is
 
 Electron desktop port of PocketShell — a tmux-native, agent-aware SSH
-client. It connects to remote dev boxes running tmux plus the `pocketshell`
-helper; sessions are joined through the helper-driven tmux attach model, not
-`tmux -CC` control mode (rationale in `docs/ARCHITECTURE.md` §3).
+client. It connects to remote dev boxes whose sessions are aplexer
+sessions, reached through the `pocketshell` helper, with the helper-driven
+tmux attach as the fallback on hosts without aplexer — not `tmux -CC`
+control mode (rationale in `docs/ARCHITECTURE.md` §3).
 
 Layout, three Electron processes plus shared code:
 
