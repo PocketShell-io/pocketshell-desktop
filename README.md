@@ -6,7 +6,7 @@
 
 <p align="center">
   A keyboard-first SSH client for the dev box you already use.<br>
-  Real terminals. Live tmux sessions. The agents running inside them.
+  Real terminals. Live aplexer sessions. The agents running inside them.
 </p>
 
 <p align="center">
@@ -38,13 +38,13 @@ PocketShell Desktop is the desktop sibling of the [PocketShell](https://github.c
 ```text
 this machine                              the dev box
 ┌─────────────────────┐    SSH     ┌──────────────────────────┐
-│ PocketShell Desktop │ ─────────► │ tmux / aplexer sessions  │
+│ PocketShell Desktop │ ─────────► │ aplexer sessions         │
 │ terminal · files    │            │ pocketshell helper       │
 │ composer · forwards │            │ agents · quota · env     │
 └─────────────────────┘            └──────────────────────────┘
 ```
 
-The app attaches to a session the host already owns. Listing comes from `a snapshot` when aplexer is on the host, and falls back to the `pocketshell` helper, then to `tmux`. Joining opens a shell channel straight onto `a attach` or the helper's tmux join, and xterm.js renders whatever the far end draws.
+The app attaches to a session the host already owns. Those sessions are aplexer sessions, reached through the `pocketshell` helper. Joining opens a shell channel onto `a attach`, and xterm.js renders whatever the far end draws.
 
 ## What you work with
 
@@ -54,7 +54,7 @@ The app attaches to a session the host already owns. Listing comes from `a snaps
 
 ### Sessions
 
-Every tmux session on the host, with its last activity and a mark for the agent running in it. Sessions that share a project folder open as one workspace: a tab per session, plus a Files tab. Rename from the tab. Start a new one, with an agent of your choice, from the workspace menu. A folder can also open in VS Code over Remote SSH.
+Every aplexer session on the host, with its last activity and a mark for the agent running in it. Sessions that share a project folder open as one workspace: a tab per session, plus a Files tab. Rename from the tab. Start a new one, with an agent of your choice, from the workspace menu. A folder can also open in VS Code over Remote SSH.
 
 </td>
 <td width="50%" valign="top">
@@ -93,7 +93,7 @@ A quota view reads what is left for each AI provider, and when it resets, from t
 
 ### The connection
 
-Hosts come from `~/.ssh/config`, with a manual add when a host is not listed. Host keys are checked against `known_hosts`: an unknown key asks, a mismatch stops. On connect the app reports when `tmux` or the helper is missing. A dropped network reconnects and brings sessions and forwards back.
+Hosts come from `~/.ssh/config`, with a manual add when a host is not listed. Host keys are checked against `known_hosts`: an unknown key asks, a mismatch stops. On connect the app reports when the helper is missing. A dropped network reconnects and brings sessions and forwards back.
 
 </td>
 </tr>
@@ -101,7 +101,7 @@ Hosts come from `~/.ssh/config`, with a manual add when a host is not listed. Ho
 
 ## Three rules
 
-- **The session lives on the server.** tmux or aplexer keeps it. This app is a window, and it reconnects freely.
+- **The session lives on the server.** Aplexer keeps it, and the `pocketshell` helper is how this app reaches it. The desktop is a window, and it reconnects freely.
 - **Secrets stay on the host.** Quota, agent identity, and repo data are read there. A key passphrase is used for one connect and then forgotten.
 - **The shell keeps its keys.** Anything a terminal can already send still reaches the shell. The app binds only what a terminal cannot use, and every binding is listed and rebindable in **Settings → Keyboard**.
 
@@ -117,7 +117,7 @@ Windows, macOS, and Linux. Each ships x64 and arm64.
 
 Grab the latest build from [Releases](https://github.com/PocketShell-io/pocketshell-desktop/releases/latest).
 
-**On the machine you connect to**, you need SSH with key authentication, `tmux`, and the helper:
+**On the machine you connect to**, you need SSH with key authentication and the helper, which drives aplexer there:
 
 ```bash
 uv tool install pocketshell
