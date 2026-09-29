@@ -199,9 +199,14 @@ function childClasses(el: Element): string[] {
   // An indexed loop rather than a spread: `HTMLCollection` is only iterable
   // under `lib.dom.iterable`, which this project does not enable, so spreading
   // it yields `any[]` and the lint rules — rightly — refuse it.
+  //
+  // `classList`, not `className`: the agent marks are <svg> (AppIcon), and an
+  // SVGElement's `className` is an SVGAnimatedString object rather than a
+  // string, so `.split(' ')` would throw. `classList[0]` is the first token
+  // for both the HTML and SVG registers.
   const out: string[] = [];
   for (let i = 0; i < el.children.length; i += 1) {
-    out.push(el.children[i]?.className.split(' ')[0] ?? '');
+    out.push(el.children[i]?.classList[0] ?? '');
   }
   return out;
 }
@@ -1019,9 +1024,11 @@ describe('SessionTree — the root header row', () => {
     expect(header.get('.root-add').attributes('title')).toBe('New session in ~/git');
   });
 
-  it('puts a folder row count beside its label too, ahead of the badges', async () => {
+  it('puts a folder row count beside its label too, ahead of the agent marks', async () => {
     // One convention down the whole panel: a count that hugged its label on the
-    // header and floated right on the rows beneath would be two.
+    // header and floated right on the rows beneath would be two. The badge
+    // slot itself is an AppIcon for an engine session — the mark's own
+    // `app-icon` class leads, the row's `agent-mark` hook follows.
     const wrapper = await open([
       { ...session('git-app-a', `${HOME}/git/app`, 100), agentKind: 'claude' as const },
       session('git-app-b', `${HOME}/git/app`, 200),
@@ -1031,9 +1038,10 @@ describe('SessionTree — the root header row', () => {
       'dot',
       'label',
       'folder-count',
-      'agent-badge',
+      'app-icon',
       'row-time',
     ]);
+    expect(row.find('.agent-mark').exists()).toBe(true);
   });
 
   it('renders the whole label in one span and hands the full name to the tooltip', async () => {

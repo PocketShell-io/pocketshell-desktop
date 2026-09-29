@@ -17,9 +17,9 @@ describe('agentMark', () => {
   it('gives each of the four engines its own mark', () => {
     const kinds = ['claude', 'codex', 'opencode', 'grok'] as const;
     const icons = kinds.map((k) => agentMark(k)?.icon);
-    expect(icons).toEqual(['hexagon', 'code', 'terminal', 'zap']);
+    expect(icons).toEqual(['brand-claude', 'brand-codex', 'brand-opencode', 'brand-grok']);
     // Distinct, which is the only property the marks actually have to have:
-    // they are arbitrary, and the tooltip is what names them.
+    // they are the vendors' own, and the tooltip is what names them in words.
     expect(new Set(icons).size).toBe(kinds.length);
   });
 
