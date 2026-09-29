@@ -107,6 +107,33 @@ import { markdownStylesheet, type PreviewStyle } from './previewStyle.js';
  * the sandbox or the CSP is ever weakened. They are load-bearing together, and
  * this decision is downstream of both.
  *
+ * ## Frontmatter is metadata, not prose
+ *
+ * Notes and static-site sources open with a YAML frontmatter block — a `---`
+ * fence of `key: value` lines — and handed to a markdown converter it fails
+ * visibly: the fence lines become `<hr>`s and every key and value lands in one
+ * squashed paragraph. The converter therefore splits a leading fenced block off
+ * before parsing and renders it as a key/value table above the body, the shape
+ * GitHub's renderer established. Both sides of the colon are remote-controlled
+ * text, so every cell is escaped the way prose is, and the only markup the
+ * table adds of its own is an anchor for a value that IS an http(s) URL — the
+ * same door the body's links already go through.
+ *
+ * The parser is deliberately a SUBSET of YAML, not a YAML dependency:
+ * top-level `key: value` scalars (bare or quoted), a trailing comment after an
+ * unquoted value, and one level of `- item` lists, displayed comma-joined.
+ * That subset is what frontmatter in the wild is, and a full YAML object graph
+ * has no natural table shape anyway. Anything the parser cannot attribute —
+ * nested maps, block scalars, deeper indentation — degrades the WHOLE block to
+ * a fenced code block of the raw text: never mangled into a table that misreads
+ * it, never dropped. It is the raw-HTML decision's bar turned around — display
+ * what you cannot interpret.
+ *
+ * The table carries the `md-frontmatter` class so the stylesheet, which owns
+ * all of the CSS, can let its cells wrap like prose does: a long content id or
+ * video URL must wrap inside the metadata block, not turn it into a sideways
+ * scroller.
+ *
  * ## Styling
  *
  * A markdown preview with no stylesheet is a wall of Times New Roman on white,
@@ -197,6 +224,139 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+const OPENING_FENCE = /^---[ \t]*\r?\n/;
+const CLOSING_FENCE = /^(?:---|\.\.\.)[ \t]*$/;
+const ENTRY = /^([\w.-]+)[ \t]*:[ \t]*(.*)$/;
+const LIST_ITEM = /^[ \t]+-[ \t]+/;
+const INDENTED = /^[ \t]+\S/;
+/** A value that is nothing but a web URL — the one shape the table links. */
+const WEB_URL = /^https?:\/\/\S+$/i;
+
+interface FrontmatterEntry {
+  key: string;
+  value: string;
+}
+
+/**
+ * A leading YAML frontmatter block and the markdown after it.
+ *
+ * `frontmatter` is null whenever the source does not open like frontmatter: a
+ * BOM is tolerated, but an opening `---` with no closing `---`/`...` line is a
+ * document that merely starts with a thematic break, and it stays in the body
+ * to be rendered as exactly that. When a block IS consumed the body is what
+ * follows the closing fence, rejoined with `\n` — the split has already had to
+ * look at every fence line, so normalising the line endings here costs nothing
+ * and marked is indifferent to them.
+ */
+function splitFrontmatter(source: string): { frontmatter: string | null; body: string } {
+  const text = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+  const open = OPENING_FENCE.exec(text);
+  if (open === null) {
+    return { frontmatter: null, body: text };
+  }
+  const lines = text.slice(open[0].length).split(/\r?\n/);
+  const close = lines.findIndex((line) => CLOSING_FENCE.test(line));
+  if (close === -1) {
+    return { frontmatter: null, body: text };
+  }
+  return {
+    frontmatter: lines.slice(0, close).join('\n'),
+    body: lines.slice(close + 1).join('\n'),
+  };
+}
+
+/** One layer of matching quotes; YAML unwraps these from a scalar. */
+function unquote(value: string): string {
+  const first = value.charAt(0);
+  if (value.length >= 2 && (first === '"' || first === "'") && value.charAt(value.length - 1) === first) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+/**
+ * The scalar-and-list subset of YAML, as display rows — or null for anything
+ * else, which the caller renders as raw text. Line-by-line by design: the
+ * table needs keys and presentable scalars, not an object graph, and a line
+ * the grammar cannot attribute is precisely the signal that this block has
+ * left the subset.
+ */
+function parseFrontmatter(text: string): FrontmatterEntry[] | null {
+  const entries: FrontmatterEntry[] = [];
+  const lines = text.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i] ?? '';
+    i += 1;
+    if (line.trim() === '') continue;
+    const entry = ENTRY.exec(line);
+    if (entry === null) return null;
+    const key = entry[1] ?? '';
+    const raw = (entry[2] ?? '').trim();
+    const quoted =
+      raw.length >= 2 && (raw[0] === '"' || raw[0] === "'") && raw[raw.length - 1] === raw[0];
+    if (quoted) {
+      // Fully quoted: YAML takes the content verbatim — no comment stripping
+      // and no second-guessing whatever punctuation the author put inside.
+      entries.push({ key, value: raw.slice(1, -1) });
+      continue;
+    }
+    // `|`/`>` begin block scalars, whose value is lines this grammar has no
+    // shape for — refuse the block rather than show the indicator as text.
+    if (raw[0] === '|' || raw[0] === '>') return null;
+    if (raw !== '') {
+      // Outside quotes a `#` after whitespace starts a comment — and a URL's
+      // `#fragment` never has whitespace before it, so this cannot eat one.
+      // What survives may itself be quoted (`"Q&A" # note`), so unwrap it.
+      entries.push({ key, value: unquote(raw.replace(/[ \t]+#.*$/, '').trim()) });
+      continue;
+    }
+    // No inline value: either a `- item` list or an empty scalar. An indented
+    // line that is not a list item would be a nested structure, and a line
+    // still indented after the items would be their continuation — both beyond
+    // the subset, so the whole block degrades to raw text.
+    const items: string[] = [];
+    while (i < lines.length && LIST_ITEM.test(lines[i] ?? '')) {
+      items.push(unquote((lines[i] ?? '').replace(LIST_ITEM, '').trim()));
+      i += 1;
+    }
+    // Past the list, or past the key when there was no list: an indented line
+    // there would be a nested structure or the items' continuation.
+    const after = lines[i] ?? '';
+    if (items.length > 0) {
+      if (INDENTED.test(after)) return null;
+      entries.push({ key, value: items.join(', ') });
+      continue;
+    }
+    if (INDENTED.test(after)) return null;
+    entries.push({ key, value: '' });
+  }
+  return entries;
+}
+
+/**
+ * The lead HTML a frontmatter block renders to: a key/value table for the
+ * subset the parser accepts, the raw YAML as a code block for anything else,
+ * and nothing at all for an empty block.
+ */
+function frontmatterHtml(frontmatter: string): string {
+  const entries = parseFrontmatter(frontmatter);
+  if (entries === null) {
+    return `<pre><code class="language-yaml">${escapeHtml(frontmatter)}</code></pre>`;
+  }
+  if (entries.length === 0) return '';
+  const rows = entries.map(({ key, value }) => {
+    // The one anchor the converter emits of its own accord, and only for a
+    // value that is entirely an http(s) URL — the external-link door the body's
+    // markdown anchors already go through, still allow-listed in main.
+    const cell = WEB_URL.test(value)
+      ? `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>`
+      : escapeHtml(value);
+    return `<tr><th>${escapeHtml(key)}</th><td>${cell}</td></tr>`;
+  });
+  return `<table class="md-frontmatter"><tbody>${rows.join('')}</tbody></table>`;
+}
+
 /**
  * Convert one markdown source into a complete, self-contained HTML document.
  *
@@ -208,15 +368,18 @@ export function markdownToHtml(source: string, options: MarkdownDocumentOptions)
   // A fresh instance per document — see OPTIONS. Instantiating marked is cheap
   // (its rule tables are module-level statics) and one preview is one user
   // action, not a hot loop.
+  const { frontmatter, body: markdown } = splitFrontmatter(source);
   const doc = new Marked(OPTIONS);
   doc.use({ renderer: headingRenderer() });
-  const body = doc.parse(source) as string;
+  const body = doc.parse(markdown) as string;
+  const lead = frontmatter === null ? '' : frontmatterHtml(frontmatter);
   return [
     '<!doctype html>',
     `<html lang="en"><head><meta charset="utf-8">`,
     `<title>${escapeHtml(options.title)}</title>`,
     `<style>${markdownStylesheet(options.style)}</style>`,
     '</head><body><main class="md">',
+    lead,
     body,
     '</main></body></html>',
   ].join('');

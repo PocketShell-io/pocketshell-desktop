@@ -170,6 +170,14 @@ hands a web URL to the system browser (http(s)-only allow-list); the frame
 never touches the network. The preview always renders the host's copy —
 unsaved edits are not shown.
 
+A markdown preview also lifts a leading YAML frontmatter block out of the
+body: the scalar-and-list subset renders as a key/value table above the
+prose (an http(s) value stays clickable through the same external-link
+door), and anything the parser cannot attribute — nested maps, block
+scalars — degrades the block to a code frame of the raw text rather than
+mangle it. The rules live in `markdownDocument.ts`, which is also why no
+YAML dependency crosses into the bundle.
+
 The active Files pane is mounted only while its workspace tab is visible,
 so the files store remembers each tab's directory and selected file across
 a terminal visit. Clean files are re-read on return; dirty editable buffers

@@ -125,6 +125,128 @@ describe('markdownToHtml — heading anchors', () => {
   });
 });
 
+describe('markdownToHtml — YAML frontmatter', () => {
+  /**
+   * A frontmatter block is metadata about the document, and letting it reach
+   * marked renders the failure visibly: two `<hr>`s sandwiching one paragraph
+   * with every key and value squashed into it. These tests pin the replacement
+   * (a key/value table above the body), the escape rule (both sides of the
+   * colon are remote-controlled text), the ONE anchor the table may add of its
+   * own, and the degrade-to-raw-text path for YAML beyond the parser's
+   * scalar-and-list subset — never a table that misreads what it was given.
+   */
+  const FRONT = [
+    '---',
+    'content_id: 396f2fac-baf6-5c9a-ba2d-49f80077ea7d',
+    'sort_order: 3',
+    'title: "Q&A RAG"',
+    'video_url: https://www.loom.com/share/77754178',
+    'is_bonus: true',
+    '---',
+    '',
+    'Now we build the RAG class.',
+    '',
+  ].join('\n');
+
+  it('renders the block as a key/value table above the body, not as prose', () => {
+    const html = body(render(FRONT));
+    expect(html).toContain('<table class="md-frontmatter"><tbody>');
+    expect(html).toContain('<tr><th>content_id</th><td>396f2fac-baf6-5c9a-ba2d-49f80077ea7d</td></tr>');
+    expect(html).toContain('<th>sort_order</th><td>3</td>');
+    expect(html).toContain('<th>title</th><td>Q&amp;A RAG</td>');
+    expect(html).toContain('<th>is_bonus</th><td>true</td>');
+    expect(html).toContain('<p>Now we build the RAG class.</p>');
+    // What the table replaces: the fence lines as thematic breaks and the
+    // frontmatter as one paragraph of prose.
+    expect(html).not.toContain('<hr');
+    expect(html).not.toContain('<p>content_id');
+  });
+
+  it('links a value that is an http(s) URL, through the body links\u2019 door', () => {
+    const html = body(render(FRONT));
+    expect(html).toContain(
+      '<th>video_url</th><td><a href="https://www.loom.com/share/77754178">https://www.loom.com/share/77754178</a></td>',
+    );
+  });
+
+  it('does not link a value whose scheme is not http(s)', () => {
+    // The converter adds markup of its own only for web URLs; anything else —
+    // a `javascript:` value among them — stays escaped text.
+    const html = body(render('---\nclick: javascript:alert(1)\n---\nbody\n'));
+    expect(html).toContain('<th>click</th><td>javascript:alert(1)</td>');
+    expect(html).not.toContain('<a href="javascript:');
+  });
+
+  it('escapes a hostile value, which is remote-controlled text like the prose is', () => {
+    const html = body(render('---\npayload: <script>alert(1)</script>\n---\nbody\n'));
+    expect(html).toContain('<th>payload</th><td>&lt;script&gt;alert(1)&lt;/script&gt;</td>');
+    expect(html).not.toContain('<script>alert(1)</script>');
+  });
+
+  it('degrades a block whose key is markup, because no honest cell exists for it', () => {
+    // A key the entry grammar cannot attribute is the same signal as a nested
+    // map: show the raw text escaped rather than guess at a table for it.
+    const html = body(render('---\n</th><td>: x\n---\nbody\n'));
+    expect(html).toContain('<pre><code class="language-yaml">');
+    expect(html).toContain('&lt;/th&gt;&lt;td&gt;: x');
+    expect(html).not.toContain('<table class="md-frontmatter">');
+  });
+
+  it('unquotes values, and drops a comment that YAML would drop', () => {
+    const html = body(render('---\ntitle: "Q&A" # the module\nslug: q-and-a\n---\nbody\n'));
+    expect(html).toContain('<th>title</th><td>Q&amp;A</td>');
+    expect(html).toContain('<th>slug</th><td>q-and-a</td>');
+  });
+
+  it('keeps a # that is not a comment — one with no whitespace before it', () => {
+    const html = body(render('---\ncolour: #0d1117\n---\nbody\n'));
+    expect(html).toContain('<th>colour</th><td>#0d1117</td>');
+  });
+
+  it('comma-joins a one-level list under an empty value', () => {
+    const html = body(render('---\ntags:\n  - rag\n  - "faq"\n---\nbody\n'));
+    expect(html).toContain('<th>tags</th><td>rag, faq</td>');
+  });
+
+  it('degrades YAML beyond the subset to a code block of the raw text', () => {
+    // A nested map has no honest cell in a key/value table, and a table that
+    // misreads its input is worse than a code block that interprets nothing:
+    // the raw bytes stay on screen, every one of them.
+    const yaml = 'author:\n  name: Ada\n  site: https://example.com';
+    const html = body(render(`---\n${yaml}\n---\nbody\n`));
+    expect(html).toContain('<pre><code class="language-yaml">');
+    expect(html).toContain('author:\n  name: Ada');
+    expect(html).not.toContain('<table class="md-frontmatter">');
+  });
+
+  it('treats an unterminated opening fence as a thematic break, not frontmatter', () => {
+    const html = body(render('---\ntitle: never closed\n'));
+    expect(html).toContain('<hr');
+    expect(html).not.toContain('md-frontmatter');
+  });
+
+  it('consumes a block with CRLF line endings and one with a BOM before the fence', () => {
+    const crlf = body(render(FRONT.split('\n').join('\r\n')));
+    expect(crlf).toContain('<table class="md-frontmatter">');
+    expect(crlf).not.toContain('<hr');
+    const bom = body(render(`\uFEFF${FRONT}`));
+    expect(bom).toContain('<table class="md-frontmatter">');
+  });
+
+  it('skips an empty block rather than emitting an empty table', () => {
+    const html = body(render('---\n---\nbody\n'));
+    expect(html).not.toContain('<table');
+    expect(html).toContain('<p>body</p>');
+  });
+
+  it('carries no state from one document into the next', () => {
+    // The split and the parse are per-call; a preview of a second, plain file
+    // must not inherit the first file's table.
+    body(render(FRONT));
+    expect(body(render('# plain\n'))).not.toContain('<table');
+  });
+});
+
 describe('markdownToHtml — raw HTML is passed through, deliberately', () => {
   /**
    * This is the decision, pinned.
