@@ -14,14 +14,16 @@
  * devDependencies to draw three strokes would cost more than it saves.
  *
  * Run:    node scripts/make-icon.mjs
- * Emits:  build/icon.ico (Windows), build/icon.png (macOS/Linux), build/icon.svg (docs)
+ * Emits:  build/icon.ico (Windows), build/icon.png (macOS/Linux),
+ *          build/icon.svg and docs/icon.svg (the README mark; build/ is gitignored)
  */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'build');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const OUT = join(ROOT, 'build');
 
 // ---- Tokens ------------------------------
 const SURFACE = [0x16, 0x1b, 0x22]; // --surface  #161B22
@@ -224,8 +226,11 @@ writeFileSync(join(OUT, 'icon.ico'), ico);
 // electron-builder wants one square PNG of at least 512 for Linux and derives
 // the macOS .icns from it; 1024 leaves room for the Retina slice.
 writeFileSync(join(OUT, 'icon.png'), encodePng(render(1024), 1024));
-writeFileSync(join(OUT, 'icon.svg'), encodeSvg());
+const svg = encodeSvg();
+writeFileSync(join(OUT, 'icon.svg'), svg);
+writeFileSync(join(ROOT, 'docs', 'icon.svg'), svg);
 
 console.log(`build/icon.ico  ${ICO_SIZES.join(', ')}px  ${ico.length} bytes`);
 console.log('build/icon.png  1024px');
 console.log('build/icon.svg');
+console.log('docs/icon.svg');
