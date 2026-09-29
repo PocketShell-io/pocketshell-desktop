@@ -70,8 +70,10 @@ that. Instead:
 1. **Listing.** The session tree is fetched from `a snapshot --json` over
    plain SSH exec channels. On a host with aplexer the snapshot is the
    WHOLE list: aplexer addresses `workspace + tag` under an immutable
-   UUID, so its workspace is the folder-grouping key and its declared
-   engine is the agent kind — no inference. A host without `a` falls back
+   UUID, so its workspace is the folder-grouping key and its rows carry
+   the agent kind directly — the snapshot's derived `agent` field (the
+   live process tree, spec §18) preferred, the declared `engine` as the
+   fallback; no inference. A host without `a` falls back
    to the legacy path (`pocketshell sessions list`, then
    `tmux list-sessions`). A session the app JUST created is filed from its
    start result as a pending row and replaced by the panel's next poll, so

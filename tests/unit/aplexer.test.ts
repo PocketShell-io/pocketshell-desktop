@@ -115,6 +115,17 @@ describe('aplexerRecordToSummary', () => {
     expect(aplexerRecordToSummary(record({ engine: 'bogus' })).agentKind).toBeNull();
   });
 
+  it('badges the live agent aplexer sees in the process tree, over the declared engine', () => {
+    // Every PocketShell-created session is engine "shell" with the agent
+    // launched by hand inside it — the snapshot's derived `agent` field
+    // (spec §18) is the only thing that can name it.
+    const shellRunningCodex = aplexerRecordToSummary(record({ engine: 'shell', agent: 'codex' }));
+    expect(shellRunningCodex.agentKind).toBe('codex');
+    // No agent live (or an old host without the field): the declared engine speaks.
+    expect(aplexerRecordToSummary(record({ agent: null })).agentKind).toBe('codex');
+    expect(aplexerRecordToSummary(record()).agentKind).toBe('codex');
+  });
+
   it('falls back to the workload cwd when the workspace is unusable', () => {
     const summary = aplexerRecordToSummary(record({ workspace: '', cwd: '/tmp/work' }));
     expect(summary.path).toBe('/tmp/work');
