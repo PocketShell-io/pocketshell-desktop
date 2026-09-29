@@ -62,9 +62,9 @@ Push after the work is committed.
 ## 2. Rebuild before handing off
 
 The app runs from the built bundle (`package.json` `main` → `out/main/`),
-not from `src/` — launching `node_modules/electron/dist/electron.exe .`
-against a stale `out/` shows an old interface no matter what landed in
-git. After any change to app source, run `npm run build` so `out/` matches
+not from `src/` — launching Electron (`npx electron .`) against a stale
+`out/` shows an old interface no matter what landed in git. After any
+change to app source, run `npm run build` so `out/` matches
 what was just committed, and say so when handing off.
 
 (`npm run dev` watches and rebuilds on its own; the rebuild rule is for the
