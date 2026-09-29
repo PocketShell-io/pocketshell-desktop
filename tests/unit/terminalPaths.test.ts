@@ -455,4 +455,41 @@ describe('findPaths — a markdown link a transcript prints', () => {
   it('does not swallow a plain path that merely sits in brackets', () => {
     expect(paths('see (docs/setup.md) for details')).toEqual(['docs/setup.md']);
   });
+
+  it('reads a CommonMark angle-bracket destination, opening what the angles hide', () => {
+    // The form renderers use when the address would otherwise be misread. The
+    // angles are destination syntax: stripped for the verdict, kept in the
+    // span — what the user reads of the address, as a file:// URL keeps its
+    // scheme underlined.
+    const line = 'see [the guide](<docs/setup.md>) for details';
+    expect(paths(line)).toEqual(['docs/setup.md']);
+    expect(spans(line)).toEqual(['<docs/setup.md>']);
+  });
+
+  it('keeps sentence punctuation outside the wrapped span, too', () => {
+    const line = 'Review [session list](</data/agents/x/a.png>), and more';
+    expect(paths(line)).toEqual(['/data/agents/x/a.png']);
+    expect(spans(line)).toEqual(['</data/agents/x/a.png>']);
+  });
+
+  it('reads a destination alone, the wrapper having split label from destination', () => {
+    // The paragraph-wrap shape of the queued-follow-ups report: the label's
+    // `]` fell on the row above, and the destination arrived on a row of its
+    // own.
+    const line = '(</data/agents/x/agent-selected-unknown-shell.png>).';
+    expect(paths(line)).toEqual(['/data/agents/x/agent-selected-unknown-shell.png']);
+    expect(spans(line)).toEqual(['</data/agents/x/agent-selected-unknown-shell.png>']);
+  });
+
+  it('still refuses an angle-wrapped destination that is no path', () => {
+    expect(paths('jump to [the section](<#setup>) first')).toEqual([]);
+    expect(paths('a pair (and/or) of words')).toEqual([]);
+    expect(paths('a fraction (9/10) of users')).toEqual([]);
+  });
+
+  it('still anchors a labelled destination at its own ](, not an earlier paren', () => {
+    // The label may hold a `(` of its own — `[a(b](target)` — and the target
+    // is what opens, not the label's parenthesised tail.
+    expect(paths('[a(b](/x/c.png)')).toEqual(['/x/c.png']);
+  });
 });

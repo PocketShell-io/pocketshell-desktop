@@ -1149,6 +1149,91 @@ describe('scanBufferLine — an attachment path wrapped inside a bar-marked bloc
   });
 });
 
+describe('scanBufferLine — a markdown paragraph whose links the wrapper cut', () => {
+  // The queued-follow-ups transcript, transcribed from the pane: one markdown
+  // paragraph carrying three `[label](</data/…png>)` links to screenshots,
+  // CommonMark angle-bracket destinations, the wrapper cutting rows at the
+  // margin — through `](<`, through `/`, through the hyphen inside a timestamp
+  // — and once between a label's `]` and its destination's `(`. Judged raw,
+  // the angles are FORBIDDEN in a path, so the detector refused every
+  // destination, the gate tore the paragraph at every link, and the links
+  // that survived pointed at torn-off relative fragments resolving nowhere.
+  const DIR =
+    '/data/agents/pocketshell/worktrees/issue-2907-agent-identity-luna/android/app/build/outputs/js-lifecycle/js2907-review-20260927/js2907-review-20260927';
+  const ROWS = [
+    '• Queued follow-up inputs',
+    'Does PR #2909’s real Android agent identity UI match the desktop design direction?',
+    'Review [session list](</data/agents/pocketshell/worktrees/issue-2907-agent-identity-luna/',
+    'android/app/build/outputs/js-lifecycle/js2907-review-20260927/js2907-review-20260927/',
+    'agent-list-a-b-reported.png>), [Claude waiting](</data/agents/pocketshell/worktrees/',
+    'issue-2907-agent-identity-luna/android/app/build/outputs/js-lifecycle/js2907-review-',
+    '20260927/js2907-review-20260927/agent-selected-claude-waiting.png>), and [unknown shell]',
+    '(</data/agents/pocketshell/worktrees/issue-2907-agent-identity-luna/android/app/build/',
+    'outputs/js-lifecycle/js2907-review-20260927/js2907-review-20260927/agent-selected-',
+    'unknown-shell.png>).',
+  ];
+
+  it('flattens the paragraph into two logical lines, torn only at the label seam', () => {
+    const term = fakeScreen(ROWS, 91);
+    // The sentence above the paragraph ends its own line, and so does the
+    // paragraph's first five rows — three wrap points land inside a
+    // destination's `<…>`. The seam between `[unknown shell]` and its
+    // destination is a word boundary carrying no cut evidence, and the tail
+    // gate rightly refuses it: the destination reads whole on the line below.
+    expect(scanBufferLine(term, 2).text.trimEnd()).toBe(ROWS[1]);
+    const first = ROWS[2]! + ROWS[3]! + ROWS[4]! + ROWS[5]! + ROWS[6]!;
+    for (const line of [3, 4, 5, 6, 7]) {
+      expect(scanBufferLine(term, line).text.trimEnd()).toBe(first);
+    }
+    const second = ROWS[7]! + ROWS[8]! + ROWS[9]!;
+    for (const line of [8, 9, 10]) {
+      expect(scanBufferLine(term, line).text.trimEnd()).toBe(second);
+    }
+  });
+
+  it('linkifies the three destinations, the angles inside the span', () => {
+    const term = fakeScreen(ROWS, 91);
+    const context = (): { sessionName: string } => ({ sessionName: 'issue-2907' });
+
+    // Two matches on the paragraph's first line, one fragment per row each;
+    // the span covers the destination as written, `<` through `>`.
+    const expected = [
+      '</data/agents/pocketshell/worktrees/issue-2907-agent-identity-luna/',
+      'android/app/build/outputs/js-lifecycle/js2907-review-20260927/js2907-review-20260927/',
+      'agent-list-a-b-reported.png>',
+      '</data/agents/pocketshell/worktrees/',
+      'issue-2907-agent-identity-luna/android/app/build/outputs/js-lifecycle/js2907-review-',
+      '20260927/js2907-review-20260927/agent-selected-claude-waiting.png>',
+    ];
+    for (const line of [3, 4, 5, 6, 7]) {
+      expect(pathLinks(term, line, context).map((l) => l.text)).toEqual(expected);
+    }
+    expect(pathLinks(term, 8, context).map((l) => l.text)).toEqual([
+      '</data/agents/pocketshell/worktrees/issue-2907-agent-identity-luna/android/app/build/',
+      'outputs/js-lifecycle/js2907-review-20260927/js2907-review-20260927/agent-selected-',
+      'unknown-shell.png>',
+    ]);
+    // The first fragment runs from the `<` (column 23: after
+    // `Review [session list](`) to the row's cut.
+    const links = pathLinks(term, 3, context);
+    expect(links[0]?.range).toEqual({ start: { x: 23, y: 3 }, end: { x: ROWS[2]!.length, y: 3 } });
+  });
+
+  it('opens the whole screenshots, absolute, not the torn-off relative fragments', () => {
+    const files = useFilesStore();
+    pathLinks(fakeScreen(ROWS, 91), 3, () => ({ sessionName: 'issue-2907' }))[0]?.activate(
+      CLICK,
+      '',
+    );
+    expect(files.reveal).toBe(`${DIR}/agent-list-a-b-reported.png`);
+    pathLinks(fakeScreen(ROWS, 91), 8, () => ({ sessionName: 'issue-2907' }))[0]?.activate(
+      CLICK,
+      '',
+    );
+    expect(files.reveal).toBe(`${DIR}/agent-selected-unknown-shell.png`);
+  });
+});
+
 /**
  * The other half of the joining rules, and the half that decides whether this
  * feature is trustworthy: two rows that merely follow one another must stay two
