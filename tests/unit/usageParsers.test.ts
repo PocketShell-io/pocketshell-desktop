@@ -136,10 +136,11 @@ describe('parseUsageNdjson', () => {
       `{"provider":"x","status":"ok","error":null,"details":{${keys}},"windows":{"weekly":{"percent_remaining":1.0,"reset_at":null}}}`;
     const rows = (keys: string) => parseUsageNdjson(line(keys))[0]!;
 
+    expect(rows('"banked_resets_available":3').resets_available).toBe(3);
     expect(rows('"reset_credits_available":2').resets_available).toBe(2);
     expect(rows('"resets_available":1').resets_available).toBe(1);
     // Spent is a fact worth showing; only ABSENCE is null.
-    expect(rows('"reset_credits_available":0').resets_available).toBe(0);
+    expect(rows('"banked_resets_available":0').resets_available).toBe(0);
     // A provider with no resets concept, or a count that is not a number.
     expect(rows('').resets_available).toBeNull();
     expect(rows('"resets_available":"1"').resets_available).toBeNull();
@@ -150,7 +151,14 @@ describe('parseUsageNdjson', () => {
       `{"provider":"x","status":"ok","error":null,"details":{${keys}},"windows":{"weekly":{"percent_remaining":1.0,"reset_at":null}}}`;
     const rows = (keys: string) => parseUsageNdjson(line(keys))[0]!;
 
-    // codex spells the array `reset_credits`, grok `resets`.
+    // quse 0.0.16 spells the array `banked_resets`, its entries
+    // `{expires_at, available}`; the pinned 0.4.44 helper's quse says
+    // `reset_credits` (codex) or `resets` (grok).
+    expect(
+      rows('"banked_resets_available":1,' +
+        '"banked_resets":[{"expires_at":"2026-10-18T09:47:03Z","available":true,"label":"weekly reset"}]')
+        .resets_expire_at,
+    ).toBe('2026-10-18T09:47:03Z');
     expect(
       rows(
         '"reset_credits_available":1,' +
@@ -165,14 +173,22 @@ describe('parseUsageNdjson', () => {
     // Several credits: the soonest expiry is the useful bound.
     expect(
       rows(
-        '"reset_credits_available":2,"reset_credits":[' +
-          '{"expires_at":"2026-10-01T00:00:00Z","status":"available"},' +
-          '{"expires_at":"2026-09-21T00:13:17Z","status":"available"}]',
+        '"banked_resets_available":2,"banked_resets":[' +
+          '{"expires_at":"2026-11-01T00:00:00Z","available":true},' +
+          '{"expires_at":"2026-10-18T09:47:03Z","available":true}]',
       ).resets_expire_at,
-    ).toBe('2026-09-21T00:13:17Z');
+    ).toBe('2026-10-18T09:47:03Z');
 
     // An entry the provider no longer counts as available does not date the
-    // note — the expiry must belong to a credit the count talks about.
+    // note — the expiry must belong to a credit the count talks about. The
+    // unified entries say it with a boolean, the legacy codex ones a string.
+    expect(
+      rows(
+        '"banked_resets_available":1,"banked_resets":[' +
+          '{"expires_at":"2026-01-01T00:00:00Z","available":false},' +
+          '{"expires_at":"2026-10-18T09:47:03Z","available":true}]',
+      ).resets_expire_at,
+    ).toBe('2026-10-18T09:47:03Z');
     expect(
       rows(
         '"reset_credits_available":1,"reset_credits":[' +
@@ -183,9 +199,10 @@ describe('parseUsageNdjson', () => {
 
     // No array, no expires_at, no parsable one: null, and the note degrades
     // to the bare count.
-    expect(rows('"reset_credits_available":1').resets_expire_at).toBeNull();
-    expect(rows('"resets":[{"token_id":"r"}]').resets_expire_at).toBeNull();
-    expect(rows('"resets":[{"expires_at":"not a date"}]').resets_expire_at).toBeNull();
+    expect(rows('"banked_resets_available":1').resets_expire_at).toBeNull();
+    expect(rows('"banked_resets":[{"token_id":"r"}]').resets_expire_at).toBeNull();
+    expect(rows('"banked_resets":[{"expires_at":"not a date","available":true}]').resets_expire_at)
+      .toBeNull();
   });
 
   it('keeps all three windows of a provider like go, shortest first', () => {
