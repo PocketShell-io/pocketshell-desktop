@@ -26,8 +26,8 @@ import type { EnvVarRow } from '@pocketshell/core';
  *      (whitespace, `=`) before the host ever sees it.
  *
  * Rows are one line each — key, file chip, value field, one action — the
- * Ports table's construction; the tests walk it by row, not by index, so the
- * layout can keep changing without rewriting the behaviour claims.
+ * Ports table's construction; the tests walk the rows by key, not by index,
+ * so the layout can keep changing without rewriting the behaviour claims.
  */
 
 const envList = vi.fn<(connectionId: string, dir: string) => Promise<EnvVarRow[]>>();
@@ -73,9 +73,9 @@ async function show(dir = '$HOME/bug'): Promise<VueWrapper> {
   return wrapper;
 }
 
-/** A row <tr> by its key — the tests walk the table, never raw indexes. */
+/** A row line by its key — the tests walk the rows, never raw indexes. */
 function rowByKey(wrapper: VueWrapper, key: string) {
-  const row = wrapper.findAll('tbody tr').find((tr) => tr.text().includes(key));
+  const row = wrapper.findAll('.env-row').find((tr) => tr.text().includes(key));
   if (!row) throw new Error(`no row for ${key}`);
   return row;
 }
