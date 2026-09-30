@@ -170,7 +170,7 @@ that bind it. Stands down inside a text field, like the create pair above.
 
 | Chord | Does | Note |
 |---|---|---|
-| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: the host's sessions grouped by root — a folder holding several sessions gets a row per session spelled `folder:session` (the host's own selector form), opening the folder with that tab in front — then the host's local clones that are running nothing — opening one starts a plain shell there and opens its workspace — then the workspace verbs: new session, quick search, the Ports/Usage/Settings overlays, a sort, refresh, zoom, connect to another SSH host, hide the panel, back to the host list. Filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
+| `Ctrl+P` / `Ctrl+Shift+P` | Opens the quick-actions overlay: the host's sessions grouped by root — a folder holding several sessions gets a row per session spelled `folder:session` (the host's own selector form), opening the folder with that tab in front — then the host's local clones that are running nothing — opening one starts a plain shell there and opens its workspace — then the workspace verbs: new session, the Ports/Usage/Settings overlays, a sort, refresh, zoom, connect to another SSH host, hide the panel, back to the host list. Filtered as you type, arrow keys to move, Enter to run | `HostWorkspaceView` |
 
 A PAIR of chords, fixed for the same reason the tab arrows are a pair: an
 override replaces a binding's chords outright and would lose one.
@@ -182,6 +182,14 @@ anywhere, terminal included. Stands down inside a text field, where the prose
 is. The command list is built from the same stores the panel and tabs read
 (`allFolders`, the pre-filter walk), and every verb is a handler those surfaces
 already own — the palette re-implements nothing.
+
+The palette IS a search — its body is one input over the host's sessions and
+the workspace's commands — which is why it carries no "quick search" command
+of its own: a command inside a search opening a second, narrower one (the
+panel's §1.9 filter row) read as two features where there is one. The mouse
+door to the palette is the session panel header's magnifier ("Quick
+actions"), which announces the ask to this view the way the overlay buttons
+announce theirs; the filter row keeps its chord and stays summoned-only.
 
 ---
 

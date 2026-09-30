@@ -382,18 +382,29 @@ describe('SessionTree — the header strip', () => {
     // ("here have ... then refresh then settings"; the header expansion made
     // their `⋯` into its two overlays at the same ask, so Ports and Usage are
     // two buttons there) — "then hide", the dictate's last word, is what the
-    // screenshot undid. The words in the test are their tooltips/accessible
-    // names, as they were for the kebab.
+    // screenshot undid. The magnifier sits between the `+` and Ports: the
+    // run's pair of summons — create, find — ahead of the host overlays. The
+    // words in the test are their tooltips/accessible names, as they were for
+    // the kebab.
     const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
     expect(headerControls(wrapper)).toEqual([
       'Hide session panel',
       'Back to hosts',
       'New session in any folder',
+      'Quick actions',
       'Port forwarding',
       'Provider usage',
       'Refresh',
       'Settings',
     ]);
+  });
+
+  it('the magnifier announces the palette to the workspace that owns it', async () => {
+    // The palette and its chord live in HostWorkspaceView; this header only
+    // announces the click, the way `panel` announces an overlay ask.
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
+    await wrapper.get('[title="Quick actions"]').trigger('click');
+    expect(wrapper.emitted('palette')).toEqual([[]]);
   });
 
   it('opens Settings from its own control', async () => {

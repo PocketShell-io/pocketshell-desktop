@@ -162,6 +162,11 @@ describe('the quick-actions palette wiring', () => {
     expect(labels.some((t) => t.includes('New session…'))).toBe(true);
     expect(labels.some((t) => t.includes('Settings'))).toBe(true);
     expect(labels.some((t) => t.includes('Back to the host list'))).toBe(true);
+    // The old "Quick search sessions" row is deliberately gone: the palette
+    // is itself a search, so a command inside it that opened the panel's
+    // narrower filter row read as two features where there is one. Pinned as
+    // an absence so a re-addition is a decision that fails a test first.
+    expect(labels.some((t) => t.includes('Quick search'))).toBe(false);
   });
 
   it('a folder holding several sessions gets one row per session', async () => {
