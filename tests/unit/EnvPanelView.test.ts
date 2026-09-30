@@ -19,7 +19,9 @@ import type { EnvVarRow } from '@pocketshell/core';
  *      charges `env list` + one `env get` for it; the panel must not pay per
  *      row), and Hide all masks the panel in one gesture without un-fetching:
  *      the eye re-shows a masked row for free, and only Reveal all pays for a
- *      fresh read.
+ *      fresh read. The two verbs share one control that alternates with the
+ *      panel's state — "Reveal all" while nothing shows, "Hide all" the
+ *      moment anything does.
  *   3. **Editing unmasks and ghosts the eye** (there is no editing a secret
  *      you cannot see), **the write is the field's Enter — only the dirty
  *      row, only to the file it came from; a stray blur never writes**, and a
@@ -131,11 +133,13 @@ describe('EnvPanelView', () => {
     expect(input.type).toBe('password');
   });
 
-  it('Reveal all fills every row in ONE host round trip and shows them', async () => {
+  it('the bulk toggle reads Reveal all, fills every row in ONE round trip, and flips to Hide all', async () => {
     envGet.mockResolvedValue({ API_KEY: 'a', DIRENV_VAR: 'd', EMPTY_ONE: '' });
     const wrapper = await show();
+    const toggle = wrapper.find('button.bulk-toggle');
+    expect(toggle.text()).toBe('Reveal all');
 
-    await wrapper.find('button.reveal-all').trigger('click');
+    await toggle.trigger('click');
     await flush(wrapper);
 
     expect(envGet).toHaveBeenCalledTimes(1);
@@ -146,20 +150,23 @@ describe('EnvPanelView', () => {
       expect(input.type).toBe('text');
       expect(input.value).not.toBe('');
     }
+    // Anything on screen and the offer is to mask it.
+    expect(wrapper.find('button.bulk-toggle').text()).toBe('Hide all');
   });
 
   it('Hide all masks every row in one gesture; the eye re-shows for free', async () => {
     envGet.mockResolvedValue({ API_KEY: 'a', DIRENV_VAR: 'd' });
     const wrapper = await show();
+    const toggle = wrapper.find('button.bulk-toggle');
 
-    await wrapper.find('button.reveal-all').trigger('click');
+    await toggle.trigger('click');
     await flush(wrapper);
     for (const key of ['API_KEY', 'DIRENV_VAR']) {
       const input = rowByKey(wrapper, key).find('input.value-input').element as HTMLInputElement;
       expect(input.type).toBe('text');
     }
 
-    await wrapper.find('button.hide-all').trigger('click');
+    await wrapper.find('button.bulk-toggle').trigger('click');
     for (const key of ['API_KEY', 'DIRENV_VAR']) {
       const row = rowByKey(wrapper, key);
       expect((row.find('input.value-input').element as HTMLInputElement).type).toBe('password');
@@ -167,6 +174,8 @@ describe('EnvPanelView', () => {
       expect(row.find('button.eye-btn').attributes('aria-pressed')).toBe('false');
     }
     expect(envGet).toHaveBeenCalledTimes(1);
+    // Nothing showing: the verb alternates back to the read.
+    expect(wrapper.find('button.bulk-toggle').text()).toBe('Reveal all');
 
     // The mask is not the forget — the eye puts a value back with no round
     // trip, because the row was already fetched.
