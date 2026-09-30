@@ -122,8 +122,12 @@ test.describe('session-scoped navigation + terminal wiring', () => {
     // THE SESSION LEVEL IS GONE. Not conditionally, not for this fixture —
     // there is no session row in the panel at any depth, for any folder.
     await expect(page.locator('.session-row')).toHaveCount(0);
-    // Two sessions behind one row, said once, by the count.
-    await expect(page.locator('.dir-header .folder-count')).toHaveText('2');
+    // The session level is gone, and with it the row's session count: the
+    // folder row wears the tabs' notation instead — one mark per session
+    // that runs a named agent. Both fixture sessions are plain shells, so
+    // the run is EMPTY here; the tooltip is where the count went.
+    await expect(page.locator('.dir-header .agent-mark')).toHaveCount(0);
+    await expect(page.locator('.dir-header .agent-badge')).toHaveCount(0);
     // The `attached` tag stays retired — the dot, the weight and the sort say it.
     await expect(page.locator('.dir-header .tag')).toHaveCount(0);
     // Files is NOT a host-level tab.
@@ -142,7 +146,20 @@ test.describe('session-scoped navigation + terminal wiring', () => {
     await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Provider usage' }).click();
-    await expect(page.getByRole('dialog', { name: 'Provider usage' })).toBeVisible();
+    const usage = page.getByRole('dialog', { name: 'Provider usage' });
+    await expect(usage).toBeVisible();
+    // The stub fleet's two fixture rows, exercising the whole identity cell:
+    // the claude row wears its vendor mark and dates its POSITIVE banked
+    // resets with the soonest AVAILABLE entry — the spent one in the stub
+    // (2020) must not date it — while the unknown `quse` provider wears no
+    // mark at all, the tab rule.
+    await expect(usage.locator('.provider-cell', { hasText: 'claude' }).locator('.provider-mark'))
+      .toHaveCount(1);
+    await expect(usage.locator('.provider-cell', { hasText: 'quse' }).locator('.provider-mark'))
+      .toHaveCount(0);
+    await expect(usage.locator('.note', { hasText: '2 resets available' })).toContainText(
+      /expires in \d+d/,
+    );
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Provider usage' })).toHaveCount(0);
   });

@@ -1,4 +1,13 @@
 #!/bin/sh
-# quse stub: emits the deterministic usage NDJSON `pocketshell usage` delegates to.
-# No credentials, no network. Output matches tests-docker/fixtures/pocketshell-usage.ndjson.
-cat /opt/pocketshell-fixtures/pocketshell-usage.ndjson
+# quse stub: emits the deterministic provider-keyed usage document that the
+# real pinned quse emits and `pocketshell usage` normalizes into NDJSON.
+#
+# The helper resolves quse NEXT TO ITS OWN INTERPRETER (the pinned copy its
+# uv venv bundles), never on PATH — so reaching the test image's usage panel
+# means overwriting that venv copy, which the helper image's Dockerfile does
+# with a symlink to this stub after the uv install. Without it the panel
+# shows the pinned quse's credential errors for every provider, which no
+# fixture can make positive.
+#
+# No credentials, no network. Output matches tests-docker/fixtures/pocketshell-usage.json.
+cat /opt/pocketshell-fixtures/pocketshell-usage.json

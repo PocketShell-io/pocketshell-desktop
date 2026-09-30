@@ -1,0 +1,31 @@
+{
+  "quse": {
+    "status": "ok",
+    "error": null,
+    "windows": {
+      "5h": {"percent_remaining": 100.0, "reset_at": null},
+      "7d": {"percent_remaining": 100.0, "reset_at": null},
+      "monthly": {"percent_remaining": null, "reset_at": null}
+    },
+    "details": {"fixture": true}
+  },
+  "claude": {
+    "status": "ok",
+    "error": null,
+    "windows": {
+      "5h": {"percent_remaining": 78.0, "reset_at": "2099-01-01T12:00:00Z"},
+      "7d": {"percent_remaining": 61.0, "reset_at": "2099-01-01T15:00:00Z"},
+      "monthly": {"percent_remaining": null, "reset_at": null}
+    },
+    "details": {
+      "fixture": true,
+      "limit_reached": false,
+      "banked_resets_available": 2,
+      "banked_resets": [
+        {"expires_at": "2099-01-05T04:19:54Z", "available": true, "label": "Full reset"},
+        {"expires_at": "2099-01-22T20:48:35Z", "available": true, "label": "Full reset"},
+        {"expires_at": "2020-01-01T00:00:00Z", "available": false, "label": "Full reset"}
+      ]
+    }
+  }
+}
