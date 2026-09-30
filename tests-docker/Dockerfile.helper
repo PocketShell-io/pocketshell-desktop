@@ -57,33 +57,25 @@ ENV PATH="/home/testuser/.local/bin:${PATH}"
 # above). `a` is the user-facing CLI and `aplexer` the per-session worker it
 # spawns — both must land on PATH.
 #
-# UNPINNED BY DEFAULT, unlike pocketshell/tmuxctl above: aplexer is this
-# project's own tool and moves fast, and the fixture should exercise what a
-# freshly-set-up host would get. The build ASKS for the latest release — one
-# unauthenticated GitHub API call, resolved to a tag, echoed into the build
-# log, then fetched by that tag. Set APLEXER_VERSION to pin a known build
-# when determinism matters. The catch either way is Docker's layer cache:
-# the API is only asked when this layer actually rebuilds, so a cached
-# `compose up --build` keeps serving the version it fetched before — force
-# the fetch with `docker compose build --no-cache`.
-# The empty ARG default matters: an ARG with NO default is never exported
-# into RUN, and `set -u` below would abort on the unset name.
-ARG APLEXER_VERSION=
+# PINNED, like pocketshell/tmuxctl above. 0.1.9 exec-fails on this image:
+# its new startup filesystem check calls renameat2, which Alpine's gcompat
+# does not provide ("Error relocating /usr/local/bin/a: renameat2: symbol
+# not found") — every `a` invocation dies at load time, the snapshot reads
+# as unreachable, and the app renders an empty session tree. Pin until
+# aplexer ships a binary the musl base can load (or the fixture base moves
+# to glibc); bump deliberately, together with whatever the new snapshot
+# behavior changes in the E2E world. The catch either way is Docker's layer
+# cache: this layer only rebuilds when its inputs change — force with
+# `docker compose build --no-cache`.
+ARG APLEXER_VERSION=0.1.8
 RUN set -eux; \
     case "$(uname -m)" in \
       x86_64) asset_arch=amd64 ;; \
       aarch64) asset_arch=arm64 ;; \
       *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
     esac; \
-    if [ -n "${APLEXER_VERSION}" ]; then \
-      aplexer_version="${APLEXER_VERSION}"; \
-    else \
-      aplexer_version="$(wget -qO- 'https://api.github.com/repos/alexeygrigorev/aplexer/releases/latest' \
-        | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')"; \
-    fi; \
-    [ -n "${aplexer_version}" ] || { echo "could not resolve the latest aplexer release from the GitHub API" >&2; exit 1; }; \
-    echo "aplexer version: ${aplexer_version}"; \
-    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${aplexer_version}"; \
+    echo "aplexer version: ${APLEXER_VERSION}"; \
+    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
     wget -q -O /usr/local/bin/a "$base/a-linux-$asset_arch"; \
     wget -q -O /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
     chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer
