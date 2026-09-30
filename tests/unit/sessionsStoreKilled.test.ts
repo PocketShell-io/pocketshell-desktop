@@ -160,4 +160,39 @@ describe('sessions store — the kill ledger keeps the corpse off the bar', () =
 
     expect(store.sessions.map((s) => s.name)).toEqual(['git-x']);
   });
+
+  it('lifts the grave when a committed rename lands on the killed name', async () => {
+    // Reported live more than once: stop `test`, then rename the spare
+    // session to `test` — the natural way to hand a name over. A rename
+    // commits host-side before renameLocal runs, so the destination name is
+    // as live as a reusing create's; without the lift the renamed row
+    // inherited the deleted session's tombstone and the bar lost it until
+    // the TTL lapsed.
+    const store = useSessionsStore();
+    store.removeLocal('git-x', '/home/me/git/x');
+    store.sessions = [aplexerRow('git-y', '/home/me/git/x')];
+
+    store.renameLocal('git-y', 'git-x', '/home/me/git/x');
+    sessionsList.mockResolvedValue([aplexerRow('git-x', '/home/me/git/x')]);
+    await store.refresh('conn-1');
+
+    expect(store.sessions.map((s) => s.name)).toEqual(['git-x']);
+  });
+
+  it('lifts only the destination identity — another workspace\'s grave stays', async () => {
+    // A same-named tag in another workspace is a different identity; renaming
+    // onto `git-x` here must not resurrect a row the host still lists there.
+    const store = useSessionsStore();
+    store.removeLocal('git-x', '/home/me/git/x');
+    store.sessions = [aplexerRow('git-y', '/home/me/git/y')];
+
+    store.renameLocal('git-y', 'git-x', '/home/me/git/y');
+    sessionsList.mockResolvedValue([
+      aplexerRow('git-x', '/home/me/git/x'),
+      aplexerRow('git-x', '/home/me/git/y'),
+    ]);
+    await store.refresh('conn-1');
+
+    expect(store.sessions.map((s) => s.workspace)).toEqual(['/home/me/git/y']);
+  });
 });
