@@ -1050,13 +1050,11 @@ describe('SessionTree — the root header row', () => {
       { ...session('git-app-c', `${HOME}/git/app`, 300), agentKind: 'claude' as const },
     ]);
     const row = wrapper.get('.dir-header');
-    expect(childClasses(row.element)).toEqual([
-      'dot',
-      'label',
-      'app-icon',
-      'app-icon',
-      'row-time',
-    ]);
+    // The marks live inside one `.agent-run` span — the stacking the marks
+    // do (`.agent-run`'s overlap) needs its own flex formatting, and a run
+    // of one would still be priced at the row gap twice if the span rendered
+    // empty. `findAll` looks inside it.
+    expect(childClasses(row.element)).toEqual(['dot', 'label', 'agent-run', 'row-time']);
     expect(row.findAll('.agent-mark')).toHaveLength(2);
     expect(row.find('.folder-count').exists()).toBe(false);
     expect(row.attributes('title')).toContain('3 sessions');

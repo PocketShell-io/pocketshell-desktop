@@ -184,8 +184,18 @@ describe('agentBadges', () => {
     expect(agentBadges(dir)).toEqual(['claude', 'codex']);
   });
 
-  it('caps the run so a full folder cannot push the timestamp off the row', () => {
+  it('wears six marks — the tooltip name limit — once six sessions run agents', () => {
+    // Six used to be where the run CAPPED, back when the row priced every
+    // mark at the row gap's 20px; the stacked run (`.agent-run`) lies each
+    // mark 4px deep on its neighbor and costs 8px, so six fit and the cap
+    // rose to meet the tooltip — a folder's row stops disagreeing with its
+    // own tab strip (dapier's six tabs wore four marks).
     const dir = folder([1, 2, 3, 4, 5, 6].map((n) => session(`s${n}`, 'claude')));
-    expect(agentBadges(dir)).toEqual(['claude', 'claude', 'claude', 'claude']);
+    expect(agentBadges(dir)).toEqual(['claude', 'claude', 'claude', 'claude', 'claude', 'claude']);
+  });
+
+  it('still caps, so a dozen-agent folder cannot push the timestamp off the row', () => {
+    const dir = folder([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => session(`s${n}`, 'claude')));
+    expect(agentBadges(dir)).toHaveLength(6);
   });
 });
