@@ -94,7 +94,10 @@ describeDocker('PocketshellClient integration', () => {
     const rows = await helper.usage(connectionId!);
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const providers = rows.map((r) => r.provider);
-    expect(providers).toEqual(expect.arrayContaining(['codex', 'claude', 'copilot']));
+    // The stub's keyed document seeds exactly these two providers
+    // (tests-docker/fixtures/pocketshell-usage.json): the unknown `quse`
+    // and the marked `claude`.
+    expect(providers).toEqual(expect.arrayContaining(['quse', 'claude']));
   });
 
   // The env editor's write path (FEATURES.md F16), against the real helper:

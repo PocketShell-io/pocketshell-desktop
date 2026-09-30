@@ -47,7 +47,9 @@ describeDocker('Agent features integration', () => {
   it('usage returns the seeded provider rows', async () => {
     const rows = await helper.usage(connectionId!);
     expect(rows.length).toBeGreaterThanOrEqual(1);
-    expect(rows.some((r) => r.provider === 'codex')).toBe(true);
+    expect(rows.some((r) => r.provider === 'claude')).toBe(true);
+    // The stub's unknown provider key normalizes through as its own row too.
+    expect(rows.some((r) => r.provider === 'quse')).toBe(true);
   });
 
   /**
