@@ -29,6 +29,8 @@ export const writeFile =
 export const createFile =
   vi.fn<(connectionId: string, path: string, content?: string) => Promise<boolean>>();
 export const mkdir = vi.fn<(connectionId: string, path: string) => Promise<boolean>>();
+export const deleteFile = vi.fn<(connectionId: string, path: string) => Promise<boolean>>();
+export const rmdir = vi.fn<(connectionId: string, path: string) => Promise<boolean>>();
 export const saveAs =
   vi.fn<(opts: { connectionId: string; remotePath: string }) => Promise<string | null>>();
 export const openHtml =
@@ -66,6 +68,8 @@ export const api = {
     createFile: (connectionId: string, path: string, content?: string) =>
       createFile(connectionId, path, content),
     mkdir: (connectionId: string, path: string) => mkdir(connectionId, path),
+    deleteFile: (connectionId: string, path: string) => deleteFile(connectionId, path),
+    rmdir: (connectionId: string, path: string) => rmdir(connectionId, path),
     saveAs: (opts: { connectionId: string; remotePath: string }) => saveAs(opts),
   },
   preview: {
@@ -108,6 +112,8 @@ export function resetFilesApi(): void {
   writeFile.mockReset();
   createFile.mockReset();
   mkdir.mockReset();
+  deleteFile.mockReset();
+  rmdir.mockReset();
   saveAs.mockReset();
   openHtml.mockReset();
   openMarkdown.mockReset();
@@ -117,6 +123,8 @@ export function resetFilesApi(): void {
   writeFile.mockResolvedValue(true);
   createFile.mockResolvedValue(true);
   mkdir.mockResolvedValue(true);
+  deleteFile.mockResolvedValue(true);
+  rmdir.mockResolvedValue(true);
   // A fresh token per call: main mints one per preview, and a test that could
   // not tell two apart could not tell whether a save re-minted at all. All
   // three verbs share the counter so a test can assert which one was reached.
