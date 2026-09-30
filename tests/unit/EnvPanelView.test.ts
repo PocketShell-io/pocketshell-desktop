@@ -20,10 +20,12 @@ import type { EnvVarRow } from '@pocketshell/core';
  *      row), and Hide all masks the panel in one gesture without un-fetching:
  *      the eye re-shows a masked row for free, and only Reveal all pays for a
  *      fresh read.
- *   3. **Editing unmasks and retires the eye** (there is no editing a secret
- *      you cannot see), **Save writes only the dirty row, targets the file it
- *      came from**, and a rejection lands as a sentence next to the form
- *      rather than a throw.
+ *   3. **Editing unmasks and ghosts the eye** (there is no editing a secret
+ *      you cannot see), **the write is the field's Enter — only the dirty
+ *      row, only to the file it came from; a stray blur never writes**, and a
+ *      rejection lands as a sentence next to the form rather than a throw.
+ *      The rows carry no Save button: a reserved button column spent every
+ *      row's right edge on chrome only a dirty row ever used.
  *   4. **The new-key form refuses a key that would mangle the dotenv file**
  *      (whitespace, `=`) before the host ever sees it.
  *
@@ -176,7 +178,7 @@ describe('EnvPanelView', () => {
     expect(input.value).toBe('a');
   });
 
-  it('save writes the dirty row to its own file, and a refusal shows as text', async () => {
+  it('writes on Enter — never on blur — to its own file, and a refusal shows as text', async () => {
     envGet.mockResolvedValue({ API_KEY: 'old' });
     const wrapper = await show();
     const row = rowByKey(wrapper, 'API_KEY');
@@ -185,7 +187,13 @@ describe('EnvPanelView', () => {
 
     const input = row.find('input.value-input');
     await input.setValue('new-value');
-    await row.find('button.row-save').trigger('click');
+    // The stray click that means "copy this value" must not be able to
+    // commit a corrupted one: blur is not a write.
+    await input.trigger('blur');
+    await flush(wrapper);
+    expect(envSet).not.toHaveBeenCalled();
+
+    await input.trigger('keyup.enter');
     await flush(wrapper);
 
     expect(envSet).toHaveBeenCalledTimes(1);
@@ -193,13 +201,14 @@ describe('EnvPanelView', () => {
 
     // Now the helper refuses a second write.
     envSet.mockRejectedValue(new Error('permission denied'));
-    await input.setValue('newer');
-    await rowByKey(wrapper, 'API_KEY').find('button.row-save').trigger('click');
+    const row2 = rowByKey(wrapper, 'API_KEY');
+    await row2.find('input.value-input').setValue('newer');
+    await row2.find('input.value-input').trigger('keyup.enter');
     await flush(wrapper);
     expect(wrapper.text()).toContain('API_KEY: permission denied');
   });
 
-  it('editing unmasks the field and retires the eye', async () => {
+  it('editing unmasks the field and ghosts the eye, its box kept', async () => {
     envGet.mockResolvedValue({ API_KEY: 's3cr3t' });
     const wrapper = await show();
     await rowByKey(wrapper, 'API_KEY').find('button.eye-btn').trigger('click');
@@ -211,11 +220,11 @@ describe('EnvPanelView', () => {
     await flush(wrapper);
 
     expect((input.element as HTMLInputElement).type).toBe('text');
-    // The eye is gone from the screen — its slot stays, so the action column
-    // cannot shift under the caret.
-    expect(row.find('button.eye-btn').isVisible()).toBe(false);
-    // And Save is the visible action now.
-    expect(row.find('button.row-save').isVisible()).toBe(true);
+    // The eye is ghosted — visibility, not display — so its box holds and
+    // the field's right edge cannot shift under the caret.
+    expect(row.find('button.eye-btn').classes()).toContain('ghosted');
+    // And the row carries no Save button at all: the write is the Enter.
+    expect(row.find('button.row-save').exists()).toBe(false);
   });
 
   it('refuses a key that would mangle the dotenv file, before the host sees it', async () => {
