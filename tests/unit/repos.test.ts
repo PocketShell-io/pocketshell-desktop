@@ -8,6 +8,7 @@ import {
   isHelperMissing,
   mergeRepos,
   parseReposJson,
+  type RepoEntry,
 } from '@main/projects/repos';
 
 /**
@@ -138,6 +139,58 @@ describe('mergeRepos', () => {
     );
     expect(merged).toHaveLength(1);
     expect(merged[0]!.local?.path).toBe('/a/x');
+  });
+
+  it('keeps every local clone that shares a GitHub origin — a worktree is a destination too', () => {
+    // Captured on a real host: `~/git/dapier` and its `~/git/dapier-worktrees/*`
+    // checkouts all carry the main repository's `remote.origin.url`, so all
+    // three rows share one fullName. The merge used to key LOCAL rows on it and
+    // keep the alphabetically last, which is how the picker ended up offering
+    // `oauth-popup-redirect` while `dapier` itself — the folder the user asked
+    // for by name — was gone from the catalog.
+    const dapier: RepoEntry[] = [
+      {
+        name: 'connections-ux',
+        owner: null,
+        fullName: 'DataTalksClub/dapier',
+        local: { path: '/home/alexey/git/dapier-worktrees/connections-ux', head: 'main' },
+        remote: null,
+      },
+      {
+        name: 'dapier',
+        owner: null,
+        fullName: 'DataTalksClub/dapier',
+        local: { path: '/home/alexey/git/dapier', head: 'main' },
+        remote: null,
+      },
+      {
+        name: 'oauth-popup-redirect',
+        owner: null,
+        fullName: 'DataTalksClub/dapier',
+        local: { path: '/home/alexey/git/dapier-worktrees/oauth-popup-redirect', head: 'workflows' },
+        remote: null,
+      },
+    ];
+    const merged = mergeRepos(dapier, [
+      {
+        name: 'dapier',
+        owner: 'DataTalksClub',
+        fullName: 'DataTalksClub/dapier',
+        local: null,
+        remote: { defaultBranch: 'main', htmlUrl: null, sshUrl: null, updatedAt: null },
+      },
+    ]);
+    expect(merged.map((r) => r.local?.path)).toEqual([
+      '/home/alexey/git/dapier-worktrees/connections-ux',
+      '/home/alexey/git/dapier',
+      '/home/alexey/git/dapier-worktrees/oauth-popup-redirect',
+    ]);
+    // The GitHub row's block reaches every clone of that origin, and no
+    // remote-only duplicate is appended for a key the clones already claim.
+    expect(merged).toHaveLength(3);
+    expect(
+      merged.every((r) => r.owner === 'DataTalksClub' && r.remote?.defaultBranch === 'main'),
+    ).toBe(true);
   });
 
   it('handles either side being empty', () => {
