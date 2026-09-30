@@ -1235,6 +1235,73 @@ describe('scanBufferLine — a markdown paragraph whose links the wrapper cut', 
 });
 
 /**
+ * The inspector report, transcribed from the pane: the agent transcript
+ * borders every row of a message block with a `│` at column 0 and pads the
+ * text three columns past it, and its wrapper cut a long localhost address
+ * after the query's `?` — `│ …/inspect.html?` over `│ projectUrl=…`. The join
+ * refused twice over: rule 2 took only `/` and `-` tails, and the gutter read
+ * only `│ ` — one padding column — so even a `?`-admitting tail would have
+ * left two padding cells in the stream to tear the token apart. The timestamp
+ * of the first row is part of the geometry: its far-right column is the
+ * block's widest painted row, and the fit guard must still admit a query the
+ * wrapper demonstrably had no room for.
+ */
+describe('scanBufferLine — a URL the bordered transcript cut after its query', () => {
+  const ADDRESS =
+    'http://localhost:5006/webhooks/inspector/inspect.html?projectUrl=localhost&channel=inspector';
+  const OPEN = `Open ${ADDRESS.slice(0, ADDRESS.indexOf('?') + 1)}`;
+  const QUERY = ADDRESS.slice(ADDRESS.indexOf('?') + 1);
+  const ROWS = [
+    '│   The inspector is running on port 5006.'.padEnd(82) + '1:51 PM',
+    '│   ',
+    `│   ${OPEN}`,
+    `│   ${QUERY}`,
+    '│   ',
+    '│   It is the same demo as before: gpt-6-luna at reasoning effort medium,',
+    '│   Deepgram for speech. The server came up cleanly at 13:51.',
+  ];
+
+  it('joins the query onto the address past the border, from either row', () => {
+    const term = fakeScreen(ROWS, 100);
+    for (const line of [3, 4]) {
+      expect(urlLinks(term, line, () => undefined).map((l) => l.text)).toEqual([
+        ADDRESS.slice(0, ADDRESS.indexOf('?') + 1),
+        QUERY,
+      ]);
+    }
+  });
+
+  it('underlines the fragment of each row, border and padding left bare', () => {
+    const term = fakeScreen(ROWS, 100);
+    const links = urlLinks(term, 3, () => undefined);
+    // The `h` sits at column 10 (border, three pad cells, `Open `), the cut at
+    // the row's `?`. The query runs from its first content cell — column 5,
+    // the padding behind the border left bare — to its last `r`.
+    expect(links[0]?.range).toEqual({
+      start: { x: 10, y: 3 },
+      end: { x: OPEN.length + 4, y: 3 },
+    });
+    expect(links[1]?.range).toEqual({ start: { x: 5, y: 4 }, end: { x: QUERY.length + 4, y: 4 } });
+  });
+
+  it('opens the whole address, query included', () => {
+    const open = vi.fn();
+    urlLinks(fakeScreen(ROWS, 100), 3, open)[0]?.activate(CLICK, ADDRESS);
+    expect(open).toHaveBeenCalledWith(ADDRESS);
+  });
+
+  it('keeps the plain rows of the block apart', () => {
+    // The bordered blank rows do not read as paragraph separators to the width
+    // inference, but they carry no cut evidence either: the paragraphs inside
+    // one block stay separate lines, and a row without an address grows no
+    // link from its neighbours.
+    const term = fakeScreen(ROWS, 100);
+    expect(scanBufferLine(term, 7).text.trimEnd()).toBe(ROWS[6]);
+    expect(urlLinks(term, 1, () => undefined)).toEqual([]);
+  });
+});
+
+/**
  * The other half of the joining rules, and the half that decides whether this
  * feature is trustworthy: two rows that merely follow one another must stay two
  * lines. A join that should not have happened invents a path nothing can open
