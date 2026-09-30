@@ -107,6 +107,18 @@ good.com ${ED25519} ${KEY_A}
     expect(kh.verify('example.com', ED25519, KEY_A, 2222).unknown).toBe(true);
   });
 
+  it('lets the LAST entry for a host + type decide, so a rotated key is honored', () => {
+    // Regression: verify() answered on the FIRST same-type entry, so a key
+    // rotated by appending the new pin under the stale one — what a rebuilt
+    // test fixture produces — still read as a mismatch and blocked every
+    // connect. OpenSSH's rule: the last matching line is authoritative.
+    const kh = KnownHosts.fromText(`example.com ${ED25519} ${KEY_A}
+example.com ${ED25519} ${KEY_B}
+`);
+    expect(kh.verify('example.com', ED25519, KEY_B).trusted).toBe(true);
+    expect(kh.verify('example.com', ED25519, KEY_A).mismatch).toBe(true);
+  });
+
   it('adds a non-default port in bracketed form', () => {
     const kh = KnownHosts.fromText('');
     kh.add('10.0.0.5', ED25519, KEY_A, 2222);

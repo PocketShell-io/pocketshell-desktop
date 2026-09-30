@@ -68,6 +68,12 @@ export class KnownHosts {
   /**
    * Verify a host key presented by ssh2.
    *
+   * When the file carries several entries for one host + key type — a
+   * rotated key appended under its stale predecessor, as a rebuilt test
+   * fixture or a reinstalled server produces — the LAST entry is the
+   * authoritative one, the same rule OpenSSH applies. Matching the first
+   * would pin every future connect to a dead key.
+   *
    * @param host       the hostname being connected to
    * @param keyType    e.g. 'ssh-ed25519'
    * @param keyB64     base64 of the public key blob
@@ -75,15 +81,17 @@ export class KnownHosts {
    */
   verify(host: string, keyType: string, keyB64: string, port = 22): VerificationResult {
     const token = knownHostsToken(host, port);
+    let authoritative: HostKeyEntry | undefined;
     for (const entry of this.entries) {
       if (!hostMatches(token, entry.patterns)) continue;
       if (entry.keyType !== keyType) continue;
-      if (entry.keyB64 === keyB64) {
-        return { trusted: true, mismatch: false, unknown: false, entry };
-      }
-      return { trusted: false, mismatch: true, unknown: false, entry };
+      authoritative = entry;
     }
-    return { trusted: false, mismatch: false, unknown: true };
+    if (!authoritative) return { trusted: false, mismatch: false, unknown: true };
+    if (authoritative.keyB64 === keyB64) {
+      return { trusted: true, mismatch: false, unknown: false, entry: authoritative };
+    }
+    return { trusted: false, mismatch: true, unknown: false, entry: authoritative };
   }
 
   /** TOFU: append a new host key so future connects match. */
