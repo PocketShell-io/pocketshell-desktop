@@ -141,7 +141,15 @@ describe('design gates', () => {
   it('has no .vue file over 1000 lines without a recorded exemption', () => {
     const MAX_LINES = 1000;
     /** Over-limit files, each with the extraction queue that retires it. */
-    const EXEMPT: Record<string, string> = {};
+    const EXEMPT: Record<string, string> = {
+      // FileTree crossed the cap when the browsing trail's Back/Forward took
+      // their place at the head of the strip's controls. The queue that brings
+      // it back under: the row context menu (open/copy/save) and the create
+      // flow's naming row each leave for their own component, the way the
+      // stores' logic left through this door before.
+      'packages/ui/src/app/components/FileTree.vue':
+        'extract the row context menu, then the create-flow naming row, into their own components',
+    };
     const offenders = vueSourceFiles()
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))
       .filter(({ file, lines }) => lines > MAX_LINES && !(file in EXEMPT))
