@@ -112,6 +112,27 @@ describe('UsageView states', () => {
     expect(wrapper.text()).toContain('go');
   });
 
+  it('wears the provider mark beside the name, and nothing for an unknown provider', async () => {
+    // The same vendor register the session tabs draw from — `go` is OpenCode
+    // on the Go backend, so it wears that mark; copilot and zai have marks of
+    // their own. A provider the register does not know wears nothing, the
+    // tab rule: a glyph that means "we do not know" is worse than silence.
+    usage.mockResolvedValue([
+      ROW,
+      { ...ROW, provider: 'go' },
+      { ...ROW, provider: 'copilot' },
+      { ...ROW, provider: 'zai' },
+      { ...ROW, provider: 'new_vendor' },
+    ]);
+    const wrapper = await show();
+
+    const marks = wrapper.findAll('.provider-cell .app-icon').map((m) => m.attributes('class'));
+    expect(marks).toHaveLength(4);
+    expect(wrapper.findAll('.provider-mark')).toHaveLength(4);
+    // The unknown provider still renders its row — only the mark is absent.
+    expect(wrapper.text()).toContain('new_vendor');
+  });
+
   it('degrades a row without a windows list to a quiet line instead of throwing', async () => {
     // What a store fed by something OTHER than parseUsageNdjson could deliver
     // — no `windows` at all. Before the view guarded, this row threw during

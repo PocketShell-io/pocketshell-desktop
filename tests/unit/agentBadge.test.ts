@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { agentMark } from '../../src/shared/agentBadge';
+import { agentMark, usageProviderMark } from '../../src/shared/agentBadge';
 import { agentBadges } from '@ui/app/sessionTreeText';
 import { groupSessionsIntoRoots } from '@ui/app/sessionTree';
 import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
@@ -79,6 +79,58 @@ describe('agentMark', () => {
     );
     for (const kind of ['claude', 'codex', 'opencode', 'grok'] as const) {
       const icon = agentMark(kind)!.icon;
+      expect(source).toMatch(new RegExp(`^\\s*'?${icon}'?:\\s*\\{`, 'm'));
+    }
+  });
+});
+
+/**
+ * The mark a PROVIDER USAGE row wears — the same vendor register, read by the
+ * helper's provider key instead of a session's agent kind. The overlap is
+ * deliberate but not total: `go` is OpenCode (the helper's own gloss), while
+ * copilot and zai are providers no session kind ever names, and an
+ * unfamiliar provider wears nothing, the tab rule.
+ */
+describe('usageProviderMark', () => {
+  it('maps every provider the helper reports today', () => {
+    const providers = ['claude', 'codex', 'copilot', 'go', 'grok', 'zai'];
+    const icons = providers.map((p) => usageProviderMark(p)?.icon);
+    expect(icons).toEqual([
+      'brand-claude',
+      'brand-codex',
+      'brand-copilot',
+      'brand-opencode',
+      'brand-grok',
+      'brand-zai',
+    ]);
+    // Distinct — the shape is the only thing telling the rows apart.
+    expect(new Set(icons).size).toBe(providers.length);
+  });
+
+  it('reads the provider key case-insensitively and spells the aliases', () => {
+    expect(usageProviderMark('Claude')?.icon).toBe('brand-claude');
+    expect(usageProviderMark('github_copilot')?.icon).toBe('brand-copilot');
+    expect(usageProviderMark('open-code')?.icon).toBe('brand-opencode');
+    expect(usageProviderMark('grok-build')?.icon).toBe('brand-grok');
+  });
+
+  it('shows NOTHING for a provider the register does not know', () => {
+    // Same rule as the tabs: a mark whose only content is "we do not know"
+    // is noise. The row still renders its (capitalised) name; only the mark
+    // is absent.
+    expect(usageProviderMark('new_vendor')).toBeNull();
+    expect(usageProviderMark('')).toBeNull();
+  });
+
+  it('names marks that AppIcon actually carries', () => {
+    // The same seam the tab mapping has, checked the same way: the registry
+    // entry must exist or the row renders an empty `<svg>`.
+    const source = readFileSync(
+      resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src', 'components', 'AppIcon.vue'),
+      'utf8',
+    );
+    for (const provider of ['claude', 'codex', 'copilot', 'go', 'grok', 'zai']) {
+      const icon = usageProviderMark(provider)!.icon;
       expect(source).toMatch(new RegExp(`^\\s*'?${icon}'?:\\s*\\{`, 'm'));
     }
   });
