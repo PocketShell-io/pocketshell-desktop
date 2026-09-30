@@ -82,7 +82,10 @@ Examples:
 ### E2E
 
 Playwright launches the **packaged** Electron app (built once per run)
-against a fixed compose service on `127.0.0.1:3205`. The specs:
+against a fixed compose service on `127.0.0.1:3205`. Override the port for
+one run with `PS_E2E_PORT` (e.g. when a running app instance's port-forward
+holds 3205 — a held port silently answers the probe and hijacks every spec);
+the compose mapping and the specs read the same variable. The specs:
 
 - `core-flow` — the host picker lists the seeded `pocketshell-test` host →
   click → bootstrap completes → the session tree shows seeded sessions →

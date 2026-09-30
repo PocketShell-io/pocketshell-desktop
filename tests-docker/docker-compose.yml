@@ -58,7 +58,9 @@ services:
       dockerfile: Dockerfile.helper
     image: pocketshell-test:helper
     ports:
-      - "3205:22"
+      # Same variable tests/e2e/helpers.ts reads (PS_E2E_PORT): one value
+      # moves the fixture off 3205 when something already holds it.
+      - "${PS_E2E_PORT:-3205}:22"
     healthcheck:
       <<: *ssh-healthcheck
 

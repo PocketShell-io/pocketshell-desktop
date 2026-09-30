@@ -12,7 +12,15 @@ import { resolve } from 'node:path';
  * seeded config and connects to localhost:3205 with the committed test_key.
  */
 
-export const HOST_PORT = 3205;
+/**
+ * The compose helper's host port. 3205 by default; `PS_E2E_PORT` moves the
+ * whole fleet for one run — the app's own port-forward can hold 3205 on a dev
+ * box (a running instance binds its remote forwards on the same loopback),
+ * and a held port silently hijacks every spec: the probe answers, the specs
+ * talk to whatever the forward reaches, and the fixture container never boots.
+ * The compose mapping reads the same variable, so one value moves both.
+ */
+export const HOST_PORT = Number(process.env.PS_E2E_PORT ?? 3205);
 export const E2E_HOST_NAME = 'pocketshell-test';
 export const PROJECT_ROOT = resolve(__dirname, '..', '..');
 export const COMPOSE_FILE = resolve(PROJECT_ROOT, 'tests-docker', 'docker-compose.yml');
