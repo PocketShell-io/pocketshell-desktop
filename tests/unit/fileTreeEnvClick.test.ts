@@ -57,7 +57,7 @@ afterEach(() => {
   attached = undefined;
 });
 
-async function show(): Promise<VueWrapper> {
+async function show(envDir: string | null = null): Promise<VueWrapper> {
   const connection = useConnectionStore();
   connection.connectionId = 'conn-1';
   const files = useFilesStore();
@@ -66,6 +66,7 @@ async function show(): Promise<VueWrapper> {
 
   attached = mount(FileTree, {
     attachTo: document.body,
+    props: { envDir },
     // PopupMenu teleports to <body>, where wrapper.findAll cannot reach it.
     // The stub keeps its slot inline — the placement and dismissal it owns
     // are covered by its own tests; these are about the tree's wiring.
@@ -127,5 +128,45 @@ describe('FileTree env-file routing', () => {
     const w = await show();
     await byTitle(w, 'Edit env for this folder').trigger('click');
     expect(w.emitted('openEnv')).toHaveLength(1);
+  });
+});
+
+describe('FileTree env-file selection', () => {
+  /**
+   * The row the editor area is showing. The docked env panel owns the area
+   * for the folder being browsed, so its env rows wear the selection — and
+   * the file they shelved stands down (`openPath` is deliberately left set;
+   * closing the dock hands the area back to it). Without the dock, or with
+   * it pinned to a folder other than the one being browsed, the open file's
+   * row keeps the mark, as it always did.
+   */
+  it('while the panel is docked for this folder, its env rows wear the mark and the shelved file stands down', async () => {
+    const w = await show('/proj');
+    useFilesStore().openPath = '/proj/notes.txt';
+    await flush(w);
+
+    expect(row(w, '.env').classes()).toContain('active');
+    expect(row(w, '.envrc').classes()).toContain('active');
+    expect(row(w, '.env').attributes('aria-selected')).toBe('true');
+    expect(row(w, 'notes.txt').classes()).not.toContain('active');
+    expect(row(w, 'notes.txt').attributes('aria-selected')).toBe('false');
+  });
+
+  it('without the dock the open file wears the mark, as before', async () => {
+    const w = await show();
+    useFilesStore().openPath = '/proj/notes.txt';
+    await flush(w);
+
+    expect(row(w, 'notes.txt').classes()).toContain('active');
+    expect(row(w, '.env').classes()).not.toContain('active');
+  });
+
+  it('a panel pinned to another folder leaves the mark with the open file', async () => {
+    const w = await show('/other');
+    useFilesStore().openPath = '/proj/notes.txt';
+    await flush(w);
+
+    expect(row(w, 'notes.txt').classes()).toContain('active');
+    expect(row(w, '.env').classes()).not.toContain('active');
   });
 });
