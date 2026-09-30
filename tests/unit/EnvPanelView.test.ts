@@ -17,7 +17,9 @@ import type { EnvVarRow } from '@pocketshell/core';
  *      value AND shows it — the click is the ask — and the same eye puts the
  *      mask back. Reveal all fetches the whole env in one call (the helper
  *      charges `env list` + one `env get` for it; the panel must not pay per
- *      row).
+ *      row), and Hide all masks the panel in one gesture without un-fetching:
+ *      the eye re-shows a masked row for free, and only Reveal all pays for a
+ *      fresh read.
  *   3. **Editing unmasks and retires the eye** (there is no editing a secret
  *      you cannot see), **Save writes only the dirty row, targets the file it
  *      came from**, and a rejection lands as a sentence next to the form
@@ -142,6 +144,36 @@ describe('EnvPanelView', () => {
       expect(input.type).toBe('text');
       expect(input.value).not.toBe('');
     }
+  });
+
+  it('Hide all masks every row in one gesture; the eye re-shows for free', async () => {
+    envGet.mockResolvedValue({ API_KEY: 'a', DIRENV_VAR: 'd' });
+    const wrapper = await show();
+
+    await wrapper.find('button.reveal-all').trigger('click');
+    await flush(wrapper);
+    for (const key of ['API_KEY', 'DIRENV_VAR']) {
+      const input = rowByKey(wrapper, key).find('input.value-input').element as HTMLInputElement;
+      expect(input.type).toBe('text');
+    }
+
+    await wrapper.find('button.hide-all').trigger('click');
+    for (const key of ['API_KEY', 'DIRENV_VAR']) {
+      const row = rowByKey(wrapper, key);
+      expect((row.find('input.value-input').element as HTMLInputElement).type).toBe('password');
+      // Masked, but still fetched: the eye's state says so.
+      expect(row.find('button.eye-btn').attributes('aria-pressed')).toBe('false');
+    }
+    expect(envGet).toHaveBeenCalledTimes(1);
+
+    // The mask is not the forget — the eye puts a value back with no round
+    // trip, because the row was already fetched.
+    await rowByKey(wrapper, 'API_KEY').find('button.eye-btn').trigger('click');
+    await flush(wrapper);
+    expect(envGet).toHaveBeenCalledTimes(1);
+    const input = rowByKey(wrapper, 'API_KEY').find('input.value-input').element as HTMLInputElement;
+    expect(input.type).toBe('text');
+    expect(input.value).toBe('a');
   });
 
   it('save writes the dirty row to its own file, and a refusal shows as text', async () => {
