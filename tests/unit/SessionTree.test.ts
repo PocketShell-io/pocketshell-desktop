@@ -1024,24 +1024,31 @@ describe('SessionTree — the root header row', () => {
     expect(header.get('.root-add').attributes('title')).toBe('New session in ~/git');
   });
 
-  it('puts a folder row count beside its label too, ahead of the agent marks', async () => {
-    // One convention down the whole panel: a count that hugged its label on the
-    // header and floated right on the rows beneath would be two. The badge
-    // slot itself is an AppIcon for an engine session — the mark's own
-    // `app-icon` class leads, the row's `agent-mark` hook follows.
+  it('wears one agent mark per session instead of the count, in tab order', async () => {
+    // The row used to carry the session count beside a DEDUPED kind list —
+    // "3" saying how many, one spark saying which. The user asked for the
+    // tabs' notation outright ("show the icons from tabs here instead of a
+    // number"), so the count is gone and the marks are per session: two
+    // claudes are two sparks, which a deduped list could not say, and the
+    // shell among them wears nothing (agentBadge's silence rule). The row
+    // tooltip is where the count lives now. The mark's own `app-icon` class
+    // leads, the row's `agent-mark` hook follows.
     const wrapper = await open([
       { ...session('git-app-a', `${HOME}/git/app`, 100), agentKind: 'claude' as const },
       session('git-app-b', `${HOME}/git/app`, 200),
+      { ...session('git-app-c', `${HOME}/git/app`, 300), agentKind: 'claude' as const },
     ]);
     const row = wrapper.get('.dir-header');
     expect(childClasses(row.element)).toEqual([
       'dot',
       'label',
-      'folder-count',
+      'app-icon',
       'app-icon',
       'row-time',
     ]);
-    expect(row.find('.agent-mark').exists()).toBe(true);
+    expect(row.findAll('.agent-mark')).toHaveLength(2);
+    expect(row.find('.folder-count').exists()).toBe(false);
+    expect(row.attributes('title')).toContain('3 sessions');
   });
 
   it('renders the whole label in one span and hands the full name to the tooltip', async () => {

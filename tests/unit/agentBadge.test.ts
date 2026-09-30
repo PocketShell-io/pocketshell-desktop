@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { agentMark } from '../../src/shared/agentBadge';
-import type { SessionAgentKind } from '@pocketshell/core';
+import { agentBadges } from '@ui/app/sessionTreeText';
+import { groupSessionsIntoRoots } from '@ui/app/sessionTree';
+import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
 
 /**
  * Which mark a session tab wears.
@@ -79,5 +81,59 @@ describe('agentMark', () => {
       const icon = agentMark(kind)!.icon;
       expect(source).toMatch(new RegExp(`^\\s*'?${icon}'?:\\s*\\{`, 'm'));
     }
+  });
+});
+
+/**
+ * The badges a FOLDER row wears — one per session that runs a named agent, in
+ * row order, which is the order the folder's workspace tabs wear theirs. This
+ * replaced a session count beside a deduped kind list: the user asked for the
+ * tabs' notation outright, so the row reads as its tab bar folded flat. Built
+ * on real trees from `groupSessionsIntoRoots` (folderSort.test.ts's reasoning)
+ * because the thing being read is a real `SessionDirectory`.
+ */
+describe('agentBadges', () => {
+  const HOME = '/home/alexey';
+
+  function folder(sessions: SessionSummary[]) {
+    const roots = groupSessionsIntoRoots(sessions, HOME);
+    const dir = roots[0]?.directories[0];
+    if (!dir) throw new Error('fixture grouped into no folder');
+    return dir;
+  }
+
+  function session(name: string, agentKind?: SessionAgentKind): SessionSummary {
+    return { name, created: 100, activity: 100, attached: false, path: `${HOME}/git/app`, agentKind };
+  }
+
+  it('wears one badge per session, duplicates kept, in row order', () => {
+    // Three claudes and a codex are FOUR badges — the deduped list this
+    // replaced could only have said `claude, codex`, and the count said the
+    // rest in a second notation. Row order is tab order.
+    const dir = folder([
+      session('a', 'claude'),
+      session('b', 'claude'),
+      session('c', 'codex'),
+      session('d', 'claude'),
+    ]);
+    expect(agentBadges(dir)).toEqual(['claude', 'claude', 'codex', 'claude']);
+  });
+
+  it('leaves shells and unknowns out of the run', () => {
+    // agentBadge's silence rule, applied per session: a shell wears no mark,
+    // so the run can be shorter than the folder's session list.
+    const dir = folder([
+      session('a'),
+      session('b', 'claude'),
+      session('c', 'shell'),
+      session('d', 'unknown'),
+      session('e', 'codex'),
+    ]);
+    expect(agentBadges(dir)).toEqual(['claude', 'codex']);
+  });
+
+  it('caps the run so a full folder cannot push the timestamp off the row', () => {
+    const dir = folder([1, 2, 3, 4, 5, 6].map((n) => session(`s${n}`, 'claude')));
+    expect(agentBadges(dir)).toEqual(['claude', 'claude', 'claude', 'claude']);
   });
 });
