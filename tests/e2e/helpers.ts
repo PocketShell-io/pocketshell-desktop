@@ -106,6 +106,39 @@ export function execInFixture(lines: string[]): void {
   );
 }
 
+/**
+ * Kill every aplexer session in `~/proj`, then WAIT until the snapshot agrees —
+ * a kill answers before the record leaves it, and a corpse still listed at
+ * connect poisons every step after (the free-name walk, the rename's
+ * name-taken probe, the ledger's identity — and a session still in `~/proj`
+ * makes that folder a panel root, so a picker meant to open at `$HOME` opens
+ * inside it instead). Exits nonzero while anything is still listed, so a failed
+ * cleanup fails beforeAll loudly. The seeded `~` workspace is left alone. Runs
+ * through execInFixture — a raw ssh command of this shape does not survive the
+ * win32 argv quoting between node and the ssh client — and uses awk, not
+ * python3: the exec's non-login shell does not carry python on PATH.
+ */
+export function cleanProjSessions(): void {
+  const projIds =
+    `awk '/"id"/ {id=$0; sub(/.*"id"[ :]+"/,"",id); sub(/".*/,"",id)}` +
+    ` /"workspace"/ {ws=$0; sub(/.*"workspace"[ :]+"/,"",ws); sub(/".*/,"",ws);` +
+    ` if (ws ~ /proj/) print id}'`;
+  const left = `left=$(a snapshot --json 2>/dev/null | ${projIds} | grep -c .)`;
+  execInFixture([
+    'export PATH=/usr/local/bin:$HOME/.local/bin:$PATH',
+    'i=0',
+    'while [ $i -lt 10 ]; do',
+    `  ${left}`,
+    '  [ "$left" = 0 ] && break',
+    `  for id in $(a snapshot --json 2>/dev/null | ${projIds}); do a kill "$id" >/dev/null 2>&1; done`,
+    '  i=$((i+1))',
+    '  sleep 2',
+    'done',
+    left,
+    '[ "$left" = 0 ] || { echo "fixture cleanup failed: $left proj session(s) still listed"; exit 1; }',
+  ]);
+}
+
 /** Stop the helper compose service. */
 export function stopHelper(): void {
   try {

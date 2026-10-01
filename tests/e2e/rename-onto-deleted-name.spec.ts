@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
+  cleanProjSessions,
   ensureHelperUp,
-  execInFixture,
   E2E_HOST_NAME,
   HOST_PORT,
   TEST_KEY,
@@ -31,38 +31,6 @@ import {
  */
 
 const appRoot = resolve(__dirname, '..', '..');
-
-/**
- * Kill every aplexer session in `~/proj`, then WAIT until the snapshot agrees —
- * a kill answers before the record leaves it, and a corpse still listed at
- * connect poisons every step after (the free-name walk, the rename's
- * name-taken probe, the ledger's identity). Exits nonzero while anything is
- * still listed, so a failed cleanup fails beforeAll loudly. The seeded `~`
- * workspace is left alone. Runs through execInFixture — a raw ssh command of
- * this shape does not survive the win32 argv quoting between node and the
- * ssh client — and uses awk, not python3: the exec's non-login shell does not
- * carry python on PATH.
- */
-function cleanProjSessions(): void {
-  const projIds =
-    `awk '/"id"/ {id=$0; sub(/.*"id"[ :]+"/,"",id); sub(/".*/,"",id)}` +
-    ` /"workspace"/ {ws=$0; sub(/.*"workspace"[ :]+"/,"",ws); sub(/".*/,"",ws);` +
-    ` if (ws ~ /proj/) print id}'`;
-  const left = `left=$(a snapshot --json 2>/dev/null | ${projIds} | grep -c .)`;
-  execInFixture([
-    'export PATH=/usr/local/bin:$HOME/.local/bin:$PATH',
-    'i=0',
-    'while [ $i -lt 10 ]; do',
-    `  ${left}`,
-    '  [ "$left" = 0 ] && break',
-    `  for id in $(a snapshot --json 2>/dev/null | ${projIds}); do a kill "$id" >/dev/null 2>&1; done`,
-    '  i=$((i+1))',
-    '  sleep 2',
-    'done',
-    left,
-    '[ "$left" = 0 ] || { echo "fixture cleanup failed: $left proj session(s) still listed"; exit 1; }',
-  ]);
-}
 
 const SSH_CONFIG = resolve(homedir(), '.ssh', 'config');
 const BEGIN_MARKER = '# >>> pocketshell-e2e (temporary) >>>';
