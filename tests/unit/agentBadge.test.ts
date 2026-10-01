@@ -138,10 +138,12 @@ describe('usageProviderMark', () => {
 
 /**
  * The badges a FOLDER row wears — one per session that runs a named agent, in
- * row order, which is the order the folder's workspace tabs wear theirs. This
- * replaced a session count beside a deduped kind list: the user asked for the
- * tabs' notation outright, so the row reads as its tab bar folded flat. Built
- * on real trees from `groupSessionsIntoRoots` (folderSort.test.ts's reasoning)
+ * the folder's tab-bar order: the derived row order, with the user's dragged
+ * arrangement (`applyTabOrder`'s stored ranking) applied on top, so the row
+ * keeps reading as its tab bar folded flat after a drag. This replaced a
+ * session count beside a deduped kind list: the user asked for the tabs'
+ * notation outright, so the row reads as its tab bar folded flat. Built on
+ * real trees from `groupSessionsIntoRoots` (folderSort.test.ts's reasoning)
  * because the thing being read is a real `SessionDirectory`.
  */
 describe('agentBadges', () => {
@@ -197,5 +199,40 @@ describe('agentBadges', () => {
   it('still caps, so a dozen-agent folder cannot push the timestamp off the row', () => {
     const dir = folder([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => session(`s${n}`, 'claude')));
     expect(agentBadges(dir)).toHaveLength(6);
+  });
+
+  // The stored manual tab order. The run is the tab bar folded flat, and the
+  // bar applies the user's dragged arrangement (`applyTabOrder`) — so the run
+  // must apply the same ranking (`tabRank`'s contract), or a drag would leave
+  // the row reading the old order while the bar reads the new one.
+  describe('with the stored tab ranking', () => {
+    const trio = () => folder([session('a', 'claude'), session('b', 'codex'), session('c', 'claude')]);
+
+    it('follows the arrangement the tabs were dragged into, over the row order', () => {
+      // Row order says claude, codex, claude; the bar says c, a, b — the run
+      // must read the bar.
+      expect(agentBadges(trio(), ['c', 'a', 'b'])).toEqual(['claude', 'claude', 'codex']);
+    });
+
+    it('keeps unranked sessions in row order behind the ranked ones', () => {
+      // A session created after the last drag has no rank; the bar puts it at
+      // the end of its group, and the run answers the same way.
+      expect(agentBadges(trio(), ['b'])).toEqual(['codex', 'claude', 'claude']);
+    });
+
+    it('treats ids that name no session as inert', () => {
+      // The stored order is the whole bar's ids — Files tab ids among them —
+      // and ids that name nothing alive rank nothing, exactly as
+      // applyTabOrder treats them.
+      expect(agentBadges(trio(), ['~/git/app::files:7', 'b', 'a-killed-session'])).toEqual([
+        'codex',
+        'claude',
+        'claude',
+      ]);
+    });
+
+    it('reads an empty order as un-arranged and walks the rows', () => {
+      expect(agentBadges(trio(), [])).toEqual(['claude', 'codex', 'claude']);
+    });
   });
 });

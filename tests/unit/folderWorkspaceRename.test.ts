@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { ref } from 'vue';
@@ -112,9 +112,29 @@ async function flush(times = 6): Promise<void> {
   }
 }
 
+/**
+ * Every wrapper a test mounts, unmounted after each test.
+ *
+ * A workspace left mounted keeps its `tabs` watcher and its poll alive across
+ * the next test's `beforeEach` — and the manual tab order it prunes is now
+ * shared module state keyed on the SAME host/folder this whole file works on
+ * (./tabOrders), read fresh from `localStorage` on every access. A zombie
+ * instance from test N therefore prunes test N+1's seeded ranking against a
+ * bar that names test N's sessions — the exact leak
+ * folderWorkspaceRestore.test.ts dodges by re-importing per "window"; this
+ * file's imports are static, so the honest equivalent is simply taking the
+ * instances down.
+ */
+const mounted: VueWrapper[] = [];
+
+afterEach(() => {
+  for (const wrapper of mounted.splice(0)) wrapper.unmount();
+});
+
 /** Mount the workspace on a folder that already holds one session, `git-x`. */
 async function openWorkspace(): Promise<VueWrapper> {
   const wrapper = mount(FolderWorkspaceView, { global: { stubs } });
+  mounted.push(wrapper);
   await flush();
   return wrapper;
 }
