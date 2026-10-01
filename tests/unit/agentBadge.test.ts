@@ -140,7 +140,9 @@ describe('usageProviderMark', () => {
  * The badges a FOLDER row wears — one per session that runs a named agent, in
  * the folder's tab-bar order: the derived row order, with the user's dragged
  * arrangement (`applyTabOrder`'s stored ranking) applied on top, so the row
- * keeps reading as its tab bar folded flat after a drag. This replaced a
+ * keeps reading as its tab bar folded flat after a drag. Each badge carries
+ * its session's NAME beside the kind — the mark's silhouette already says the
+ * product, so the row's mark tooltip wears the name instead. This replaced a
  * session count beside a deduped kind list: the user asked for the tabs'
  * notation outright, so the row reads as its tab bar folded flat. Built on
  * real trees from `groupSessionsIntoRoots` (folderSort.test.ts's reasoning)
@@ -170,7 +172,20 @@ describe('agentBadges', () => {
       session('c', 'codex'),
       session('d', 'claude'),
     ]);
-    expect(agentBadges(dir)).toEqual(['claude', 'claude', 'codex', 'claude']);
+    expect(agentBadges(dir)).toEqual([
+      { kind: 'claude', session: 'a' },
+      { kind: 'claude', session: 'b' },
+      { kind: 'codex', session: 'c' },
+      { kind: 'claude', session: 'd' },
+    ]);
+  });
+
+  it('names the session each badge stands for — the mark tooltip text', () => {
+    // The mark's silhouette already says the product, so the row tooltip
+    // spends its hover on what the eye cannot: which session of the folder's
+    // run this mark is. The badge therefore carries the name beside the kind.
+    const dir = folder([session('api', 'codex')]);
+    expect(agentBadges(dir)).toEqual([{ kind: 'codex', session: 'api' }]);
   });
 
   it('leaves shells and unknowns out of the run', () => {
@@ -183,7 +198,10 @@ describe('agentBadges', () => {
       session('d', 'unknown'),
       session('e', 'codex'),
     ]);
-    expect(agentBadges(dir)).toEqual(['claude', 'codex']);
+    expect(agentBadges(dir)).toEqual([
+      { kind: 'claude', session: 'b' },
+      { kind: 'codex', session: 'e' },
+    ]);
   });
 
   it('wears six marks — the tooltip name limit — once six sessions run agents', () => {
@@ -193,7 +211,9 @@ describe('agentBadges', () => {
     // rose to meet the tooltip — a folder's row stops disagreeing with its
     // own tab strip (dapier's six tabs wore four marks).
     const dir = folder([1, 2, 3, 4, 5, 6].map((n) => session(`s${n}`, 'claude')));
-    expect(agentBadges(dir)).toEqual(['claude', 'claude', 'claude', 'claude', 'claude', 'claude']);
+    expect(agentBadges(dir)).toEqual(
+      [1, 2, 3, 4, 5, 6].map((n) => ({ kind: 'claude', session: `s${n}` })),
+    );
   });
 
   it('still caps, so a dozen-agent folder cannot push the timestamp off the row', () => {
@@ -211,13 +231,21 @@ describe('agentBadges', () => {
     it('follows the arrangement the tabs were dragged into, over the row order', () => {
       // Row order says claude, codex, claude; the bar says c, a, b — the run
       // must read the bar.
-      expect(agentBadges(trio(), ['c', 'a', 'b'])).toEqual(['claude', 'claude', 'codex']);
+      expect(agentBadges(trio(), ['c', 'a', 'b'])).toEqual([
+        { kind: 'claude', session: 'c' },
+        { kind: 'claude', session: 'a' },
+        { kind: 'codex', session: 'b' },
+      ]);
     });
 
     it('keeps unranked sessions in row order behind the ranked ones', () => {
       // A session created after the last drag has no rank; the bar puts it at
       // the end of its group, and the run answers the same way.
-      expect(agentBadges(trio(), ['b'])).toEqual(['codex', 'claude', 'claude']);
+      expect(agentBadges(trio(), ['b'])).toEqual([
+        { kind: 'codex', session: 'b' },
+        { kind: 'claude', session: 'a' },
+        { kind: 'claude', session: 'c' },
+      ]);
     });
 
     it('treats ids that name no session as inert', () => {
@@ -225,14 +253,18 @@ describe('agentBadges', () => {
       // and ids that name nothing alive rank nothing, exactly as
       // applyTabOrder treats them.
       expect(agentBadges(trio(), ['~/git/app::files:7', 'b', 'a-killed-session'])).toEqual([
-        'codex',
-        'claude',
-        'claude',
+        { kind: 'codex', session: 'b' },
+        { kind: 'claude', session: 'a' },
+        { kind: 'claude', session: 'c' },
       ]);
     });
 
     it('reads an empty order as un-arranged and walks the rows', () => {
-      expect(agentBadges(trio(), [])).toEqual(['claude', 'codex', 'claude']);
+      expect(agentBadges(trio(), [])).toEqual([
+        { kind: 'claude', session: 'a' },
+        { kind: 'codex', session: 'b' },
+        { kind: 'claude', session: 'c' },
+      ]);
     });
   });
 });
