@@ -53,13 +53,27 @@ if [ "$force_install" = true ] || [ ! -x "$agent_tools_dir/bin/agy" ]; then
   agy_installer="$(mktemp)"
   trap 'rm -f "$agy_installer"' EXIT HUP INT TERM
   curl --compressed -fsSL https://antigravity.google/cli/install.sh -o "$agy_installer"
-  # The bootstrapper refuses an existing binary. Preserve it until the new
-  # installer succeeds by staging in a separate directory.
-  agy_stage_dir="$(mktemp -d "$agent_tools_dir/.agy-install.XXXXXX")"
-  trap 'rm -f "$agy_installer"; rm -rf "$agy_stage_dir"' EXIT HUP INT TERM
-  bash "$agy_installer" --dir "$agy_stage_dir"
-  test -x "$agy_stage_dir/agy"
-  mv "$agy_stage_dir/agy" "$agent_tools_dir/bin/agy"
+  # Install into the durable bin directory so the bootstrapper's shell PATH
+  # setup never points at a temporary staging directory. Preserve the previous
+  # executable and restore it if a refresh fails.
+  agy_backup_dir="$(mktemp -d "$agent_tools_dir/.agy-backup.XXXXXX")"
+  agy_install_complete=false
+  cleanup_agy_install() {
+    rm -f "$agy_installer"
+    if [ "$agy_install_complete" = false ] && [ -f "$agy_backup_dir/agy" ]; then
+      rm -f "$agent_tools_dir/bin/agy"
+      mv "$agy_backup_dir/agy" "$agent_tools_dir/bin/agy"
+    fi
+    rm -rf "$agy_backup_dir"
+  }
+  trap cleanup_agy_install EXIT
+  trap 'exit 1' HUP INT TERM
+  if [ -f "$agent_tools_dir/bin/agy" ]; then
+    mv "$agent_tools_dir/bin/agy" "$agy_backup_dir/agy"
+  fi
+  bash "$agy_installer" --dir "$agent_tools_dir/bin"
+  test -x "$agent_tools_dir/bin/agy"
+  agy_install_complete=true
 fi
 
 printf '%s\n' "$spec" > "$marker"
