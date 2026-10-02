@@ -76,3 +76,67 @@ describe('findUrls', () => {
     expect(urls('no address here, just words')).toEqual([]);
   });
 });
+
+/**
+ * The schemeless family: the `127.0.0.1:8300` a dev box prints when it
+ * reports where a server it just started listens. Nothing else in the pane
+ * claims it — WebLinksAddon's regex is anchored on `https?://` — so the
+ * detector supplies the `http://` itself and flags the match `schemeless`,
+ * which is how the provider knows a single-row one is its alone.
+ */
+describe('findUrls — bare IPv4 addresses', () => {
+  it('links a dev-server address with its port, supplying the scheme', () => {
+    const line = 'dev server is still up on 127.0.0.1:8300 if you want it';
+    const [match] = findUrls(line);
+    expect(match?.url).toBe('http://127.0.0.1:8300');
+    expect(match?.schemeless).toBe(true);
+    // The underline spans what the user reads — the bare address, not the
+    // scheme this module bolted on for the click.
+    expect(line.slice(match?.start ?? 0, match?.end ?? 0)).toBe('127.0.0.1:8300');
+  });
+
+  it('links a bare address with no port and one with a path and query', () => {
+    expect(urls('pinging 10.0.0.3 now')).toEqual(['http://10.0.0.3']);
+    expect(urls('open 192.168.1.24:8080/admin/settings?tab=users first')).toEqual([
+      'http://192.168.1.24:8080/admin/settings?tab=users',
+    ]);
+  });
+
+  it('peels sentence punctuation and a closer with no opener inside', () => {
+    expect(urls('it listens on (127.0.0.1:8300).')).toEqual(['http://127.0.0.1:8300']);
+    expect(urls('reached 127.0.0.1:8300/health) just now')).toEqual([
+      'http://127.0.0.1:8300/health',
+    ]);
+  });
+
+  it('takes scheme and bare addresses in one line, each exactly once', () => {
+    // The scheme URL's own octets are inside its span — the bare scan must
+    // not re-claim them as a second link.
+    expect(urls('api on http://127.0.0.1:8300 and ui on 127.0.0.1:5173')).toEqual([
+      'http://127.0.0.1:8300',
+      'http://127.0.0.1:5173',
+    ]);
+  });
+
+  it('refuses a fifth group, an over-large octet and a leading-zero octet', () => {
+    expect(urls('see 1.2.3.4.5 in the log')).toEqual([]);
+    expect(urls('see 256.0.0.1 in the log')).toEqual([]);
+    expect(urls('see 999.999.999.999 in the log')).toEqual([]);
+    expect(urls('see 01.2.3.4 in the log')).toEqual([]);
+  });
+
+  it('refuses an address with a letter, digit or dot on its left shoulder', () => {
+    expect(urls('release v1.2.3.4 today')).toEqual([]);
+    expect(urls('the a.127.0.0.1 name resolves')).toEqual([]);
+    expect(urls('id 9127.0.0.1 is not an address')).toEqual([]);
+  });
+
+  it('refuses a colon that is not a port', () => {
+    expect(urls('at 127.0.0.1:8300:8080 maybe')).toEqual([]);
+  });
+
+  it('leaves IPv6 alone, bracketed or bare', () => {
+    expect(urls('listening on [::1]:8300 now')).toEqual([]);
+    expect(urls('listening on ::1 now')).toEqual([]);
+  });
+});
