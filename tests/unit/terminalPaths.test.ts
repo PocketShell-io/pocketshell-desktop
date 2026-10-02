@@ -354,6 +354,19 @@ describe('findPaths — rejections (each one seen next to a real path)', () => {
     expect(paths('www.example.com/index.html')).toEqual([]);
   });
 
+  it('rejects an address wearing a path — the URL detector opens it', () => {
+    // `127.0.0.1` as a first segment has exactly the shape of a relative path
+    // whose first directory ends extension-like; the terminalUrls detector
+    // claims it and a click opens the browser, so the Files tab must never
+    // see it.
+    expect(paths('127.0.0.1/x.png')).toEqual([]);
+    expect(paths('10.0.0.1/health')).toEqual([]);
+  });
+
+  it('keeps an address-shaped segment that is not the first', () => {
+    expect(paths('logs/127.0.0.1/error.log')).toEqual(['logs/127.0.0.1/error.log']);
+  });
+
   it('rejects bare numbers and measurements', () => {
     expect(paths('9.613042')).toEqual([]);
     expect(paths('took 2m 19s')).toEqual([]);

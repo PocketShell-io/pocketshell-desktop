@@ -23,7 +23,7 @@ vi.mock('@ui/app/ipc', () => ({
   api: { sftp: {}, preview: { onStats: () => () => undefined } },
 }));
 
-const { scanBufferLine, pathLinks, urlLinks } = await import('@ui/app/terminalLinks');
+const { scanBufferLine, pathLinks, urlLinks, lineLinks } = await import('@ui/app/terminalLinks');
 const { useFilesStore } = await import('@ui/app/stores/files');
 const { useSessionsStore } = await import('@ui/app/stores/sessions');
 
@@ -837,6 +837,52 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
 
     expect(urlLinks(t, 1, () => undefined)).toEqual([]);
     expect(pathLinks(t, 1, () => ({ sessionName: 'git-foo' }))).toEqual([]);
+  });
+});
+
+/**
+ * The schemeless family the addon can never see: its regex is anchored on
+ * `https?://`, so a bare `127.0.0.1:8300` on a single row has exactly one
+ * claimant — this provider, which supplies the `http://` at click time. The
+ * at-rest highlighter shares the scan but keeps its addon-era rule: a
+ * single-row address was never half-underlined by the remote CLI, so there
+ * is nothing to repair, bare or not.
+ */
+describe('urlLinks — a bare address on one row', () => {
+  it('claims a dev-server address on a single row and opens it with a scheme', () => {
+    const term = fakeTerminal(['dev server up on 127.0.0.1:8300 now']);
+    const open = vi.fn();
+    const links = urlLinks(term, 1, open);
+    expect(links.map((l) => l.text)).toEqual(['127.0.0.1:8300']);
+    // From the `1` of the address (after `dev server up on `) to its last `0`;
+    // the range speaks xterm's 1-based buffer rows.
+    expect(links[0]?.range).toEqual({ start: { x: 18, y: 1 }, end: { x: 31, y: 1 } });
+    links[0]?.activate(CLICK, '127.0.0.1:8300');
+    expect(open).toHaveBeenCalledWith('http://127.0.0.1:8300');
+  });
+
+  it('on a row with both kinds, claims only the bare address', () => {
+    // The scheme URL stays the addon's — answering `undefined` for it is what
+    // keeps every cell it always handled; the bare address is answered here.
+    const term = fakeTerminal(['api http://x.io/a ui 127.0.0.1:5173']);
+    expect(urlLinks(term, 1, () => undefined).map((l) => l.text)).toEqual(['127.0.0.1:5173']);
+  });
+
+  it('gives a single-row bare address no at-rest tint, like any single-row URL', () => {
+    const term = fakeTerminal(['dev server up on 127.0.0.1:8300 now']);
+    expect(lineLinks(term, 1, () => ({ sessionName: '' }), () => undefined)).toEqual([]);
+  });
+
+  it('joins a bare address xterm itself wrapped, as a bare shell pane wraps', () => {
+    // An isWrapped join has no gate to satisfy — the wrap is a fact the
+    // terminal recorded — so a hard-wrapped address comes whole and spans
+    // rows, tint and all.
+    const term = fakeTerminal(['up on 127.0.0.1:8300', '/health now'], [1]);
+    const open = vi.fn();
+    const links = urlLinks(term, 2, open);
+    expect(links.map((l) => l.text)).toEqual(['127.0.0.1:8300', '/health']);
+    links[0]?.activate(CLICK, '127.0.0.1:8300');
+    expect(open).toHaveBeenCalledWith('http://127.0.0.1:8300/health');
   });
 });
 
