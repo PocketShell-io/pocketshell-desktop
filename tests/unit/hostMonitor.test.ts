@@ -4,6 +4,7 @@ import {
   cpuPercent,
   cpuPercentages,
   formatKib,
+  formatKibPair,
   formatProcessTime,
   formatUptime,
   killCommand,
@@ -23,10 +24,10 @@ import {
 
 /** The ps rows of a transcript, re-parsed for the assertions. */
 const PS_BODY = [
-  '    PID  PPID USER     %CPU  %MEM     TIME COMMAND',
-  '      1     0 root      0.0  0.1     3:45 /sbin/init',
-  '   1234     1 alexey   12.5  2.3 1-02:03:04 node server.js --port 3000',
-  '    99     1 root      0.0  0.0     0:01 [kworker/0:1]',
+  '    PID  PPID USER     STAT  %CPU  %MEM    VSZ    RSS     TIME COMMAND',
+  '      1     0 root      Ss    0.0  0.1   1024    512     3:45 /sbin/init',
+  '   1234     1 alexey    Sl   12.5  2.3  42124 1053600 1-02:03:04 node server.js --port 3000',
+  '    99     1 root      Z     0.0  0.0      0      0     0:01 [kworker/0:1] <defunct>',
   '',
 ].join('\n');
 
@@ -70,7 +71,9 @@ describe('MONITOR_SNAPSHOT_COMMAND', () => {
   });
 
   it('pins the ps locale and carries every section marker, ps first', () => {
-    expect(MONITOR_SNAPSHOT_COMMAND).toContain('LC_ALL=C ps -eo pid,ppid,user,pcpu,pmem,time,args');
+    expect(MONITOR_SNAPSHOT_COMMAND).toContain(
+      'LC_ALL=C ps -eo pid,ppid,user,stat,pcpu,pmem,vsz,rss,time,args',
+    );
     const markers = [...MONITOR_SNAPSHOT_COMMAND.matchAll(/==([a-z]+)==/g)].map((m) => m[1]);
     expect(markers).toEqual(['ps', 'stat', 'mem', 'load', 'up']);
     expect(MONITOR_SNAPSHOT_COMMAND.indexOf('==ps==')).toBeLessThan(
@@ -91,15 +94,24 @@ describe('parseMonitorSample', () => {
   it('parses every ps data row and skips the header', () => {
     expect(sample.processes).toHaveLength(3);
     const node = sample.processes.find((row) => row.pid === 1234)!;
-    expect(node.pid).toBe(1234);
     expect(node.ppid).toBe(1);
     expect(node.user).toBe('alexey');
+    // STAT arrives multi-letter; the row keeps the FIRST letter — the state.
+    expect(node.state).toBe('S');
     expect(node.cpu).toBe(12.5);
     expect(node.mem).toBe(2.3);
+    expect(node.vszKib).toBe(42124);
+    expect(node.rssKib).toBe(1053600);
     // 1-02:03:04 — a day-carrying TIME, parsed to seconds.
     expect(node.timeS).toBe((24 + 2) * 3600 + 3 * 60 + 4);
     // The command is the WHOLE argv, spaces and flags intact.
     expect(node.command).toBe('node server.js --port 3000');
+  });
+
+  it('reads a zombie as Z with zeroed memory figures', () => {
+    const zombie = sample.processes.find((row) => row.state === 'Z')!;
+    expect(zombie.vszKib).toBe(0);
+    expect(zombie.rssKib).toBe(0);
   });
 
   it('parses the aggregate first, then the cores in kernel order', () => {
@@ -117,7 +129,9 @@ describe('parseMonitorSample', () => {
       swapTotalKib: 2097152,
       swapFreeKib: 1048576,
     });
-    expect(sample.load).toEqual({ one: 0.52, five: 0.48, fifteen: 0.41, running: 3, tasks: 1234 });
+    // loadavg's `3/1234` is running over SCHEDULER ENTITIES — threads, not
+    // processes; the process count is the ps table's length.
+    expect(sample.load).toEqual({ one: 0.52, five: 0.48, fifteen: 0.41, running: 3, threads: 1234 });
     expect(sample.uptimeS).toBe(987654.32);
   });
 
@@ -213,21 +227,25 @@ describe('sortProcesses', () => {
     pid: 1,
     ppid: 0,
     user: 'u',
+    state: 'S',
     cpu: 0,
     mem: 0,
+    vszKib: 0,
+    rssKib: 0,
     timeS: 0,
     command: 'c',
     ...over,
   });
   const rows = [
-    row({ pid: 2, cpu: 5, mem: 1, user: 'zed', command: 'b', timeS: 9 }),
-    row({ pid: 1, cpu: 9, mem: 3, user: 'amy', command: 'a', timeS: 4 }),
-    row({ pid: 3, cpu: 9, mem: 2, user: 'amy', command: 'c', timeS: 4 }),
+    row({ pid: 2, cpu: 5, mem: 1, user: 'zed', command: 'b', timeS: 9, rssKib: 10 }),
+    row({ pid: 1, cpu: 9, mem: 3, user: 'amy', command: 'a', timeS: 4, rssKib: 30 }),
+    row({ pid: 3, cpu: 9, mem: 2, user: 'amy', command: 'c', timeS: 4, rssKib: 20 }),
   ];
 
   it('orders numerically descending for the meter columns', () => {
     expect(sortProcesses(rows, 'cpu', true).map((r) => r.pid)).toEqual([1, 3, 2]);
     expect(sortProcesses(rows, 'mem', true).map((r) => r.pid)).toEqual([1, 3, 2]);
+    expect(sortProcesses(rows, 'rssKib', true).map((r) => r.pid)).toEqual([1, 3, 2]);
     expect(sortProcesses(rows, 'timeS', false).map((r) => r.pid)).toEqual([1, 3, 2]);
   });
 
@@ -277,5 +295,11 @@ describe('the formatters', () => {
   it('memory figures go through the one shared byte ladder', () => {
     expect(formatKib(1)).toBe('1.0 KB');
     expect(formatKib(16384256)).toBe('15.6 GB');
+  });
+
+  it('a used/total pair speaks ONE unit, the total\'s', () => {
+    expect(formatKibPair(512000, 1024000)).toBe('500.0 / 1000.0 MB');
+    expect(formatKibPair(33390000, 64225000)).toBe('31.8 / 61.2 GB');
+    expect(formatKibPair(512, 1000)).toBe('512.0 / 1000.0 KB');
   });
 });
