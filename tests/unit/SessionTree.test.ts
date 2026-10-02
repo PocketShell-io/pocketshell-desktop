@@ -373,15 +373,15 @@ describe('SessionTree — the creation chord (sessions.new)', () => {
 });
 
 describe('SessionTree — the header strip', () => {
-  it('reads hide, then back, +, ports, usage, refresh, settings', async () => {
+  it('reads hide, then back, +, ports, usage, monitor, refresh, settings', async () => {
     // The user's screenshot circled the back arrow and hide with an arrow
     // between: the two traded ends. Hide now holds the left end the back
     // arrow used to hold alone, and back leads the right-aligned run,
     // immediately left of the `+` — the panel's primary action, first of the
     // chrome proper. The rest of the run keeps that user's earlier dictate
     // ("here have ... then refresh then settings"; the header expansion made
-    // their `⋯` into its two overlays at the same ask, so Ports and Usage are
-    // two buttons there) — "then hide", the dictate's last word, is what the
+    // their `⋯` into its overlays at the same ask, so Ports, Usage and the
+    // monitor are buttons there) — "then hide", the dictate's last word, is what the
     // screenshot undid. The magnifier sits between the `+` and Ports: the
     // run's pair of summons — create, find — ahead of the host overlays. The
     // words in the test are their tooltips/accessible names, as they were for
@@ -394,6 +394,7 @@ describe('SessionTree — the header strip', () => {
       'Quick actions',
       'Port forwarding',
       'Provider usage',
+      'Host monitor',
       'Refresh',
       'Settings',
     ]);

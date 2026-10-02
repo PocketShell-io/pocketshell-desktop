@@ -206,10 +206,10 @@ describe('MonitorPanelView — the process table', () => {
     // Landing order: ps pcpu descending — 4.0 before 2.0.
     expect(table.findAll('.prow .pid').map((c) => Number(c.text()))).toEqual([424, 999]);
     // The mem column: 1.0 vs 0.5 — same order descending.
-    await table.findAll('.th.sort')[1].trigger('click');
+    await table.findAll('.th.sort')[1]!.trigger('click');
     expect(table.findAll('.prow .pid').map((c) => Number(c.text()))).toEqual([424, 999]);
     // Flip it: mem ascending now.
-    await table.findAll('.th.sort')[1].trigger('click');
+    await table.findAll('.th.sort')[1]!.trigger('click');
     expect(table.findAll('.prow .pid').map((c) => Number(c.text()))).toEqual([999, 424]);
     wrapper.unmount();
   });
@@ -222,7 +222,7 @@ describe('MonitorPanelView — the two-step kill', () => {
     exec.mockClear();
     exec.mockResolvedValue({ stdout: TWO_PROC, stderr: '', exitCode: 0 });
     const table = wrapper.findComponent(MonitorProcessTable);
-    const term = table.findAll('.kill')[0];
+    const term = table.findAll('.kill')[0]!;
     await term.trigger('click');
     expect(term.text()).toBe('sure?');
     // Armed only: no kill has gone out over the wire yet.
@@ -240,13 +240,14 @@ describe('MonitorPanelView — the two-step kill', () => {
     const wrapper = await show();
     const table = wrapper.findComponent(MonitorProcessTable);
     const buttons = table.findAll('.kill');
+    expect(buttons.length).toBe(4);
     // Arm TERM, then touch the sort — the arm must drop.
-    await buttons[0].trigger('click');
+    await buttons[0]!.trigger('click');
     await table.find('.th.sort').trigger('click');
-    expect(buttons[0].text()).toBe('TERM');
+    expect(buttons[0]!.text()).toBe('TERM');
 
-    await buttons[1].trigger('click');
-    await buttons[1].trigger('click');
+    await buttons[1]!.trigger('click');
+    await buttons[1]!.trigger('click');
     await flush(wrapper);
     const killCall = exec.mock.calls.map((c) => c[1]).find((cmd) => cmd.startsWith('kill '));
     expect(killCall).toBe('kill -KILL 424');
