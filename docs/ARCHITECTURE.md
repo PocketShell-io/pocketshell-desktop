@@ -307,3 +307,17 @@ rule `update:open` runs under (§8). The format's forced decisions — the
 host token resolved through the user's `~/.ssh/config`, the absolute path,
 the new-window query — are documented with the spelling in
 `@pocketshell/core`'s `src/shared/vscodeDeepLink.ts`.
+
+---
+
+## 11. The host monitor
+
+An htop-style read of the connected host — CPU/memory meters, load, and a
+live process table with a two-press kill — as the third host overlay
+beside Ports and Usage. It rides the EXISTING `ssh.exec` seam with no new
+IPC verb: the renderer polls one marked-section snapshot command every
+two seconds while the panel is open, and a closed panel costs the host
+nothing. The snapshot command, the parsers, the client-side tick-delta
+CPU percentages and their deliberate gaps (unset first-sample bars, ps's
+lifetime pcpu per process) are the decision record in `docs/MONITOR.md`;
+the code is `@ui/app/hostMonitor.ts` and `useHostMonitor.ts`.
