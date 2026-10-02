@@ -861,6 +861,15 @@ describe('urlLinks — a bare address on one row', () => {
     expect(open).toHaveBeenCalledWith('http://127.0.0.1:8300');
   });
 
+  it('claims a bare domain with a path the same way', () => {
+    const term = fakeTerminal(['live at datatalks.club/blog/sponsor.html soon']);
+    const open = vi.fn();
+    const links = urlLinks(term, 1, open);
+    expect(links.map((l) => l.text)).toEqual(['datatalks.club/blog/sponsor.html']);
+    links[0]?.activate(CLICK, 'datatalks.club/blog/sponsor.html');
+    expect(open).toHaveBeenCalledWith('http://datatalks.club/blog/sponsor.html');
+  });
+
   it('on a row with both kinds, claims only the bare address', () => {
     // The scheme URL stays the addon's — answering `undefined` for it is what
     // keeps every cell it always handled; the bare address is answered here.

@@ -140,3 +140,66 @@ describe('findUrls — bare IPv4 addresses', () => {
     expect(urls('listening on ::1 now')).toEqual([]);
   });
 });
+
+/**
+ * The schemeless domain family: `datatalks.club/blog/sponsor-…html`, the
+ * shape a CLI prints when it names a page without its scheme. The rules are
+ * deliberately tighter than for the bare-IP half of the family — a bare
+ * domain is a hostname being mentioned as often as an address, so it needs
+ * a port or a path before it is believed.
+ */
+describe('findUrls — bare domain addresses', () => {
+  it('links a domain with a path, supplying the scheme', () => {
+    const line =
+      'The live page at datatalks.club/blog/sponsor-datatalks-club.html will show the changes';
+    const [match] = findUrls(line);
+    expect(match?.url).toBe('http://datatalks.club/blog/sponsor-datatalks-club.html');
+    expect(match?.schemeless).toBe(true);
+    // The underline spans what the user reads, and the case they typed —
+    // the shape HOSTNAME reads case-insensitively — comes through whole.
+    expect(line.slice(match?.start ?? 0, match?.end ?? 0)).toBe(
+      'datatalks.club/blog/sponsor-datatalks-club.html',
+    );
+  });
+
+  it('links a domain with a port, and a port plus path', () => {
+    expect(urls('api on api.example.com:8443 today')).toEqual(['http://api.example.com:8443']);
+    expect(urls('open datatalks.club:8080/blog/post?id=7 first')).toEqual([
+      'http://datatalks.club:8080/blog/post?id=7',
+    ]);
+  });
+
+  it('admits a single-segment path on a normal TLD', () => {
+    expect(urls('repo at github.com/vercel now')).toEqual(['http://github.com/vercel']);
+    expect(urls('docs at example.com/blog/ now')).toEqual(['http://example.com/blog/']);
+  });
+
+  it('leaves a bare domain plain — a mentioned hostname, and an email half', () => {
+    expect(urls('visit datatalks.club for the course')).toEqual([]);
+    expect(urls('write to alexey@datatalks.club now')).toEqual([]);
+  });
+
+  it('refuses the prose slash of a .js domain — Node.js/Python is not an address', () => {
+    expect(urls('built with Node.js/Python this time')).toEqual([]);
+    expect(urls('choose Vue.js/React or both')).toEqual([]);
+  });
+
+  it('still admits a .js domain with somewhere real to go', () => {
+    expect(urls('see next.js/docs/getting-started now')).toEqual([
+      'http://next.js/docs/getting-started',
+    ]);
+    expect(urls('see node.js:3000 now')).toEqual(['http://node.js:3000']);
+    expect(urls('see node.js/blog/ now')).toEqual(['http://node.js/blog/']);
+  });
+
+  it('refuses scp and git-remote colon shapes', () => {
+    expect(urls('scp file datatalks.club:/tmp/x now')).toEqual([]);
+    expect(urls('clone git@github.com:org/repo.git now')).toEqual([]);
+  });
+
+  it('keeps both families and a scheme URL out of each other on one line', () => {
+    expect(
+      urls('page datatalks.club/blog/x.html mirrors http://127.0.0.1:8300 and 10.0.0.3'),
+    ).toEqual(['http://datatalks.club/blog/x.html', 'http://127.0.0.1:8300', 'http://10.0.0.3']);
+  });
+});
