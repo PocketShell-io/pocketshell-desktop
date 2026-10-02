@@ -138,7 +138,9 @@ selection-follows-focus, the accent underline for selection — and each panel
 scrolls beneath it. Panels are `v-show`, not `v-if`: every group stays
 mounted for the overlay's life, so drafts and the shortcut capture survive
 tab switches, platform capability probes run once, and the sections' DOM
-order never changes.
+order never changes. Within the Keyboard tab the seven sections sit behind
+a scroll-spy section rail (ShortcutSettings) — navigation, not a filter:
+every binding stays rendered, the rail counts and jumps.
 
 ### 5.8 Iconography — no character does an icon's job
 

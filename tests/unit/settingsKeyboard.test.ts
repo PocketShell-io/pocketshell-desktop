@@ -37,7 +37,7 @@ vi.mock('@ui/app/ipc', () => ({
 const SettingsView = (await import('@ui/app/views/SettingsView.vue')).default;
 const { useSettingsStore } = await import('@ui/app/stores/settings');
 const { useConnectionStore } = await import('@ui/app/stores/connection');
-const { SHORTCUTS, formatChord, parseChord } = await import('../../src/shared/shortcuts');
+const { SHORTCUTS, formatChord, parseChord, RESERVED_CHORDS, MENU_CLAIMED_UNSUPPRESSIBLE } = await import('../../src/shared/shortcuts');
 
 beforeEach(() => {
   localStorage.clear();
@@ -354,6 +354,51 @@ describe('Settings — project roots', () => {
     await wrapper.vm.$nextTick();
     expect(wrapper.get('input[aria-label="Add a project root for pocketshell-local"]')).toBeTruthy();
     expect(wrapper.findAll('.root-path')).toHaveLength(0);
+    wrapper.unmount();
+  });
+});
+
+describe('Settings — the keyboard section rail', () => {
+  it('offers one entry per rendered section, in document order, with its row count', () => {
+    const wrapper = mountSettings();
+    const items = wrapper.findAll('.keys-rail .rail-item');
+    const labels = items.map((el) => el.find('.rail-label').text());
+    // The surfaces in registry order, then the reserved keys — the same order
+    // as the sections in the body.
+    expect(labels).toEqual([
+      'Everywhere',
+      'Tabs',
+      'Terminal',
+      'Prompt composer',
+      'Files',
+      'Annotate',
+      'Will not take',
+    ]);
+    // Each count is the rows its section renders.
+    const counts = items.map((el) => Number(el.find('.rail-count').text()));
+    expect(counts).toEqual([
+      SHORTCUTS.filter((s) => s.surface === 'global').length,
+      SHORTCUTS.filter((s) => s.surface === 'workspace').length,
+      SHORTCUTS.filter((s) => s.surface === 'terminal').length,
+      SHORTCUTS.filter((s) => s.surface === 'composer').length,
+      SHORTCUTS.filter((s) => s.surface === 'files').length,
+      SHORTCUTS.filter((s) => s.surface === 'doodle').length,
+      RESERVED_CHORDS.length + MENU_CLAIMED_UNSUPPRESSIBLE.length,
+    ]);
+    // The rail is navigation, not a filter: the body still renders every row.
+    expect(wrapper.findAll('.key-row')).toHaveLength(
+      SHORTCUTS.length + RESERVED_CHORDS.length + MENU_CLAIMED_UNSUPPRESSIBLE.length,
+    );
+    wrapper.unmount();
+  });
+
+  it('moves the highlight to the section the click jumped to', async () => {
+    const wrapper = mountSettings();
+    const items = wrapper.findAll('.keys-rail .rail-item');
+    expect(items[0]!.attributes('aria-current')).toBe('true');
+    await items[items.length - 1]!.trigger('click');
+    expect(items[items.length - 1]!.attributes('aria-current')).toBe('true');
+    expect(items[0]!.attributes('aria-current')).toBeUndefined();
     wrapper.unmount();
   });
 });
