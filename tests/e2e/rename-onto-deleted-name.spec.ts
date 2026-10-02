@@ -110,6 +110,11 @@ test.describe('rename onto a deleted name', () => {
     } catch {
       // ignore
     }
+    // The test deliberately leaves the renamed `test` session RUNNING in
+    // `~/proj` (that persistence is the point). A live session there is a
+    // panel root, and session-nav.spec.ts — next in the serial order — counts
+    // folders, so leave the fixture as it was found.
+    cleanProjSessions();
     if (originalConfig !== null) {
       writeFileSync(SSH_CONFIG, originalConfig);
     }

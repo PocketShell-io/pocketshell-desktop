@@ -102,40 +102,65 @@ export function execInFixture(lines: string[]): void {
       '-lc',
       lines.join('\n'),
     ],
-    { stdio: 'ignore', timeout: 30_000 },
+    // stderr inherits so a fixture script's failure reason reaches the CI log
+    // (the cleanup's "N proj session(s) still listed", a kill's refusal) —
+    // plain 'ignore' hid exactly the evidence this file most needed. stdout
+    // stays ignored: success output is noise.
+    { stdio: ['ignore', 'ignore', 'inherit'], timeout: 30_000 },
   );
 }
 
 /**
- * Kill every aplexer session in `~/proj`, then WAIT until the snapshot agrees —
- * a kill answers before the record leaves it, and a corpse still listed at
- * connect poisons every step after (the free-name walk, the rename's
- * name-taken probe, the ledger's identity — and a session still in `~/proj`
- * makes that folder a panel root, so a picker meant to open at `$HOME` opens
- * inside it instead). Exits nonzero while anything is still listed, so a failed
- * cleanup fails beforeAll loudly. The seeded `~` workspace is left alone. Runs
- * through execInFixture — a raw ssh command of this shape does not survive the
- * win32 argv quoting between node and the ssh client — and uses awk, not
- * python3: the exec's non-login shell does not carry python on PATH.
+ * Kill every aplexer session in `~/proj`, FORGET its record, then WAIT until
+ * the snapshot agrees. Two aplexer facts shape this:
+ *
+ * - a live session needs `a kill` first — forget alone leaves the worker
+ *   running — and the record lingers a moment after the kill answers, so the
+ *   forget may land on the next loop pass (the sleep is the settle);
+ * - `a kill` alone never clears a BROKEN record: a session whose worker died
+ *   with the container (specs that leave `~/proj` sessions running and then
+ *   stop the helper leave these behind on the next boot) gets "refusing to
+ *   stop its worker or remove runtime evidence" and sits in the snapshot
+ *   forever. `a forget --workspace --tag --force` is the only thing that
+ *   drops it — the same rule projects.spec.ts's afterAll applies to its own
+ *   create.
+ *
+ * A corpse still listed at connect poisons every step after (the free-name
+ * walk, the rename's name-taken probe, the ledger's identity — and a session
+ * still in `~/proj` makes that folder a panel root, so a picker meant to open
+ * at `$HOME` opens inside it instead). Exits nonzero while anything is still
+ * listed, so a failed cleanup fails beforeAll loudly. The seeded `~` workspace
+ * is left alone. Runs through execInFixture — a raw ssh command of this shape
+ * does not survive the win32 argv quoting between node and the ssh client —
+ * and uses awk, not python3: the exec's non-login shell does not carry python
+ * on PATH. The field splitter's `printf '\t'` keeps its single quotes: inside
+ * `$( )` a bare `\t` loses the backslash to the escape, IFS becomes the letter
+ * t, and every path with a t in it splits wrong.
  */
 export function cleanProjSessions(): void {
-  const projIds =
-    `awk '/"id"/ {id=$0; sub(/.*"id"[ :]+"/,"",id); sub(/".*/,"",id)}` +
-    ` /"workspace"/ {ws=$0; sub(/.*"workspace"[ :]+"/,"",ws); sub(/".*/,"",ws);` +
-    ` if (ws ~ /proj/) print id}'`;
-  const left = `left=$(a snapshot --json 2>/dev/null | ${projIds} | grep -c .)`;
+  // Per record: id, tag, workspace, tab-separated. First tag/workspace win:
+  // the JSON's nested placement echoes carry the record's own values.
+  const projRecs =
+    `awk '/"id"/ {id=$0; sub(/.*"id"[ :]+"/,"",id); sub(/".*/,"",id); tag=""; ws=""}` +
+    ` /"tag"/ && tag=="" {tag=$0; sub(/.*"tag"[ :]+"/,"",tag); sub(/".*/,"",tag)}` +
+    ` /"workspace"/ && ws=="" {ws=$0; sub(/.*"workspace"[ :]+"/,"",ws); sub(/".*/,"",ws);` +
+    ` if (ws ~ /proj/) print id "\\t" tag "\\t" ws}'`;
+  const left = `left=$(a snapshot --json 2>/dev/null | ${projRecs} | grep -c .)`;
   execInFixture([
     'export PATH=/usr/local/bin:$HOME/.local/bin:$PATH',
     'i=0',
     'while [ $i -lt 10 ]; do',
     `  ${left}`,
     '  [ "$left" = 0 ] && break',
-    `  for id in $(a snapshot --json 2>/dev/null | ${projIds}); do a kill "$id" >/dev/null 2>&1; done`,
+    `  a snapshot --json 2>/dev/null | ${projRecs} | while IFS="$(printf '\\t')" read -r id tag ws; do`,
+    '    a kill "$id" >/dev/null 2>&1',
+    '    a forget --workspace "$ws" --tag "$tag" --force >/dev/null 2>&1',
+    '  done',
     '  i=$((i+1))',
     '  sleep 2',
     'done',
     left,
-    '[ "$left" = 0 ] || { echo "fixture cleanup failed: $left proj session(s) still listed"; exit 1; }',
+    '[ "$left" = 0 ] || { echo "fixture cleanup failed: $left proj session(s) still listed" >&2; exit 1; }',
   ]);
 }
 
