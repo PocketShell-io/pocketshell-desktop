@@ -29,12 +29,17 @@ const MonitorProcessTable = (await import('@ui/app/components/MonitorProcessTabl
 const { useConnectionStore } = await import('@ui/app/stores/connection');
 
 function psSection(rows: string[]): string {
-  return ['==ps==', '  PID  PPID USER     %CPU  %MEM     TIME COMMAND', ...rows, ''].join('\n');
+  return [
+    '==ps==',
+    '  PID  PPID USER     STAT  %CPU  %MEM    VSZ    RSS     TIME COMMAND',
+    ...rows,
+    '',
+  ].join('\n');
 }
 
 const TWO_PROC = psSection([
-  '    424     1 alexey    4.0  1.0     1:00 node server.js',
-  '    999     1 root      2.0  0.5     0:30 nginx: worker',
+  '    424     1 alexey    Ss    4.0  1.0   31160  27600     1:00 node server.js',
+  '    999     1 root      R     2.0  0.5  42124 1053600    0:30 nginx: worker',
 ]);
 
 /** One /proc/stat line: only user and idle carry ticks, so busy+idle IS total. */
@@ -129,10 +134,28 @@ describe('MonitorPanelView — the states a panel moves through', () => {
   it('draws the first sample with UNSET cpu bars — a dash, never a fabricated 0%', async () => {
     const wrapper = await show();
     // aggregate + the one core, both without a previous sample to diff against
-    const pcts = wrapper.findAll('.pct:not(.wide)').map((p) => p.text());
+    const pcts = wrapper.findAll('.pct:not(.pair)').map((p) => p.text());
     expect(pcts).toEqual(['–', '–']);
-    // ...while memory, which needs no delta, is already live: half of 1000 MB.
-    expect(wrapper.text()).toContain('500.0 MB / 1000.0 MB');
+    // ...while memory, which needs no delta, is already live — as ONE pair
+    // in ONE unit, the total's: half of 1000 MB.
+    expect(wrapper.text()).toContain('500.0 / 1000.0 MB');
+    wrapper.unmount();
+  });
+
+  it('tells the three counts apart: procs from the table, threads from loadavg', async () => {
+    // ps rows AND a loadavg line — the threads/running stats only render
+    // when loadavg answered.
+    exec.mockResolvedValue({
+      stdout: `${TWO_PROC}==load==\n0.50 0.40 0.30 1/42 999\n==up==\n90000.00 1.00\n`,
+      stderr: '',
+      exitCode: 0,
+    });
+    const wrapper = await show();
+    const strip = wrapper.find('.strip').text();
+    // 2 ps rows; loadavg's 1/42 is running/threads, NOT task counts.
+    expect(strip).toContain('procs 2');
+    expect(strip).toContain('threads 42');
+    expect(strip).toContain('running 1');
     wrapper.unmount();
   });
 
@@ -150,7 +173,7 @@ describe('MonitorPanelView — the states a panel moves through', () => {
     await flush(wrapper);
     // Aggregate: 750 of the 1000 elapsed ticks busy → 75%. Core0 matched:
     // 750 busy of 1000 → 75%. Core1 has no previous to diff against → '–'.
-    const pcts = wrapper.findAll('.pct:not(.wide)').map((p) => p.text());
+    const pcts = wrapper.findAll('.pct:not(.pair)').map((p) => p.text());
     expect(pcts).toEqual(['75%', '75%', '–']);
     wrapper.unmount();
   });
@@ -199,17 +222,55 @@ describe('MonitorPanelView — the process table', () => {
     wrapper.unmount();
   });
 
+  it('aligns every header with its column — the drift that once put `mem` over the cpu figures', async () => {
+    exec.mockResolvedValue({ stdout: TWO_PROC, stderr: '', exitCode: 0 });
+    const wrapper = await show();
+    const table = wrapper.findComponent(MonitorProcessTable);
+    // Headers and cells walk ONE list; the row is its ground truth.
+    const headers = table.findAll('.head > *').map((h) => h.text().trim());
+    expect(headers).toEqual([
+      'pid',
+      'user',
+      'virt',
+      'res',
+      's',
+      'cpu%',
+      'mem%',
+      'time+',
+      'command',
+      '', // the actions cell has no caption
+    ]);
+    const firstRow = table.findAll('.prow')[0]!;
+    expect(firstRow.findAll('.cell')).toHaveLength(headers.length);
+    // The cells under the two memory captions really are memory figures —
+    // 31160 KiB virtual and 27600 KiB resident for pid 424.
+    expect(firstRow.findAll('.cell')[2]!.text()).toBe('30.4 MB');
+    expect(firstRow.findAll('.cell')[3]!.text()).toBe('27.0 MB');
+    wrapper.unmount();
+  });
+
   it('sorts by the clicked column, cpu descending on landing', async () => {
     exec.mockResolvedValue({ stdout: TWO_PROC, stderr: '', exitCode: 0 });
     const wrapper = await show();
     const table = wrapper.findComponent(MonitorProcessTable);
+    const sortButtons = table.findAll('.th.sort');
+    expect(sortButtons.map((b) => b.text().replace(/arrow/i, '').trim())).toEqual([
+      'pid',
+      'user',
+      'virt',
+      'res',
+      'cpu%',
+      'mem%',
+      'time+',
+      'command',
+    ]);
     // Landing order: ps pcpu descending — 4.0 before 2.0.
     expect(table.findAll('.prow .pid').map((c) => Number(c.text()))).toEqual([424, 999]);
     // The mem column: 1.0 vs 0.5 — same order descending.
-    await table.findAll('.th.sort')[1]!.trigger('click');
+    await sortButtons[5]!.trigger('click');
     expect(table.findAll('.prow .pid').map((c) => Number(c.text()))).toEqual([424, 999]);
     // Flip it: mem ascending now.
-    await table.findAll('.th.sort')[1]!.trigger('click');
+    await sortButtons[5]!.trigger('click');
     expect(table.findAll('.prow .pid').map((c) => Number(c.text()))).toEqual([999, 424]);
     wrapper.unmount();
   });
@@ -314,7 +375,10 @@ describe('MonitorPanelView — the poll loop', () => {
 describe('MonitorPanelView — the render cap', () => {
   it('caps the drawn rows and says how many it is not drawing', async () => {
     const many = psSection(
-      Array.from({ length: 450 }, (_, i) => `  ${1000 + i}     1 u      0.0  0.0     0:00 sleeper ${i}`),
+      Array.from(
+        { length: 450 },
+        (_, i) => `  ${1000 + i}     1 u      S     0.0  0.0   1024    512     0:00 sleeper ${i}`,
+      ),
     );
     exec.mockResolvedValue({ stdout: many, stderr: '', exitCode: 0 });
     const wrapper = await show();
