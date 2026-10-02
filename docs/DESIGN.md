@@ -125,6 +125,18 @@ HTML, markdown and SVG open as render + source behind one segmented toggle
 over the sandboxed `psview:` frame; the pipeline and its guarantees live in
 `docs/ARCHITECTURE.md` (Files pane).
 
+### 5.7c Settings tabs
+
+The settings overlay orders its groups behind a tab strip
+(`SettingsTabs.vue`) — General, Sessions, Appearance, Keyboard, Advanced —
+because one scroll of every group stopped being glanceable. The strip is an
+ARIA tablist with roving tabindex and selection-follows-focus, sticks to the
+top of the overlay body, and draws the selected tab with the accent underline
+(ghost at rest, like all chrome). Panels are `v-show`, not `v-if`: every group
+stays mounted for the overlay's life, so drafts and the shortcut capture
+survive tab switches, platform capability probes run once, and the sections'
+DOM order never changes.
+
 ### 5.8 Iconography — no character does an icon's job
 
 No character-as-icon anywhere: no emoji, box-drawing, arrows or icon font.
