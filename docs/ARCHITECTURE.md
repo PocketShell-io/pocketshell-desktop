@@ -115,6 +115,18 @@ detection rules, the wrapped shapes they reconstruct, and the evidence each
 needs are documented where they live — `@ui/app/terminalLinks.ts`'s module
 doc; the at-rest tint in `@ui/app/terminalPathHighlights.ts`.
 
+The shared agent picker includes Antigravity (`antigravity`, binary `agy`).
+It is available when the remote helper advertises `pocketshell agent
+antigravity`; an old helper or failed probe dims the choice and blocks
+session creation with an explanation. The helper starts `agy --dangerously-skip-permissions`
+by default, and the picker can request normal approvals with
+`--no-skip-permissions`. Antigravity has no config-directory profile selector.
+Its recorded `antigravity` or `agy` engine gets a named star badge, groups
+with agent sessions, and receives composer prompts through the terminal.
+The composer offers the documented Antigravity CLI command catalog, including
+`/plan`, `/permissions`, `/resume`, `/diff`, and `/usage`; its source is
+`agentCommands.ts` in core and the Google CLI reference.
+
 **PTY contract (matches the Android app):** term `xterm-256color`, initial
 80×24, resized via `setWindow`; shell stdout → xterm.js `write`, xterm.js
 `onData` → shell stdin.

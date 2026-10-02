@@ -100,6 +100,7 @@ RUN chmod +x \
       /usr/local/bin/claude \
       /usr/local/bin/codex \
       /usr/local/bin/opencode \
+      /usr/local/bin/agy \
       /usr/local/bin/quse \
       /usr/local/bin/ps-traffic-server \
       /usr/local/bin/pocketshell-helper-entrypoint \

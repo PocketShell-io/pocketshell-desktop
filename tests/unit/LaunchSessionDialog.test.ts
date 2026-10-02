@@ -362,3 +362,38 @@ describe('a host that has no profiles to offer', () => {
     expect(confirmed(wrapper)).toMatchObject({ kind: 'claude', profile: null });
   });
 });
+
+
+describe('Antigravity launch controls', () => {
+  it('offers bypass by default and hides unsupported profiles', async () => {
+    kinds.mockResolvedValue([...PINNED_KINDS, 'antigravity']);
+    const wrapper = await open();
+    await click(wrapper, 'Antigravity');
+    expect(wrapper.text()).toContain('Skip permission prompts');
+    expect(wrapper.text()).not.toContain('Claude (Z.AI)');
+    await click(wrapper, 'Create session');
+    expect(confirmed(wrapper)).toEqual({ kind: 'antigravity', dir: '~/git/my app', skipPermissions: true, profile: null });
+  });
+
+  it('lets the user retain per-action approvals', async () => {
+    kinds.mockResolvedValue([...PINNED_KINDS, 'antigravity']);
+    const wrapper = await open();
+    await click(wrapper, 'Antigravity');
+    await click(wrapper, 'Skip permission prompts');
+    await click(wrapper, 'Create session');
+    expect(confirmed(wrapper)).toMatchObject({ kind: 'antigravity', skipPermissions: false });
+  });
+
+  it('disables Antigravity on an older host', async () => {
+    const wrapper = await open();
+    const button = wrapper.findAll('button').find((b) => b.text().trim() === 'Antigravity');
+    expect(button?.classes()).toContain('unavailable');
+    expect(button?.attributes('title')).toContain('Antigravity');
+    await click(wrapper, 'Antigravity');
+    expect(wrapper.text()).toContain('too old to start Antigravity');
+    const create = wrapper.findAll('button').find((b) => b.text().trim() === 'Create session');
+    expect(create?.attributes('disabled')).toBeDefined();
+    await create?.trigger('click');
+    expect(wrapper.emitted('confirm')).toBeUndefined();
+  });
+});

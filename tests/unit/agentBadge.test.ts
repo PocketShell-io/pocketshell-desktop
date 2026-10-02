@@ -16,10 +16,10 @@ import type { SessionAgentKind, SessionSummary } from '@pocketshell/core';
  */
 
 describe('agentMark', () => {
-  it('gives each of the four engines its own mark', () => {
-    const kinds = ['claude', 'codex', 'opencode', 'grok'] as const;
+  it('gives each of the five engines its own mark', () => {
+    const kinds = ['claude', 'codex', 'opencode', 'grok', 'antigravity'] as const;
     const icons = kinds.map((k) => agentMark(k)?.icon);
-    expect(icons).toEqual(['brand-claude', 'brand-codex', 'brand-opencode', 'brand-grok']);
+    expect(icons).toEqual(['brand-claude', 'brand-codex', 'brand-opencode', 'brand-grok', 'star']);
     // Distinct, which is the only property the marks actually have to have:
     // they are the vendors' own, and the tooltip is what names them in words.
     expect(new Set(icons).size).toBe(kinds.length);
@@ -60,6 +60,7 @@ describe('agentMark', () => {
       'codex',
       'opencode',
       'grok',
+      'antigravity',
       'shell',
       'probing',
       'exited',
@@ -77,7 +78,7 @@ describe('agentMark', () => {
       resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src', 'components', 'AppIcon.vue'),
       'utf8',
     );
-    for (const kind of ['claude', 'codex', 'opencode', 'grok'] as const) {
+    for (const kind of ['claude', 'codex', 'opencode', 'grok', 'antigravity'] as const) {
       const icon = agentMark(kind)!.icon;
       expect(source).toMatch(new RegExp(`^\\s*'?${icon}'?:\\s*\\{`, 'm'));
     }

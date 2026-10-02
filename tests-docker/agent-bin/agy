@@ -1,0 +1,6 @@
+#!/bin/sh
+# Antigravity fixture: no provider requests or credentials.
+case "${1:-}" in
+  --version|-V) echo "Antigravity CLI 0.0.0-stub (pocketshell test fixture)" ;;
+  *) printf 'agy fixture argv:'; printf ' <%s>' "$@"; printf '\n' ;;
+esac

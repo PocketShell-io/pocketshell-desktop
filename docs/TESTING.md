@@ -163,9 +163,9 @@ existing `~/.tmux.conf` without replacing that file, so local customisations
 remain in the home volume. Recreate or restart the instance after changing the
 checked-in config.
 
-### Optional real Codex and Claude
+### Optional real Codex, Claude, and Antigravity
 
-The default image keeps `codex` and `claude` as deterministic stubs so
+The default image keeps `codex`, `claude`, and `agy` as deterministic stubs so
 normal tests never make provider requests. Real CLIs are opt-in for the
 standalone instance: start with `POCKETSHELL_REAL_AGENTS=true`. They
 install at first boot into the named `pocketshell-test-instance-agents`
@@ -173,13 +173,18 @@ volume (mounted at `/home/testuser/.agent-tools`) — not the image layer,
 so container recreation or image rebuilds keep them.
 `POCKETSHELL_CODEX_VERSION` and `POCKETSHELL_CLAUDE_CODE_VERSION` pin the
 install (`latest` by default; a normal `start` installs a missing or
-changed pin; `update-agents` force-refreshes both, including a newer
-`latest`). Authentication is deliberately a runtime action, never a Docker
-build input: `ssh -t pocketshell-local codex` (or `claude`) and complete
+changed pin; `update-agents` force-refreshes all three, including a newer
+`latest`). Antigravity is installed from Google's official native installer at
+`https://antigravity.google/cli/install.sh`; its installer verifies the
+manifest checksum. It is unpinned (`latest`) and `update-agents` refreshes it.
+Antigravity launches through the helper require a helper advertising the
+`antigravity` agent subcommand; the default 0.4.44 fixture intentionally
+keeps the old-helper compatibility coverage. Authentication is deliberately a runtime action, never a Docker
+build input: `ssh -t pocketshell-local codex` (or `claude` / `agy`) and complete
 each CLI's own sign-in flow. The `pocketshell-test-instance-home` volume
-keeps the resulting `~/.codex`, `~/.claude`, and npm's cache across
+keeps the resulting `~/.codex`, `~/.claude`, Antigravity state, and npm's cache across
 `stop`/`start`; `reset` removes both volumes. Real CLIs need internet
-access and the relevant OpenAI/Anthropic account; the normal test fleet
+access and the relevant OpenAI/Anthropic/Google account; the normal test fleet
 continues to use its credential-free stubs.
 
 ### Stop, reset, and inspect

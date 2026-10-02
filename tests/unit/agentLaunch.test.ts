@@ -49,7 +49,7 @@ describe('the 0.4.44 `pocketshell agent` contract, as captured', () => {
     // WIDER — it is what the app can spell, not what this helper accepts — and
     // the gap between the two is exactly the set that has to be probed for.
     expect([...HELPER_BASELINE_KINDS]).toEqual(listed);
-    expect([...LAUNCHABLE_KINDS]).toEqual([...listed, 'grok']);
+    expect([...LAUNCHABLE_KINDS]).toEqual([...listed, 'grok', 'antigravity']);
     for (const kind of HELPER_BASELINE_KINDS) expect(kindNeedsNewerHelper(kind)).toBe(false);
     expect(kindNeedsNewerHelper('grok')).toBe(true);
   });
@@ -387,6 +387,7 @@ describe('the picker surface', () => {
       codex: 'Codex',
       opencode: 'OpenCode',
       grok: 'Grok',
+      antigravity: 'Antigravity',
     });
   });
 

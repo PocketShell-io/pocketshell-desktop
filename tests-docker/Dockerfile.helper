@@ -82,7 +82,7 @@ RUN set -eux; \
 
 # Stub provider CLIs + quse with deterministic, credential-free output.
 COPY agent-bin/ /usr/local/bin/
-RUN chmod +x /usr/local/bin/claude /usr/local/bin/codex /usr/local/bin/opencode /usr/local/bin/quse
+RUN chmod +x /usr/local/bin/claude /usr/local/bin/codex /usr/local/bin/opencode /usr/local/bin/agy /usr/local/bin/quse
 
 # Point the helper's PINNED quse at the stub. The helper resolves quse next
 # to its own interpreter (the uv venv's bundled copy) and never on PATH, so
