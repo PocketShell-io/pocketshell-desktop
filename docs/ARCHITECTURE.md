@@ -121,7 +121,9 @@ antigravity`; an old helper or failed probe dims the choice and blocks
 session creation with an explanation. The helper starts `agy --dangerously-skip-permissions`
 by default, and the picker can request normal approvals with
 `--no-skip-permissions`. Antigravity has no config-directory profile selector.
-Its recorded `antigravity` or `agy` engine gets a named star badge, groups
+Its recorded `antigravity` or `agy` engine gets the vendor's own arch mark
+(`brand-antigravity`, redrawn from antigravity.google's favicon — the same
+mark the usage table's Antigravity row wears), groups
 with agent sessions, and receives composer prompts through the terminal.
 The composer offers the documented Antigravity CLI command catalog, including
 `/plan`, `/permissions`, `/resume`, `/diff`, and `/usage`; its source is

@@ -19,7 +19,13 @@ describe('agentMark', () => {
   it('gives each of the five engines its own mark', () => {
     const kinds = ['claude', 'codex', 'opencode', 'grok', 'antigravity'] as const;
     const icons = kinds.map((k) => agentMark(k)?.icon);
-    expect(icons).toEqual(['brand-claude', 'brand-codex', 'brand-opencode', 'brand-grok', 'star']);
+    expect(icons).toEqual([
+      'brand-claude',
+      'brand-codex',
+      'brand-opencode',
+      'brand-grok',
+      'brand-antigravity',
+    ]);
     // Distinct, which is the only property the marks actually have to have:
     // they are the vendors' own, and the tooltip is what names them in words.
     expect(new Set(icons).size).toBe(kinds.length);
@@ -88,18 +94,23 @@ describe('agentMark', () => {
 /**
  * The mark a PROVIDER USAGE row wears — the same vendor register, read by the
  * helper's provider key instead of a session's agent kind. The overlap is
- * deliberate but not total: `go` is OpenCode (the helper's own gloss), while
+ * deliberate but not total: `go` is OpenCode (the helper's own gloss) and
+ * `gemini` is Antigravity (quse's canonical key for the `agy` harness), while
  * copilot and zai are providers no session kind ever names, and an
  * unfamiliar provider wears nothing, the tab rule.
  */
 describe('usageProviderMark', () => {
   it('maps every provider the helper reports today', () => {
-    const providers = ['claude', 'codex', 'copilot', 'go', 'grok', 'zai'];
+    // Seven, since the helper's quse floor moved to 0.0.17: `gemini` is the
+    // Antigravity CLI quota (quse's canonical key; the product's own names
+    // are the aliases).
+    const providers = ['claude', 'codex', 'copilot', 'gemini', 'go', 'grok', 'zai'];
     const icons = providers.map((p) => usageProviderMark(p)?.icon);
     expect(icons).toEqual([
       'brand-claude',
       'brand-codex',
       'brand-copilot',
+      'brand-antigravity',
       'brand-opencode',
       'brand-grok',
       'brand-zai',
@@ -113,6 +124,10 @@ describe('usageProviderMark', () => {
     expect(usageProviderMark('github_copilot')?.icon).toBe('brand-copilot');
     expect(usageProviderMark('open-code')?.icon).toBe('brand-opencode');
     expect(usageProviderMark('grok-build')?.icon).toBe('brand-grok');
+    // quse answers to the product's own names as well as its canonical key.
+    expect(usageProviderMark('antigravity')?.icon).toBe('brand-antigravity');
+    expect(usageProviderMark('agy')?.icon).toBe('brand-antigravity');
+    expect(usageProviderMark('Gemini')?.label).toBe('Antigravity');
   });
 
   it('shows NOTHING for a provider the register does not know', () => {
@@ -130,7 +145,7 @@ describe('usageProviderMark', () => {
       resolve(__dirname, '..', '..', '..', 'pocketshell-core', 'packages', 'ui', 'src', 'components', 'AppIcon.vue'),
       'utf8',
     );
-    for (const provider of ['claude', 'codex', 'copilot', 'go', 'grok', 'zai']) {
+    for (const provider of ['claude', 'codex', 'copilot', 'gemini', 'go', 'grok', 'zai']) {
       const icon = usageProviderMark(provider)!.icon;
       expect(source).toMatch(new RegExp(`^\\s*'?${icon}'?:\\s*\\{`, 'm'));
     }
