@@ -31,7 +31,7 @@ box the /proc sections come back empty and the panel keeps the process
 table and loses the meters, which the meters' absence states more
 honestly than empty wells would.
 
-The strip's three counts come from three sources and say so: **procs** is
+The tasks row's three counts come from three sources and say so: **procs** is
 the ps table's own length, **threads** and **running** are `/proc/loadavg`'s
 scheduler-entity counts (the loadavg figure is threads, not processes —
 htop shows it as `12157 thr`).
@@ -66,6 +66,13 @@ tick history is another machine's. Unmount stops the poll
 the monitor has one consumer at a time and nothing to keep fresh while
 closed.
 
+One deliberate exception to the cadence: the first sample that carries
+`/proc` ticks cannot show percentages (nothing to diff against), so the
+poll right after it lands at 700ms (`MONITOR_PRIME_MS`) instead of two
+seconds — a freshly opened panel is live within about a second of its
+first read instead of dead until the second full cadence — and the two
+second rhythm resumes from there.
+
 ## 4. Killing a process
 
 A row carries TERM and KILL. Both are **two-press verbs**: the first
@@ -81,25 +88,56 @@ the process list can shape the command that runs.
 
 The column set is htop's minus the fields nobody asked this table for
 (PRI, NI, SHR): **pid, user, virt, res, S, cpu%, mem%, time+, command**.
-The state letter is coloured — R green, D/T amber, Z red — and the cpu
+Headers and cells walk ONE column list in the component; the first
+shipping table assembled them by hand and drifted a column off itself
+(`mem` over the cpu figures), which is the drift the list exists to
+prevent — and each caption carries the column's `align`, so a numeric
+header sits on the same right-hand reading edge its figures do. Filter
+(pid / user / command substring), click-to-sort on every column but
+state, CPU descending on landing — htop's own order. While a filter is
+active the count says what it filtered down from (`4 of 366
+processes`). Rendered rows cap at 300 with a footnote naming the
+remainder, so a 2000-pid host cannot DOM the panel to death; the filter
+is the way to the tail. Rows are deliberately denser than a settings
+list — a monitor is read in sweeps — and a row-hover band pairs with the
+kill chips: the row under the cursor is the row the buttons act on. The
+state letter is coloured — R green, D/T amber, Z red — and the cpu
 figure carries the same tiers as the meters, so a hot row is findable in
-a sweep. Headers and cells walk ONE column list in the component; the
-first shipping table assembled them by hand and drifted a column off
-itself (`mem` over the cpu figures), which is the drift the list exists
-to prevent. Filter (pid / user / command substring), click-to-sort on
-every column but state, CPU descending on landing — htop's own order.
-Rendered rows cap at 300 with a footnote naming the remainder, so a
-2000-pid host cannot DOM the panel to death; the filter is the way to
-the tail. Rows are deliberately denser than a settings list — a monitor
-is read in sweeps.
+a sweep.
+
+The kill chips (TERM / KILL) are visible at rest at metadata emphasis —
+muted text on a hairline border — because invisible controls are
+undiscoverable, and this panel's ONE verb should not be a secret; row
+hover brings them to full contrast. The two-press choreography below is
+unchanged.
 
 ## 5.1 The meters
 
-The cores sit in a compact auto-fill grid (htop's layout), not a column
-of full-width bars. Every meter wears the pipe texture — one repeating
-overlay in the track's own `--bg` slicing fill and track into ticks — so
-a partial fill is countable at a glance. Mem and swap speak a used/total
-pair in ONE unit, the total's (`32.6 / 62.7 GB`, `formatKibPair`).
+Two columns, htop's own shape. Left: the aggregate CPU bar and the
+per-core grid (`auto-fill`, compact — a column of twelve full-width bars
+spends the panel's height repeating one number twelve times). Right:
+memory, swap, and the text meters — load (tiered against the CORE COUNT
+it is measured against: amber at 0.7×, red at saturation), uptime, and
+the three counts as one `tasks` row (procs · thr · running). There is no
+caption strip and no full-width orphan bar; load is tiered against the
+core count it is measured against.
+
+Every meter is one text-height track with the figure INSIDE it, at the
+track's right end on a surface chip — a core row is one fixation,
+`0 [||| 86%]` — and every track wears the pipe texture (one repeating
+overlay slicing fill and track into ticks) plus a hairline border, so
+even the unset state reads as a meter, not a hole. Mem and swap speak a
+used/total pair in ONE unit, the total's (`32.6 / 62.7 GB`,
+`formatKibPair`), inside the bar like every other figure.
+
+The panel body is a FIXED frame (`min(640px, 70vh)` — the settings
+tabs' precedent, DESIGN.md 5.7c): the process table owns the panel's
+only scrollbar, and scrolling it never scrolls the meters away. A
+ps-only host (macOS) draws no bars at all — their absence states the
+missing /proc more honestly than empty wells would — while the text
+meters survive, because the procs figure is the ps table's own length
+and stays real. When the host answers nothing the banner is the whole
+body: a table skeleton under it would claim a read that never happened.
 
 ## 6. Where the strip's ninth square came from
 
