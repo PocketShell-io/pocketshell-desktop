@@ -115,20 +115,23 @@ describe('UsageView states', () => {
   it('wears the provider mark beside the name, and nothing for an unknown provider', async () => {
     // The same vendor register the session tabs draw from — `go` is OpenCode
     // on the Go backend, so it wears that mark; copilot and zai have marks of
-    // their own. A provider the register does not know wears nothing, the
-    // tab rule: a glyph that means "we do not know" is worse than silence.
+    // their own, and `gemini` (the Antigravity quota, quse's canonical key)
+    // wears the arch the antigravity tabs do. A provider the register does
+    // not know wears nothing, the tab rule: a glyph that means "we do not
+    // know" is worse than silence.
     usage.mockResolvedValue([
       ROW,
       { ...ROW, provider: 'go' },
       { ...ROW, provider: 'copilot' },
       { ...ROW, provider: 'zai' },
+      { ...ROW, provider: 'gemini' },
       { ...ROW, provider: 'new_vendor' },
     ]);
     const wrapper = await show();
 
     const marks = wrapper.findAll('.provider-cell .app-icon').map((m) => m.attributes('class'));
-    expect(marks).toHaveLength(4);
-    expect(wrapper.findAll('.provider-mark')).toHaveLength(4);
+    expect(marks).toHaveLength(5);
+    expect(wrapper.findAll('.provider-mark')).toHaveLength(5);
     // The unknown provider still renders its row — only the mark is absent.
     expect(wrapper.text()).toContain('new_vendor');
   });

@@ -131,6 +131,26 @@ describe('parseUsageNdjson', () => {
     ]);
   });
 
+  it('parses the seventh provider — the helper\'s gemini (Antigravity) row', () => {
+    // Captured verbatim from the host after its helper's quse floor moved to
+    // 0.0.17, which added `gemini`: the Antigravity CLI (`agy`) quota. The
+    // canonical windows arrive pre-normalized (5h rolling, 7d, a null
+    // monthly); details.groups is provider-owned detail that rides along
+    // untouched, and gemini has no banked resets — null, not 0.
+    const out = parseUsageNdjson(readV44('v0.5.8-usage-gemini.ndjson'));
+    expect(out.map((u) => u.provider)).toEqual(['gemini']);
+    expect(shape(out)[0]).toEqual({
+      provider: 'gemini',
+      windows: [
+        ['5h', 82.5, '2026-10-04T15:24:26Z'],
+        ['7d', 78.97, '2026-10-09T08:09:37Z'],
+      ],
+    });
+    expect(out[0]!.status).toBe('ok');
+    expect(out[0]!.resets_available).toBeNull();
+    expect(Array.isArray(out[0]!.details?.['groups'])).toBe(true);
+  });
+
   it('reads the resets count from either detail key, or says nothing', () => {
     const line = (keys: string) =>
       `{"provider":"x","status":"ok","error":null,"details":{${keys}},"windows":{"weekly":{"percent_remaining":1.0,"reset_at":null}}}`;

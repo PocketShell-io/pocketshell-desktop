@@ -27,6 +27,7 @@ vi.mock('@ui/app/ipc', () => ({
 const MonitorPanelView = (await import('@ui/app/views/MonitorPanelView.vue')).default;
 const MonitorProcessTable = (await import('@ui/app/components/MonitorProcessTable.vue')).default;
 const { useConnectionStore } = await import('@ui/app/stores/connection');
+const { MONITOR_PRIME_MS, MONITOR_POLL_MS } = await import('@ui/app/useHostMonitor');
 
 function psSection(rows: string[]): string {
   return [
@@ -127,7 +128,9 @@ describe('MonitorPanelView — the states a panel moves through', () => {
     resolveFirst({ stdout: fullSample(statBody([500, 500], [[250, 750]])), stderr: '', exitCode: 0 });
     await flush(wrapper);
     expect(wrapper.find('.sampling').exists()).toBe(false);
-    expect(wrapper.find('.strip').text()).toContain('0.50 0.40 0.30');
+    expect(wrapper.find('.stats').text()).toContain('0.50 0.40 0.30');
+    // Load speaks against its capacity: the core count rides along.
+    expect(wrapper.find('.stats').text()).toContain('of 1 core');
     wrapper.unmount();
   });
 
@@ -143,7 +146,7 @@ describe('MonitorPanelView — the states a panel moves through', () => {
   });
 
   it('tells the three counts apart: procs from the table, threads from loadavg', async () => {
-    // ps rows AND a loadavg line — the threads/running stats only render
+    // ps rows AND a loadavg line — the threads/running figures only render
     // when loadavg answered.
     exec.mockResolvedValue({
       stdout: `${TWO_PROC}==load==\n0.50 0.40 0.30 1/42 999\n==up==\n90000.00 1.00\n`,
@@ -151,11 +154,11 @@ describe('MonitorPanelView — the states a panel moves through', () => {
       exitCode: 0,
     });
     const wrapper = await show();
-    const strip = wrapper.find('.strip').text();
+    const stats = wrapper.find('.stats').text();
     // 2 ps rows; loadavg's 1/42 is running/threads, NOT task counts.
-    expect(strip).toContain('procs 2');
-    expect(strip).toContain('threads 42');
-    expect(strip).toContain('running 1');
+    expect(stats).toContain('2 procs');
+    expect(stats).toContain('42 thr');
+    expect(stats).toContain('1 running');
     wrapper.unmount();
   });
 
@@ -181,42 +184,49 @@ describe('MonitorPanelView — the states a panel moves through', () => {
   it('keeps the table but loses the meters on a host with no /proc', async () => {
     exec.mockResolvedValue({ stdout: TWO_PROC, stderr: '', exitCode: 0 });
     const wrapper = await show();
-    expect(wrapper.find('.meters').exists()).toBe(false);
+    // No /proc, no bars — their absence is the statement. The text meters
+    // survive: procs is the ps table's own length.
+    expect(wrapper.find('.meter').exists()).toBe(false);
+    expect(wrapper.find('.stats').exists()).toBe(true);
     expect(wrapper.findComponent(MonitorProcessTable).exists()).toBe(true);
     expect(wrapper.text()).toContain('2 processes');
     wrapper.unmount();
   });
 
-  it('says so when the host answered nothing the monitor can draw', async () => {
+  it('says so when the host answered nothing, and draws nothing else', async () => {
     exec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
     const wrapper = await show();
     expect(wrapper.find('.fetch-error').text()).toContain('answered nothing');
+    // The banner is the WHOLE body: a table skeleton or filter copy under it
+    // would claim a read that never happened.
+    expect(wrapper.find('.ptable').exists()).toBe(false);
+    expect(wrapper.find('.tools').exists()).toBe(false);
     wrapper.unmount();
   });
 
   it('keeps the stale read on screen under a transport failure', async () => {
     const wrapper = await show();
-    expect(wrapper.find('.strip').exists()).toBe(true);
+    expect(wrapper.find('.stats').exists()).toBe(true);
     exec.mockRejectedValue(new Error('channel closed'));
     await new Promise((r) => setTimeout(r, 2100));
     await flush(wrapper);
     expect(wrapper.find('.fetch-error').text()).toContain('channel closed');
-    expect(wrapper.find('.strip').exists()).toBe(true);
+    expect(wrapper.find('.stats').exists()).toBe(true);
     wrapper.unmount();
   });
 });
 
 describe('MonitorPanelView — the process table', () => {
-  it('filters by pid, user and command substring', async () => {
+  it('filters by pid, user and command substring, and says what it filtered down from', async () => {
     exec.mockResolvedValue({ stdout: TWO_PROC, stderr: '', exitCode: 0 });
     const wrapper = await show();
     const input = wrapper.find('.filter-input');
     await input.setValue('node');
-    expect(wrapper.find('.count').text()).toContain('1 process');
+    expect(wrapper.find('.count').text()).toContain('1 of 2 processes');
     await input.setValue('root');
-    expect(wrapper.find('.count').text()).toContain('1 process');
+    expect(wrapper.find('.count').text()).toContain('1 of 2 processes');
     await input.setValue('999');
-    expect(wrapper.find('.count').text()).toContain('1 process');
+    expect(wrapper.find('.count').text()).toContain('1 of 2 processes');
     await input.setValue('nothing-matches');
     expect(wrapper.find('.empty').text()).toContain('No process matches');
     wrapper.unmount();
@@ -317,6 +327,22 @@ describe('MonitorPanelView — the two-step kill', () => {
 });
 
 describe('MonitorPanelView — the poll loop', () => {
+  it('primes the cpu deltas: bars go live ~1s after open, then the 2s cadence resumes', async () => {
+    vi.useFakeTimers();
+    const connection = useConnectionStore();
+    connection.connectionId = 'conn-1';
+    const wrapper = mount(MonitorPanelView);
+    await vi.advanceTimersByTimeAsync(0); // first sample: ticks born, bars still unset
+    expect(exec.mock.calls.length).toBe(1);
+    await vi.advanceTimersByTimeAsync(MONITOR_PRIME_MS); // the priming poll turns them live
+    expect(exec.mock.calls.length).toBe(2);
+    await vi.advanceTimersByTimeAsync(300); // not a third one yet
+    expect(exec.mock.calls.length).toBe(2);
+    await vi.advanceTimersByTimeAsync(MONITOR_POLL_MS); // the 2s cadence resumed
+    expect(exec.mock.calls.length).toBe(3);
+    wrapper.unmount();
+  });
+
   it('pauses and resumes: no execs while paused, a fresh one on resume', async () => {
     vi.useFakeTimers();
     const connection = useConnectionStore();
