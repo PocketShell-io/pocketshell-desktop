@@ -1042,6 +1042,85 @@ describe('scanBufferLine — a relative address cut right after its ../ anchor',
 });
 
 /**
+ * The transcript report: a paragraph wrapped its commit addresses at its own
+ * narrow width — `…/dapier/commit/` / `bcbfcf5a…` — while the prose around it
+ * ran full to the pane. The fit guards of rules 1b and 2 measure against the
+ * block's widest row; the prose had dragged that to the pane's, so the
+ * 40-hex head "had room" and the join refused. The first row fell back to
+ * WebLinksAddon's truncated-fragment link (the report's 404ing underline)
+ * and the hash sat dead.
+ */
+describe('scanBufferLine — commit URLs a narrow-width block cut, beside full-width prose', () => {
+  const PROSE =
+    'The console sidebar is live with the new information architecture and the daily views';
+  const ROWS = [
+    PROSE,
+    '✓ Run "Leave workspace" task with required path',
+    '◆ Thought for 2.9s',
+    'https://github.com/DataTalksClub/dapier/commit/',
+    'bcbfcf5a98d3888d99eb85989e37ff3f1cd04937 https://github.com/DataTalksClub/',
+    'dapier/blob/main/src/web/index.html https://dapier.dtcdev.click',
+  ];
+  const COMMIT =
+    'https://github.com/DataTalksClub/dapier/commit/bcbfcf5a98d3888d99eb85989e37ff3f1cd04937';
+
+  it('joins the hash onto the commit/ cut although the wide prose had room', () => {
+    // The hex head is the address's own rest — the one shape the fit guard
+    // stands down for, because no prose word is eight hex characters and the
+    // wide neighbours' width says nothing about a wrapper that fills to its
+    // own narrower one. One fragment per row, each opening the whole address.
+    const t = fakeScreen(ROWS, 91);
+    const expectFragments = (row: number) =>
+      expect(urlLinks(t, row, () => undefined).map((l) => l.text)).toEqual([
+        'https://github.com/DataTalksClub/dapier/commit/',
+        'bcbfcf5a98d3888d99eb85989e37ff3f1cd04937',
+        'https://github.com/DataTalksClub/',
+        'dapier/blob/main/src/web/index.html',
+      ]);
+    expectFragments(4);
+    expectFragments(5);
+  });
+
+  it('opens the whole commit address from either of its rows', () => {
+    const t = fakeScreen(ROWS, 91);
+    const open = vi.fn();
+    urlLinks(t, 4, open)[0]?.activate(CLICK, COMMIT);
+    urlLinks(t, 5, open)[1]?.activate(CLICK, COMMIT);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenNthCalledWith(1, COMMIT);
+    expect(open).toHaveBeenNthCalledWith(2, COMMIT);
+  });
+
+  it('still refuses a prose head and a short-hex head beside the wide row', () => {
+    // The guard's living job: `and` is the next sentence, and a seven-hex
+    // fragment is short enough to be a word (`added`, `decade`). Only the
+    // eight-plus hex run carries the cut evidence on its own.
+    const t = fakeScreen(
+      [
+        PROSE,
+        'See the docs at https://example.com/guide/',
+        'and the FAQ for details.',
+      ],
+      91,
+    );
+    expect(scanBufferLine(t, 2).text.trimEnd()).toBe(
+      'See the docs at https://example.com/guide/',
+    );
+    const short = fakeScreen(
+      [
+        PROSE,
+        'https://github.com/DataTalksClub/dapier/commit/',
+        'bcbfcf5 release notes',
+      ],
+      91,
+    );
+    expect(scanBufferLine(short, 2).text.trimEnd()).toBe(
+      'https://github.com/DataTalksClub/dapier/commit/',
+    );
+  });
+});
+
+/**
  * The "Ran montage" report: the agent TUI echoed a shell command whose
  * RELATIVE path broke at the margin mid-token, with the block's `│ ` gutter
  * on every continuation row. The join guard used to demand a rooted
