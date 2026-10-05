@@ -65,13 +65,17 @@ const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue
 const { useConnectionStore } = await import('@ui/app/stores/connection');
 const { useSessionsStore } = await import('@ui/app/stores/sessions');
 const { useProjectsStore } = await import('@ui/app/stores/projects');
-const { openMaintenanceTool, closeMaintenanceTool } = await import('@ui/app/maintenance');
+const maintenance = await import('@ui/app/maintenance');
+const { openMaintenanceTool, closeMaintenanceTool } = maintenance;
 
 const stubs = {
   // Attrs fall through to the root div, which is how the bare pane's props
   // are read back — the real TerminalView's join behaviour is pinned in
   // terminalBarePane.test.ts; this file pins what the workspace HANDS it.
   TerminalView: { template: '<div class="stub-terminal" />', methods: { focus: () => undefined } },
+  // The usage tool's VIEW pane: its own states are UsageView.test.ts's; this
+  // file pins only that the workspace mounts it where the tool's tab points.
+  UsageView: { template: '<div class="stub-usage" />' },
   PromptComposer: { template: '<div class="stub-composer" />' },
   FilesView: { template: '<div class="stub-files" />' },
   OverlayPanel: { template: '<div class="stub-overlay"><slot /></div>' },
@@ -167,6 +171,50 @@ describe('the maintenance workspace', () => {
     // The last close is an exit: nothing honest is left to draw under a
     // route that names no directory.
     expect(routerPush).toHaveBeenCalledWith({ name: 'host-sessions', params: { name: 'host' } });
+  });
+
+  it('mounts a VIEW tool as its component, not a terminal', async () => {
+    // Two tools open: htop the terminal, usage the view. Each pane shows
+    // behind its own tab, and neither answers for the other.
+    openMaintenanceTool('host', 'usage');
+    const wrapper = await openWorkspace();
+
+    expect(tabLabels(wrapper)).toEqual(['htop', 'usage']);
+    // Panes mount LAZILY, on selection: htop is in front, so its pane is the
+    // only one mounted until the usage tab is chosen.
+    expect(wrapper.findAll('.stub-terminal')).toHaveLength(1);
+    expect(wrapper.findAll('.stub-usage')).toHaveLength(0);
+
+    const usageTab = wrapper.findAll('nav.tabs button').find((b) => b.text() === 'usage');
+    if (!usageTab) throw new Error('no usage tab');
+    await usageTab.trigger('click');
+    await flush();
+
+    // The usage tab in front: its view mounts and shows, the htop pane stays
+    // mounted but hidden — coming back is the same terminal, as always.
+
+    const area = wrapper.find('.terminal-area');
+    expect(area.attributes('style') === undefined || !area.attributes('style')!.includes('none')).toBe(true);
+    const usageSlot = wrapper.findAll('.tool-view-slot')[0]!;
+    expect(usageSlot.attributes('style') === undefined || !usageSlot.attributes('style')!.includes('none')).toBe(true);
+    // The v-show lives on the pane's slot, not on the stub itself.
+    const htopSlot = wrapper.findAll('.terminal-slot')[0]!;
+    expect(htopSlot.attributes('style')).toContain('display: none');
+  });
+
+  it('closing the VIEW tool from its × ends it the same way', async () => {
+    openMaintenanceTool('host', 'usage');
+    const wrapper = await openWorkspace();
+
+    const tabs = wrapper.findAll('nav.tabs button');
+    const usageTab = tabs.find((b) => b.text() === 'usage');
+    if (!usageTab) throw new Error('no usage tab');
+    await usageTab.get('.tab-close').trigger('click');
+    await flush();
+
+    expect(tabLabels(wrapper)).toEqual(['htop']);
+    expect(wrapper.findAll('.stub-usage')).toHaveLength(0);
+    expect(routerPush).not.toHaveBeenCalled();
   });
 
   it('never writes the last-folder pointer, so a relaunch cannot auto-open htop', async () => {

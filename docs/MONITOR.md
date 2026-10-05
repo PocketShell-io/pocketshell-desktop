@@ -2,12 +2,13 @@
 
 **The decision this document implements.** The host monitor is `htop`,
 running in a terminal pane of our own, in a hidden root of its own — not a
-panel that samples the host ourselves. Every "Host monitor" trigger (the
-session panel's header strip, the collapsed rail, the palette verb) navigates
-to the maintenance workspace; htop answers "what is this host doing, and
-which pid is doing it" with instantaneous per-process rates, sorting,
-filtering and a kill menu, all of which the renderer would otherwise have to
-re-own.
+panel that samples the host ourselves — and Provider usage has moved into
+the same workspace as its second tool, a mounted view instead of an overlay.
+Every trigger (the session panel's header strip, the collapsed rail, the
+palette verb) OPENS its tool and navigates to the maintenance workspace;
+htop answers "what is this host doing, and which pid is doing it" with
+instantaneous per-process rates, sorting, filtering and a kill menu, all of
+which the renderer would otherwise have to re-own.
 
 The decision replaced a self-sampled panel (a 2s `ps -eo` + `/proc` snapshot,
 client-side tick deltas, our own meters and process table). Two of its

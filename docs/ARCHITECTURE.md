@@ -322,12 +322,14 @@ the new-window query — are documented with the spelling in
 ## 11. The host monitor
 
 `htop` in a terminal pane of our own, in the `::maintenance::` root — not a
-panel that samples the host. Every "Host monitor" trigger and the session
-tree's pinned Maintenance section navigate to that workspace, whose one
-`tool`-kind tab holds a bare pane: a plain SSH login shell in `~` with `htop`
-typed into it over the existing `shell:open` typed-mode seam, no new IPC
-verb. The pane is ephemeral by construction — it is not a host session, and
-leaving the workspace closes the PTY. The shape, the two doors, the
-bare-pane identity rules and the rationale for dropping the self-sampled
-panel are the decision record in `docs/MONITOR.md`; the constants live in
-`@ui/app/maintenance.ts`.
+panel that samples the host — with Provider usage beside it as the root's
+second tool (a mounted view, not an overlay). Every Host monitor / Provider
+usage trigger and the session tree's Maintenance section open a tool and
+navigate to that workspace, whose `tool`-kind tabs hold one pane per tool: a
+bare SSH login shell in `~` with `htop` typed into it over the existing
+`shell:open` typed-mode seam (no new IPC verb) for command tools, the tool's
+component for view tools. Tools persist until closed from either surface;
+the pane rides mounted-but-hidden across folder navigation on its host. The
+shape, the doors, the two tool kinds, the identity rules and the rationale
+for dropping the self-sampled panel are the decision record in
+`docs/MONITOR.md`; the constants live in `@ui/app/maintenance.ts`.
