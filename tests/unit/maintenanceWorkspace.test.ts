@@ -5,20 +5,20 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { reactive } from 'vue';
 
 /**
- * The maintenance workspace — what "Host monitor" opens now: the hidden
- * `::maintenance::` root holding one bare pane running `htop` in `~`
- * (docs/MONITOR.md). The contracts pinned here are the ones the old sampled
- * panel used to own, in their new shape:
+ * The maintenance workspace — what "Host monitor" opens: the `::maintenance::`
+ * root holding one tab per open tool, `htop` first of all (docs/MONITOR.md).
+ * The contracts pinned here:
  *
- *  - the bar is the one tool tab — no Files tab, no `+`, no `×`;
- *  - the pane behind it is BARE: a `sessionKey`-keyed TerminalView with a
+ *  - the bar is the host's open tools — no Files tab, no `+`, and the tool's
+ *    × reads Close, never Stop;
+ *  - the pane behind it is BARE: a sessionKey-keyed TerminalView with a
  *    command and NO session name, because reading the key as a session would
  *    ask main to join a session that does not exist;
- *  - the pane's lifetime is the workspace visit: navigating away retires it
- *    even when the host lists no sessions at all (the session-list guard that
- *    protects a loading bar must not become a place for htop to hide);
- *  - the hidden root never becomes the relaunch destination: `persist` may
- *    run as often as it likes here, `ps.lastFolder.<host>` stays unwritten.
+ *  - the pane outlives folder navigation on its own host — mounted but
+ *    hidden, so coming back is the same htop; only closing the tool ends it;
+ *  - closing the last tool while standing in the workspace is an exit: the
+ *    route cannot answer an empty bar under a key that names no directory;
+ *  - the hidden root never becomes the relaunch destination.
  */
 
 // Reactive, because this file NAVIGATES: the view's computeds must see the
@@ -31,9 +31,11 @@ const route = reactive<{
   query: {},
 });
 
+const routerPush = vi.fn();
+
 vi.mock('vue-router', () => ({
   useRoute: () => route,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
 }));
 
 const overrides: Record<string, unknown> = {
@@ -63,6 +65,7 @@ const FolderWorkspaceView = (await import('@ui/app/views/FolderWorkspaceView.vue
 const { useConnectionStore } = await import('@ui/app/stores/connection');
 const { useSessionsStore } = await import('@ui/app/stores/sessions');
 const { useProjectsStore } = await import('@ui/app/stores/projects');
+const { openMaintenanceTool, closeMaintenanceTool } = await import('@ui/app/maintenance');
 
 const stubs = {
   // Attrs fall through to the root div, which is how the bare pane's props
@@ -90,7 +93,7 @@ async function openWorkspace(): Promise<VueWrapper> {
 }
 
 function tabLabels(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('nav.tabs button').map((b) => b.text().trim());
+  return wrapper.findAll('nav.tabs button:not(.add)').map((b) => b.text().trim());
 }
 
 beforeEach(() => {
@@ -99,19 +102,22 @@ beforeEach(() => {
   useConnectionStore().connectionId = 'conn-1';
   useProjectsStore().home = '/home/me';
   // Deliberately EMPTY: the maintenance workspace must stand on its own
-  // without a session list, and the prune edge below needs the guard's
-  // exact weakness as the starting condition.
+  // without a session list — the tool list is the only authority there.
   useSessionsStore().sessions = [];
   route.params = { name: 'host', folder: '::maintenance::' };
+  route.query = {};
+  routerPush.mockClear();
+  // Every case here starts from the tool the Host monitor button opens.
+  openMaintenanceTool('host');
+  return () => closeMaintenanceTool('host', 'htop');
 });
 
 describe('the maintenance workspace', () => {
-  it('holds one tool tab and none of the folder chrome', async () => {
+  it('holds one tab per open tool, with a Close × and none of the folder chrome', async () => {
     const wrapper = await openWorkspace();
 
     expect(tabLabels(wrapper)).toEqual(['htop']);
-    // No close control: the pane closes with the workspace, not with a `×`.
-    expect(wrapper.find('nav.tabs button .tab-close').exists()).toBe(false);
+    expect(wrapper.find('nav.tabs button .tab-close').attributes('title')).toBe('Close this tool');
     // No `+`: neither item of that menu makes sense under a root that names
     // no directory.
     expect(wrapper.find('.tab.add').exists()).toBe(false);
@@ -124,26 +130,43 @@ describe('the maintenance workspace', () => {
 
     const terminal = wrapper.find('.stub-terminal');
     expect(terminal.exists()).toBe(true);
-    // Visible, not a mounted-but-hidden record: the identity the v-show reads
-    // is the tool pane's.
     // A visible v-show pane carries no style attribute at all; only a hidden
     // one gets `display: none`.
     const style = terminal.attributes('style');
     expect(style === undefined || !style.includes('display: none')).toBe(true);
     expect(terminal.attributes('bare')).toBe('true');
     expect(terminal.attributes('command')).toBe('htop');
-    expect(terminal.attributes('session-key')).toBe('tool:htop');
+    expect(terminal.attributes('session-key')).toBe('tool:host:htop');
     expect(terminal.attributes('session-name')).toBeUndefined();
   });
 
-  it('retires the pane when the user navigates away, with no session list to say so', async () => {
+  it('keeps the pane mounted-but-hidden when the user navigates away, on the same host', async () => {
     const wrapper = await openWorkspace();
     expect(wrapper.find('.stub-terminal').exists()).toBe(true);
 
     route.params = { name: 'host', folder: '~/git/x' };
     await flush();
 
+    // The tool is still open, so the pane rides along — mounted, hidden, the
+    // same htop the user will come back to. Coming off the host is what ends
+    // it (the identity is host-scoped), not this navigation.
+    expect(wrapper.find('.stub-terminal').exists()).toBe(true);
+    const area = wrapper.find('.terminal-area');
+    expect(area.attributes('style')).toContain('display: none');
+  });
+
+  it('closing the tool from its × ends the pane — and exits the empty workspace', async () => {
+    const wrapper = await openWorkspace();
+    expect(wrapper.find('.stub-terminal').exists()).toBe(true);
+
+    await wrapper.get('nav.tabs button .tab-close').trigger('click');
+    await flush();
+
+    expect(tabLabels(wrapper)).toEqual([]);
     expect(wrapper.find('.stub-terminal').exists()).toBe(false);
+    // The last close is an exit: nothing honest is left to draw under a
+    // route that names no directory.
+    expect(routerPush).toHaveBeenCalledWith({ name: 'host-sessions', params: { name: 'host' } });
   });
 
   it('never writes the last-folder pointer, so a relaunch cannot auto-open htop', async () => {
