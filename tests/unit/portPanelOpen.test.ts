@@ -207,12 +207,22 @@ describe('PortPanelView — the panel is arranged live-first', () => {
     expect(dataRows.filter((r) => !folded(r)).length).toBe(1);
   });
 
-  it('carries no Scan button and holds the add form behind its expander', async () => {
-    // Scan moved to the overlay header (HostWorkspaceView's #actions, the
-    // seat Usage's refresh occupies); the add form must not open by default.
+  it('carries its own Scan and holds the add form behind its expander', async () => {
+    // The panel is headed now — the maintenance workspace mounts it bare, and
+    // there is no overlay header to hold Scan, so the bar's right end is its
+    // seat. The add form must not open by default.
     const wrapper = await open();
-    expect(wrapper.find('.scan').exists()).toBe(false);
+    const scan = wrapper.get('button.scan');
+    expect(scan.attributes('title')).toBe("Scan the host's ports now");
+    // The harness connects the store, so the button is live, not disabled.
+    expect(scan.attributes('disabled')).toBeUndefined();
     expect(folded(wrapper.find('.add-form'))).toBe(true);
+
+    await scan.trigger('click');
+    const { api } = (await import('@ui/app/ipc')) as unknown as {
+      api: { forwards: { scan: ReturnType<typeof vi.fn> } };
+    };
+    expect(api.forwards.scan).toHaveBeenCalled();
 
     await wrapper.get('.add-toggle').trigger('click');
     expect(folded(wrapper.find('.add-form'))).toBe(false);

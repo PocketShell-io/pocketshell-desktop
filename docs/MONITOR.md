@@ -2,10 +2,11 @@
 
 **The decision this document implements.** The host monitor is `htop`,
 running in a terminal pane of our own, in a hidden root of its own — not a
-panel that samples the host ourselves — and Provider usage has moved into
-the same workspace as its second tool, a mounted view instead of an overlay.
-Every trigger (the session panel's header strip, the collapsed rail, the
-palette verb) OPENS its tool and navigates to the maintenance workspace;
+panel that samples the host ourselves — and Provider usage and Port
+forwarding have moved into the same workspace as view tools instead of
+overlays. Every trigger (the session panel's header strip, the collapsed
+rail, the palette verb) OPENS its tool and navigates to the maintenance
+workspace;
 htop answers "what is this host doing, and which pid is doing it" with
 instantaneous per-process rates, sorting, filtering and a kill menu, all of
 which the renderer would otherwise have to re-own.

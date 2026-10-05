@@ -73,9 +73,10 @@ const stubs = {
   // are read back — the real TerminalView's join behaviour is pinned in
   // terminalBarePane.test.ts; this file pins what the workspace HANDS it.
   TerminalView: { template: '<div class="stub-terminal" />', methods: { focus: () => undefined } },
-  // The usage tool's VIEW pane: its own states are UsageView.test.ts's; this
-  // file pins only that the workspace mounts it where the tool's tab points.
+  // The VIEW tools' panes: their own states are their own tests'; this file
+  // pins only that the workspace mounts each where the tool's tab points.
   UsageView: { template: '<div class="stub-usage" />' },
+  PortPanelView: { template: '<div class="stub-ports" />' },
   PromptComposer: { template: '<div class="stub-composer" />' },
   FilesView: { template: '<div class="stub-files" />' },
   OverlayPanel: { template: '<div class="stub-overlay"><slot /></div>' },
@@ -113,7 +114,13 @@ beforeEach(() => {
   routerPush.mockClear();
   // Every case here starts from the tool the Host monitor button opens.
   openMaintenanceTool('host');
-  return () => closeMaintenanceTool('host', 'htop');
+  // The tool list is module state and this file opens other kinds; a case
+  // must not inherit its predecessor's tools.
+  return () => {
+    closeMaintenanceTool('host', 'htop');
+    closeMaintenanceTool('host', 'usage');
+    closeMaintenanceTool('host', 'ports');
+  };
 });
 
 describe('the maintenance workspace', () => {
@@ -200,6 +207,23 @@ describe('the maintenance workspace', () => {
     // The v-show lives on the pane's slot, not on the stub itself.
     const htopSlot = wrapper.findAll('.terminal-slot')[0]!;
     expect(htopSlot.attributes('style')).toContain('display: none');
+  });
+
+  it('mounts the ports tool as its component too', async () => {
+    openMaintenanceTool('host', 'ports');
+    const wrapper = await openWorkspace();
+
+    expect(tabLabels(wrapper)).toEqual(['htop', 'ports']);
+    const portsTab = wrapper.findAll('nav.tabs button').find((b) => b.text() === 'ports');
+    if (!portsTab) throw new Error('no ports tab');
+    await portsTab.trigger('click');
+    await flush();
+
+    expect(wrapper.findAll('.stub-ports')).toHaveLength(1);
+    expect(wrapper.findAll('.stub-terminal')).toHaveLength(1);
+    const portsSlot = wrapper.findAll('.tool-view-slot')[0]!;
+    const style = portsSlot.attributes('style');
+    expect(style === undefined || !style.includes('display: none')).toBe(true);
   });
 
   it('closing the VIEW tool from its × ends it the same way', async () => {

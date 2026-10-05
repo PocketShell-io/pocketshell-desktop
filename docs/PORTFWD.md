@@ -155,8 +155,8 @@ fresh while the ports panel is mounted — the store `clear()`s on unmount — s
 an indicator read off it would say OFF almost all the time, which is the
 opposite of an indicator. The workspace asks the engine directly
 (`isAutoEnabled`: "forwarder running, else the persisted flag") whenever the
-connection or the overlay changes, and mirrors the store's live flips while
-the overlay is open. The count needs no new verb: the engine already
+connection changes, and mirrors the store's live flips while the ports pane
+keeps the store subscribed. The count needs no new verb: the engine already
 broadcasts every state change, and the workspace takes one initial snapshot
 per connection to cover the gap before the next scan beat. Tests:
 `tests/unit/autoForwardIndicator.test.ts`, `tests/unit/SessionTree.test.ts`.
@@ -183,9 +183,10 @@ A host with auto-forward on has a dozen passive listeners for every forward
 actually opened, so **the live table leads** (forwarded rows first, each
 group in port order) and the tail folds under one "N not forwarded"
 disclosure row — folded rows keep their cells, so expanding costs no fetch
-and no re-render. Scan sits in the overlay header's actions seat; the add
-form hides behind a ghost expander that folds after a success and stays open
-on a failure.
+and no re-render. Scan sits at the panel bar's right end (the panel is
+headed — it mounts in the maintenance workspace, with no overlay header to
+hold the button); the add form hides behind a ghost expander that folds
+after a success and stays open on a failure.
 
 ## 19. The actions column: one mark per verb
 
