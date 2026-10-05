@@ -321,12 +321,12 @@ the new-window query — are documented with the spelling in
 
 ## 11. The host monitor
 
-An htop-style read of the connected host — CPU/memory meters, load, and a
-live process table with a two-press kill — as the third host overlay
-beside Ports and Usage. It rides the EXISTING `ssh.exec` seam with no new
-IPC verb: the renderer polls one marked-section snapshot command every
-two seconds while the panel is open, and a closed panel costs the host
-nothing. The snapshot command, the parsers, the client-side tick-delta
-CPU percentages and their deliberate gaps (unset first-sample bars, ps's
-lifetime pcpu per process) are the decision record in `docs/MONITOR.md`;
-the code is `@ui/app/hostMonitor.ts` and `useHostMonitor.ts`.
+`htop` in a terminal pane of our own, in the hidden `::maintenance::` root —
+not a panel that samples the host. Every "Host monitor" trigger navigates to
+that workspace, whose one `tool`-kind tab holds a bare pane: a plain SSH
+login shell in `~` with `htop` typed into it over the existing `shell:open`
+typed-mode seam, no new IPC verb. The pane is ephemeral by construction — it
+is not a host session, and leaving the workspace closes the PTY. The shape,
+the bare-pane identity rules and the rationale for dropping the self-sampled
+panel are the decision record in `docs/MONITOR.md`; the constants live in
+`@ui/app/maintenance.ts`.
