@@ -26,17 +26,21 @@ The workspace lives at the stable pseudo-key `::maintenance::`
 names no directory — `rootHostPath` refuses it, so no `+` can offer a session
 under it — and it is not a root in the session tree's grouping: the tree's
 root rows are headers over real directories, and this one has none. Instead
-the panel renders a pinned **Maintenance** section below the roots
-(`SessionTreeRowsView`), the app's own chrome rather than the host's data: it
-survives the session filter, takes no sort and no drag, and its one row —
+the panel renders a **Maintenance** section below the roots
+(`SessionTreeRowsView`), the app's own chrome rather than the host's data:
+it survives the session filter, takes no sort and no drag, and its one row —
 `htop`, under the activity glyph — emits the same `select` the folder rows
 do, so navigation, re-click focus and the current-row tint are the folder
 rows' own machinery. A second tool workspace would slot in as a sibling row.
 
-That section is the door back; the Host monitor button (header strip, rail,
-palette — still the `activity` glyph and the "Host monitor" name) is the door
-in. Both land on the same route, and while the workspace is open the row
-carries the current tint.
+The section is the door BACK, and it earns its place by being used: it
+appears for a host once its maintenance workspace has been opened this
+session (`markMaintenanceOpened`, wired to the Host monitor button's
+navigation; being on the route counts by itself), and a reload forgets it —
+nothing renders before the first click, and nothing persists after. The
+Host monitor button (header strip, rail, palette — still the `activity`
+glyph and the "Host monitor" name) is the door in. Both land on the same
+route, and while the workspace is open the row carries the current tint.
 
 ## 2. One tool pane, bare
 

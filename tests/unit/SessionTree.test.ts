@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, type PropType } from 'vue';
 import type { HostEntry, SessionSummary } from '@pocketshell/core';
+import { MAINTENANCE_ROOT, markMaintenanceOpened } from '@ui/app/maintenance';
 
 /**
  * The session panel's creation controls.
@@ -1267,5 +1268,31 @@ describe('SessionTree — dragging a folder row', () => {
         .findAll('.folder:not(.maintenance-section) .dir-header')
         .map((r) => r.attributes('draggable')),
     ).toEqual(['true', 'true', 'true']);
+  });
+});
+
+describe('SessionTree — the Maintenance section', () => {
+  it('is hidden until this host’s maintenance workspace has been opened', async () => {
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
+    expect(wrapper.find('.maintenance-section').exists()).toBe(false);
+  });
+
+  it('appears once the host’s workspace has been opened, and only on that host', async () => {
+    markMaintenanceOpened('aws');
+    const aws = await open([session('git-a', `${HOME}/git/a`)], [], HOME, 'aws');
+    expect(aws.find('.maintenance-section').exists()).toBe(true);
+
+    // Another host has not been opened there yet — the door follows the
+    // click, per host.
+    const hetzner = await open([session('git-a', `${HOME}/git/a`)], [], HOME, 'hetzner');
+    expect(hetzner.find('.maintenance-section').exists()).toBe(false);
+  });
+
+  it('shows while the workspace is open, opened-flag or not', async () => {
+    // Being ON the workspace counts by itself: a reload landing on the route
+    // must not hide the row that says where the user is.
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)]);
+    await wrapper.setProps({ activeFolder: MAINTENANCE_ROOT });
+    expect(wrapper.find('.maintenance-section').exists()).toBe(true);
   });
 });
