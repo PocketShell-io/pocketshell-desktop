@@ -200,6 +200,20 @@ describe('continuesPath — the tail a join rule may glue a row onto', () => {
     expect(continuesPath('~/')).toBe(true);
   });
 
+  it('accepts a bare parent-anchor run the matcher itself cannot link', () => {
+    // The transcript report: the wrapper broke a relative address right
+    // after its `../` — `…procedure is ../` / `dataops-knowledge/…` — and the
+    // anchor, naming nothing on its own row, failed this gate. The address's
+    // own head then joined WITHOUT it: a link one directory short of where
+    // the address points. As a tail the anchor is not the destination but
+    // the address so far, which is the question this gate answers.
+    expect(continuesPath('../')).toBe(true);
+    expect(continuesPath('../../')).toBe(true);
+    // `./` and `/` name just as little, but no report has shown a wrapper
+    // cutting after them; each admission is prose-join surface.
+    expect(continuesPath('./')).toBe(false);
+  });
+
   it('accepts a relative tail with two or more slashes', () => {
     // The montage report: the TUI echoed a command whose relative path broke
     // at the margin mid-token, and the rows had to be rejoined.

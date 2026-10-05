@@ -974,6 +974,74 @@ describe('scanBufferLine — commit URLs the transcript cut before a segment', (
 });
 
 /**
+ * The transcript report: a paragraph whose procedure address starts with
+ * `../`, with the wrapper breaking the token right after the anchor. The
+ * anchor names nothing on its own row, so the tail gate refused it and the
+ * address's own head joined WITHOUT it — a link one directory short of where
+ * the address points, the `../` orphaned plain at the cut.
+ */
+describe('scanBufferLine — a relative address cut right after its ../ anchor', () => {
+  const ROWS = [
+    'assets/<system>/<doc-slug>/ next to each doc. The "how this was made" procedure is ../',
+    'dataops-knowledge/content/07-internal-operations/manage-systems-library/sops/draft-an-sop-',
+    'from-a-recorded-task.md.',
+  ];
+  const PATH =
+    '../dataops-knowledge/content/07-internal-operations/manage-systems-library/sops/draft-an-sop-from-a-recorded-task.md';
+
+  it('joins past the anchor, whichever row the mouse is over', () => {
+    const t = fakeScreen(ROWS, 97);
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(
+      'assets/<system>/<doc-slug>/ next to each doc. The "how this was made" procedure is ' +
+        '../dataops-knowledge/content/07-internal-operations/manage-systems-library/sops/' +
+        'draft-an-sop-from-a-recorded-task.md.',
+    );
+    // One path, one fragment per row: the `../` alone on the row above, the
+    // body on the middle row, the tail on the last.
+    expect(pathLinks(t, 1, () => ({ sessionName: 'git' })).map((l) => l.text)).toEqual([
+      '../',
+      'dataops-knowledge/content/07-internal-operations/manage-systems-library/sops/draft-an-sop-',
+      'from-a-recorded-task.md',
+    ]);
+    expect(pathLinks(t, 2, () => ({ sessionName: 'git' })).map((l) => l.text)).toEqual([
+      '../',
+      'dataops-knowledge/content/07-internal-operations/manage-systems-library/sops/draft-an-sop-',
+      'from-a-recorded-task.md',
+    ]);
+  });
+
+  it('opens the whole address, anchor included', () => {
+    const t = fakeScreen(ROWS, 97);
+    const files = useFilesStore();
+    pathLinks(t, 1, () => ({ sessionName: 'git' }))[0]?.activate(CLICK, PATH);
+    // Relative, so the session's cwd resolves it — and the anchor is what
+    // makes it resolve to the sibling the address names, not a child of cwd.
+    expect(files.reveal).toBe(PATH);
+  });
+
+  it('still refuses `./` and bare `/` anchors, which no report has cut after', () => {
+    const t = fakeScreen(['Read the notes in ./', 'assets/images/'], 60);
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe('Read the notes in ./');
+    const root = fakeScreen(['the checkout root, /', 'etc/hosts'], 60);
+    expect(scanBufferLine(root, 1).text.trimEnd()).toBe('the checkout root, /');
+  });
+
+  it('still refuses an anchor whose head had room on the row above', () => {
+    // The 1b fit guard still runs: `and` is three columns and the render
+    // width the paragraph's own wider rows set leaves room for it on the row
+    // above — no wrapper put it there for want of room, so the rows are two
+    // different lines.
+    const WIDE =
+      'The portal how-to explains the setup and every step of the walk-through in detail.';
+    const t = fakeScreen(
+      [WIDE, 'The setup guide lives one level up: see ../', 'and the portal how-to.'],
+      97,
+    );
+    expect(scanBufferLine(t, 2).text.trimEnd()).toBe('The setup guide lives one level up: see ../');
+  });
+});
+
+/**
  * The "Ran montage" report: the agent TUI echoed a shell command whose
  * RELATIVE path broke at the margin mid-token, with the block's `│ ` gutter
  * on every continuation row. The join guard used to demand a rooted
