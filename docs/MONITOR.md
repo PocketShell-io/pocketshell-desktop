@@ -19,16 +19,24 @@ what htop already renders. Don't rebuild a system monitor in the renderer;
 if a cheap fixed glance (load, memory) is ever wanted again, it is a one-read
 figure, not a process table.
 
-## 1. The maintenance root, and why it is hidden
+## 1. The maintenance root, and the two doors to it
 
 The workspace lives at the stable pseudo-key `::maintenance::`
 (`MAINTENANCE_ROOT` in core `sessionRoots.ts`, sibling of `::other::`). It
 names no directory — `rootHostPath` refuses it, so no `+` can offer a session
-under it — and it never renders in the session tree, whose root rows are
-grouping headers over real directories. "Hidden by default" is absolute: the
-Host monitor button is its only door, and the workspace itself is the visible
-artifact while it is open. The button keeps the `activity` glyph and the
-"Host monitor" name — its job did not change, only the presentation did.
+under it — and it is not a root in the session tree's grouping: the tree's
+root rows are headers over real directories, and this one has none. Instead
+the panel renders a pinned **Maintenance** section below the roots
+(`SessionTreeRowsView`), the app's own chrome rather than the host's data: it
+survives the session filter, takes no sort and no drag, and its one row —
+`htop`, under the activity glyph — emits the same `select` the folder rows
+do, so navigation, re-click focus and the current-row tint are the folder
+rows' own machinery. A second tool workspace would slot in as a sibling row.
+
+That section is the door back; the Host monitor button (header strip, rail,
+palette — still the `activity` glyph and the "Host monitor" name) is the door
+in. Both land on the same route, and while the workspace is open the row
+carries the current tint.
 
 ## 2. One tool pane, bare
 

@@ -321,12 +321,13 @@ the new-window query — are documented with the spelling in
 
 ## 11. The host monitor
 
-`htop` in a terminal pane of our own, in the hidden `::maintenance::` root —
-not a panel that samples the host. Every "Host monitor" trigger navigates to
-that workspace, whose one `tool`-kind tab holds a bare pane: a plain SSH
-login shell in `~` with `htop` typed into it over the existing `shell:open`
-typed-mode seam, no new IPC verb. The pane is ephemeral by construction — it
-is not a host session, and leaving the workspace closes the PTY. The shape,
-the bare-pane identity rules and the rationale for dropping the self-sampled
+`htop` in a terminal pane of our own, in the `::maintenance::` root — not a
+panel that samples the host. Every "Host monitor" trigger and the session
+tree's pinned Maintenance section navigate to that workspace, whose one
+`tool`-kind tab holds a bare pane: a plain SSH login shell in `~` with `htop`
+typed into it over the existing `shell:open` typed-mode seam, no new IPC
+verb. The pane is ephemeral by construction — it is not a host session, and
+leaving the workspace closes the PTY. The shape, the two doors, the
+bare-pane identity rules and the rationale for dropping the self-sampled
 panel are the decision record in `docs/MONITOR.md`; the constants live in
 `@ui/app/maintenance.ts`.

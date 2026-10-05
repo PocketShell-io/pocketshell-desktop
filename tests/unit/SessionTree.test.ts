@@ -174,9 +174,18 @@ function rootAdds(wrapper: VueWrapper): { title: string; disabled: boolean }[] {
   }));
 }
 
-/** Every folder row's label, in rendered order. */
+/**
+ * Every folder row's label, in rendered order.
+ *
+ * The Maintenance section is the app's own pinned chrome, not the host's
+ * grouping — every assertion here is about what the HOST's sessions render
+ * as, so its row is scoped out (sessionTreeMaintenance.test.ts pins the
+ * section itself).
+ */
 function dirLabels(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('.dir-header .label').map((l) => l.text());
+  return wrapper
+    .findAll('.folder:not(.maintenance-section) .dir-header .label')
+    .map((l) => l.text());
 }
 
 /** The items in the open row menu, with whether each is takeable. */
@@ -469,7 +478,11 @@ describe('SessionTree — the per-root +', () => {
 
     // The AWS host has no root entry, so it uses its own derived `tmp` root;
     // Hetzner's registered `git` must not leak in as an empty header.
-    expect(wrapper.findAll('.folder-label').map((label) => label.text())).toEqual(['~/tmp']);
+    expect(
+      wrapper
+        .findAll('.folder:not(.maintenance-section) .folder-label')
+        .map((label) => label.text()),
+    ).toEqual(['~/tmp']);
   });
 
   it('puts one on every real root and none on `other`', async () => {
@@ -478,7 +491,11 @@ describe('SessionTree — the per-root +', () => {
       session('tmp-b', `${HOME}/tmp/b`, 200),
       session('elsewhere', '/srv/app', 300),
     ]);
-    expect(wrapper.findAll('.folder-label').map((l) => l.text())).toEqual([
+    expect(
+      wrapper
+        .findAll('.folder:not(.maintenance-section) .folder-label')
+        .map((l) => l.text()),
+    ).toEqual([
       '~/git',
       '~/tmp',
       'other',
@@ -721,7 +738,9 @@ describe('SessionTree — stopping every session in a folder', () => {
 
     expect(wrapper.text()).not.toContain('dataqna');
     // The folder the confirm did not touch is untouched.
-    const headers = wrapper.findAll('.dir-header').map((h) => h.text());
+    const headers = wrapper
+      .findAll('.folder:not(.maintenance-section) .dir-header')
+      .map((h) => h.text());
     expect(headers).toHaveLength(1);
     expect(headers[0]).toContain('other');
   });
@@ -971,9 +990,13 @@ describe('SessionTree — the panel keeps up with the host', () => {
  * to the right edge — where the `+` now lives alone.
  */
 describe('SessionTree — the root header row', () => {
-  /** Each root header, as its full text and its muted prefix (or ''). */
+  /**
+   * Each root header, as its full text and its muted prefix (or ''). The
+   * Maintenance section is pinned chrome, not a root of the host's — scoped
+   * out here; sessionTreeMaintenance.test.ts pins the section itself.
+   */
   function headers(wrapper: VueWrapper): { text: string; prefix: string }[] {
-    return wrapper.findAll('.folder-header').map((h) => ({
+    return wrapper.findAll('.folder:not(.maintenance-section) .folder-header').map((h) => ({
       text: h.get('.folder-label').text(),
       prefix: h.find('.path-prefix').exists() ? h.get('.path-prefix').text() : '',
     }));
@@ -1173,7 +1196,7 @@ describe('SessionTree — dragging a folder row', () => {
       session('git-b', `${HOME}/git/b`, 200),
       session('tmp-d', `${HOME}/tmp/d`, 300),
     ]);
-    const rows = wrapper.findAll('.dir-header');
+    const rows = wrapper.findAll('.folder:not(.maintenance-section) .dir-header');
     await rows[0]!.trigger('dragstart');
     await rows[2]!.trigger('dragover', { clientY: -1 });
     // No indicator anywhere — a refused drop draws nothing, and that absence
@@ -1237,10 +1260,12 @@ describe('SessionTree — dragging a folder row', () => {
 
   it('marks every row draggable, so the affordance is not one row deep', async () => {
     const wrapper = await open(THREE);
-    expect(wrapper.findAll('.dir-header').map((r) => r.attributes('draggable'))).toEqual([
-      'true',
-      'true',
-      'true',
-    ]);
+    // The Maintenance section's row is pinned chrome, not a folder in the
+    // host's grouping — it takes no drag and is scoped out here.
+    expect(
+      wrapper
+        .findAll('.folder:not(.maintenance-section) .dir-header')
+        .map((r) => r.attributes('draggable')),
+    ).toEqual(['true', 'true', 'true']);
   });
 });

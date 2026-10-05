@@ -97,8 +97,16 @@ async function open(
   return wrapper;
 }
 
+/**
+ * Every folder row's label, in rendered order. The Maintenance section is
+ * the app's pinned chrome, not the host's grouping — scoped out, the same
+ * rule SessionTree.test.ts's helper applies; the section itself is pinned in
+ * sessionTreeMaintenance.test.ts.
+ */
 function dirLabels(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('.dir-header .label').map((l) => l.text());
+  return wrapper
+    .findAll('.folder:not(.maintenance-section) .dir-header .label')
+    .map((l) => l.text());
 }
 
 beforeEach(() => {
