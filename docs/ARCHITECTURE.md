@@ -115,6 +115,13 @@ detection rules, the wrapped shapes they reconstruct, and the evidence each
 needs are documented where they live — `@ui/app/terminalLinks.ts`'s module
 doc; the at-rest tint in `@ui/app/terminalPathHighlights.ts`.
 
+The tab context menu's **Copy address** puts a session's aplexer address on
+the clipboard — the immutable UUID, not the `workspace:tag` selector, because
+the point is pasting it into another session so the two can reach each other
+through `a`, and the id survives the renames the same menu's Rename performs.
+The item is absent where no id exists: a tmux row addresses by its bare name,
+and an aplexer row whose id has not landed must not offer a half address.
+
 The shared agent picker includes Antigravity (`antigravity`, binary `agy`).
 It is available when the remote helper advertises `pocketshell agent
 antigravity`; an old helper or failed probe dims the choice and blocks
