@@ -204,7 +204,11 @@ describe('aplexer commands', () => {
 
   it('widens PATH in a subshell, never execs, shouts on failure, ends with exit', () => {
     const command = aplexerAttachCommand({ workspace: '/w', tag: 'review' });
-    expect(command).toMatch(/^\(\s*PATH=".*:\$PATH"; a attach /);
+    // The PATH assignment is UNQUOTED: an assignment value is never
+    // word-split, and a Windows host re-splits the whole exec at spaces — an
+    // inner double quote would close the wrapper the windows form adds.
+    expect(command).toMatch(/^\(\s*PATH=.*:\$PATH; a attach /);
+    expect(command).not.toContain('PATH="');
     expect(command).toContain(') || printf');
     expect(command).toContain('[PocketShell] could not join session');
     expect(command).not.toContain('exec ');
@@ -212,6 +216,27 @@ describe('aplexer commands', () => {
     // the diagnostic prints first and the `exit` comes after it.
     expect(command.trim().endsWith('; exit')).toBe(true);
     expect(command.indexOf('; exit')).toBeGreaterThan(command.indexOf('printf'));
+  });
+
+  it('on windows wraps the whole script in one double-quoted argv word, quote-free inside', () => {
+    const command = aplexerAttachCommand({
+      id: 'uuid-1',
+      workspace: 'C:/Users/u/git/aplexer',
+      tag: 'main',
+      windows: true,
+    });
+    // The ConPTY exec path re-splits the command at spaces and bash -c takes
+    // only the first word; ONE outer double-quoted argv word survives the
+    // round trip, so the script must carry no double quotes of its own.
+    expect(command.startsWith('"')).toBe(true);
+    expect(command.endsWith('"')).toBe(true);
+    expect(command.slice(1, -1)).not.toContain('"');
+    // The uuid arm is dropped on Windows: aplexer 0.1.10 there answers a bare
+    // uuid with its picker. The cd scopes the bare tag to the workspace.
+    expect(command).toContain("cd 'C:/Users/u/git/aplexer' && a attach 'main'");
+    expect(command).not.toContain("a attach 'uuid-1'");
+    expect(command).toContain(') || printf');
+    expect(command.trim().endsWith('; exit"')).toBe(true);
   });
 
   it('cannot be broken out of by a hostile tag', () => {
@@ -511,6 +536,7 @@ describe('TmuxClientPool with aplexer sessions', () => {
     const live = new Set<ShellId>();
     const ssh = {
       shellTracker: { get: (id: ShellId) => (live.has(id) ? { id } : undefined) },
+      hostPlatform: async (_c: string): Promise<'posix' | 'windows'> => 'posix',
       openTrackedShell: async (_c: string, o: { command?: string }): Promise<ShellId> => {
         const id = `shell-${++counter}`;
         calls.push({ kind: 'open', detail: o.command ?? '' });
@@ -550,12 +576,47 @@ describe('TmuxClientPool with aplexer sessions', () => {
     expect(openedCommands({ calls })).toHaveLength(1);
   });
 
+  it('joins aplexer sessions on a windows host with the ConPTY-safe spelling', async () => {
+    const calls: { kind: string; detail: string }[] = [];
+    let counter = 0;
+    const live = new Set<ShellId>();
+    const ssh = {
+      shellTracker: { get: (id: ShellId) => (live.has(id) ? { id } : undefined) },
+      hostPlatform: async (_c: string): Promise<'posix' | 'windows'> => 'windows',
+      openTrackedShell: async (_c: string, o: { command?: string }): Promise<ShellId> => {
+        const id = `shell-${++counter}`;
+        calls.push({ kind: 'open', detail: o.command ?? '' });
+        live.add(id);
+        return id;
+      },
+      shellClose: (id: ShellId): void => {
+        live.delete(id);
+      },
+      exec: async (): Promise<ExecResult> => ({ stdout: '', stderr: '', exitCode: 0 }),
+    } as unknown as SshService;
+
+    const pool = poolWith(ssh);
+    await pool.attach('c1', 'main', {
+      ...sink,
+      backend: 'aplexer',
+      workspace: 'C:/Users/u/git/aplexer',
+      tag: 'main',
+      aplexerId: 'uuid-1',
+    });
+    const command = openedCommands({ calls })[0]!;
+    expect(command.startsWith('"')).toBe(true);
+    expect(command.endsWith('"')).toBe(true);
+    expect(command.slice(1, -1)).not.toContain('"');
+    expect(command).toContain("cd 'C:/Users/u/git/aplexer' && a attach 'main'");
+  });
+
   it('keys same-named tags in different workspaces as two clients', async () => {
     const commands: string[] = [];
     let counter = 0;
     const live = new Set<ShellId>();
     const ssh = {
       shellTracker: { get: (id: ShellId) => (live.has(id) ? { id } : undefined) },
+      hostPlatform: async (_c: string): Promise<'posix' | 'windows'> => 'posix',
       openTrackedShell: async (_c: string, o: { command?: string }): Promise<ShellId> => {
         const id = `shell-${++counter}`;
         commands.push(o.command ?? '');

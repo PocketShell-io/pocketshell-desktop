@@ -874,8 +874,18 @@ export class TmuxClientPool {
     const hintedSocketPath = isAplexer
       ? undefined
       : this.cachedSocketPath(connectionId, target.name);
+    // The aplexer join on a Windows host takes the ConPTY-safe spelling (the
+    // whole script in one double-quoted argv word) and joins by cd+tag — see
+    // aplexerAttachCommand. The probe is the per-connection cached one.
+    const windows =
+      isAplexer && (await this.ssh.hostPlatform(connectionId)) === 'windows';
     const command = isAplexer
-      ? aplexerAttachCommand({ id: target.aplexerId, workspace: target.workspace, tag: target.tag })
+      ? aplexerAttachCommand({
+          id: target.aplexerId,
+          workspace: target.workspace,
+          tag: target.tag,
+          ...(windows ? { windows: true } : {}),
+        })
       : sessionAttachCommand(target.name, ttyVar, hintedSocketPath);
     // The session-server locator is advisory: it only aims later redraw and
     // geometry commands. It must not sit in front of the PTY open, because a
