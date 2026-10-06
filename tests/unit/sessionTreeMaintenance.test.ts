@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 /**
- * The session tree's Maintenance section — the door to the tool workspaces
- * (docs/MONITOR.md). It is not permanent chrome: at this component's
+ * The session tree's Maintenance section — the door to the tool workspaces.
+ * It is not permanent chrome: at this component's
  * boundary the rule is the `maintenanceCount` prop, which the wrapper reads
  * from maintenance.ts's per-host tool list — ONE row, whatever the tool
  * count (the tools are the workspace's tabs, listed there and nowhere

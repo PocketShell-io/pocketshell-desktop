@@ -6,7 +6,7 @@ import { reactive } from 'vue';
 
 /**
  * The maintenance workspace — what "Host monitor" opens: the `::maintenance::`
- * root holding one tab per open tool, `htop` first of all (docs/MONITOR.md).
+ * root holding one tab per open tool, `htop` first of all.
  * The contracts pinned here:
  *
  *  - the bar is the host's open tools — no Files tab, no `+`, and the tool's

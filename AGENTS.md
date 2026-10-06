@@ -6,7 +6,7 @@ Electron desktop port of PocketShell — a tmux-native, agent-aware SSH
 client. It connects to remote dev boxes whose sessions are aplexer
 sessions, reached through the `pocketshell` helper, with the helper-driven
 tmux attach as the fallback on hosts without aplexer — not `tmux -CC`
-control mode (rationale in `docs/ARCHITECTURE.md` §3).
+control mode.
 
 Layout, three Electron processes plus shared code:
 
@@ -31,13 +31,7 @@ typecheck` (three tsconfigs: node = main+preload, web = renderer, ui = the
 core sibling's `packages/ui`), `npm run lint`, `npm run test:unit`,
 `npm run test:integration` (needs Docker),
 `npm run test:e2e` (Playwright + Electron, needs the Docker compose fleet),
-`npm run smoke` (pre-release gate). Test tiers are described in
-`docs/TESTING.md`.
-
-Docs in `docs/`: `ARCHITECTURE.md` is the deep dive — read the relevant
-section before working in an area; feature docs (`COMPOSER`, `PORTFWD`,
-`SHORTCUTS`, `SYNC`, `DESIGN`) record how each subsystem works;
-`CLEAN_CODE.md` the rules the code is held to.
+`npm run smoke` (pre-release gate).
 
 Dependency rule: production `dependencies` is only what is `require()`d
 from disk at runtime (currently just `ssh2`); everything the renderer
@@ -48,14 +42,14 @@ without a written reason.
 ## 1. Commit regularly, one concern per commit
 
 Do not hold a batch of work for one big commit at the end. Each logical
-change — a feature, a fix, a doc section that belongs to it — is its own
-commit as soon as it is done and verified (tests for the touched area,
-`npm run typecheck`, `eslint` on the changed files).
+change — a feature, a fix — is its own commit as soon as it is done and
+verified (tests for the touched area, `npm run typecheck`, `eslint` on the
+changed files).
 
-"Focused" means: one concern per commit, code and its tests and the
-`docs/*.md` section that records it travel together, and the tree at that
-commit builds and passes on its own. When two changes touch the same file,
-split the hunks rather than mixing concerns.
+"Focused" means: one concern per commit, code and its tests travel
+together, and the tree at that commit builds and passes on its own. When
+two changes touch the same file, split the hunks rather than mixing
+concerns.
 
 Push after the work is committed.
 
@@ -69,13 +63,3 @@ what was just committed, and say so when handing off.
 
 (`npm run dev` watches and rebuilds on its own; the rebuild rule is for the
 build-and-launch workflow.)
-
-## 3. Keep the docs lean
-
-Docs in `docs/` describe current behavior and durable decisions, not
-history. When a change supersedes a doc section, rewrite it in place — do
-not append "superseded" or "revised" narration next to the old text. Give
-every mechanism one home; other docs point at it. Sections that code
-comments cite by number keep their numbers (gaps are fine); a section that
-must shrink to a stub states the current truth and points at where the
-detail lives now.

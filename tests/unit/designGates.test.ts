@@ -128,7 +128,7 @@ describe('design gates', () => {
   });
 
   /**
-   * Gate 3 — component size. CLEAN_CODE rule 12: a component over ~1000
+   * Gate 3 — component size: a component over ~1000
    * lines is flagged for extraction with the specific sections named. The
    * flag is this gate; an over-limit file must be listed in EXEMPT with the
    * extraction queue that will bring it under, and a NEW file over the line

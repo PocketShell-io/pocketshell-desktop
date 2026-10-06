@@ -3,7 +3,7 @@
 # Byte-for-byte model of the Android project's tests/docker/Dockerfile.ssh:
 # Alpine + openssh, non-root `testuser` (password-locked, pubkey-only), sshd
 # on port 22 in the foreground. The committed ed25519 test_key.pub is the
-# authorized_keys file. See docs/TESTING.md.
+# authorized_keys file.
 # PINNED so the tmux version is deterministic. `alpine:latest` floats: 3.20
 # ships tmux 3.4, 3.21 ships 3.5a, 3.24 ships 3.6b. 3.20 is chosen because
 # tmux 3.4 is what the real dev host runs, so the fixture exercises the same

@@ -72,8 +72,8 @@ export function registerAppIpc(ctx: IpcContext): void {
 
   // --- editors:openVsCode ----------------------------------------------------
   // "Open this folder in VS Code": the OS-dispatched `vscode://` URL that VS
-  // Code's Remote-SSH extension answers by opening [path] on [hostToken]
-  // (docs/ARCHITECTURE.md §10). The URL is BUILT here, from the two fields
+  // Code's Remote-SSH extension answers by opening [path] on [hostToken].
+  // The URL is BUILT here, from the two fields
   // the renderer sends through the shared builder — never accepted
   // ready-made. That is the update:open rule again: shell.openExternal is
   // the one bridge an XSS drives straight off the machine, so main hands it

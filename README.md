@@ -139,7 +139,7 @@ npm run dev
 
 ## Keyboard
 
-The full list, and the place to rebind it, is **Settings → Keyboard**. The reasoning is in [docs/SHORTCUTS.md](docs/SHORTCUTS.md). Start here:
+The full list, and the place to rebind it, is **Settings → Keyboard**. Start here:
 
 | Keys | Does |
 |---|---|
@@ -167,21 +167,9 @@ The full list, and the place to rebind it, is **Settings → Keyboard**. The rea
 | `npm run test:e2e` | Playwright driving Electron |
 | `npm run smoke` | The pre-release gate |
 
-Integration, end-to-end, and smoke need Docker. The tiers and the fixture fleet are in [docs/TESTING.md](docs/TESTING.md).
+Integration, end-to-end, and smoke need Docker.
 
 The app runs from `out/`, the built bundle. After a source change outside `npm run dev`, run `npm run build` before launching it.
-
-Deeper write-ups, one home each:
-
-| Doc | Covers |
-|---|---|
-| [Architecture](docs/ARCHITECTURE.md) | Processes, the attach model, security, reconnect |
-| [Composer](docs/COMPOSER.md) | Drafts, send, attachments |
-| [Port forwarding](docs/PORTFWD.md) | Discovery, allocation, persistence |
-| [Shortcuts](docs/SHORTCUTS.md) | Every chord and why it is bound |
-| [Sync](docs/SYNC.md) | Optional encrypted sync of selected hosts |
-| [Design](docs/DESIGN.md) | Type, colour, themes |
-| [Testing](docs/TESTING.md) | Unit, integration, end-to-end, smoke |
 
 Stack: Electron, Vue 3, TypeScript, Vite, `ssh2`, xterm.js, CodeMirror 6, Pinia.
 

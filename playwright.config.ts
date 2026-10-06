@@ -11,7 +11,7 @@ import { defineConfig } from '@playwright/test';
 process.env['POCKETSHELL_HEADLESS'] ??= '1';
 
 // E2E tests launch the packaged Electron app against a fixed Docker
-// compose port (see docs/TESTING.md). They require the `helper` compose
+// compose port. They require the `helper` compose
 // service to be up on 127.0.0.1:3205.
 export default defineConfig({
   testDir: './tests/e2e',

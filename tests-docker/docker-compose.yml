@@ -1,5 +1,5 @@
 # Deterministic Docker SSH targets for PocketShell Desktop tests.
-# Mirrors the Android project's tests/docker fleet. See docs/TESTING.md.
+# Mirrors the Android project's tests/docker fleet.
 #
 # Layers:
 #   ssh    (3202) — base ssh + sftp; core-ssh / core-sftp integration

@@ -30,7 +30,7 @@ export interface IpcContext {
   forwards: ForwardService;
   projects: ProjectsService;
   preview: HtmlPreviewService;
-  /** Google sign-in state for settings sync (docs/SYNC.md). */
+  /** Google sign-in state for settings sync. */
   syncAuth: GoogleAuth;
   /** The sync API client, speaking encrypted envelopes. */
   sync: SyncService;
