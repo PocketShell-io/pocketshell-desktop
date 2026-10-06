@@ -18,7 +18,7 @@ conn.on('ready', () => {
     stream.on('close', (code) => { console.log(`\n[channel closed code=${code}]`); conn.end(); process.exit(0); });
     setTimeout(() => { stream.write('\r'); }, 4000);
     setTimeout(() => { stream.write('exit\r'); }, 8000);
-    setTimeout(() => { try { stream.close(); } catch {} conn.end(); process.exit(0); }, MS);
+    setTimeout(() => { try { stream.close(); } catch { /* already closing */ } conn.end(); process.exit(0); }, MS);
   });
 }).connect({
   host: '192.168.86.35',

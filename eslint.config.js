@@ -46,6 +46,9 @@ const IGNORES = [
   'playwright-report/**',
   'test-results/**',
   '.playwright/**',
+  // Scratch directories — gitignored by the `.tmp*` rule, so their contents
+  // are experiments, not source (a one-off browser-side check, say).
+  '.tmp*/**',
   // Shell scripts, Dockerfiles and JSONL sample data — not app source.
   'tests-docker/**',
   'docs/**',
