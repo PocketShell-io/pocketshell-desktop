@@ -4,7 +4,9 @@ import {
   autoConnectAttempted,
   decideAutoConnect,
   defaultHostStatus,
+  launchDefaultHost,
   markAutoConnectAttempted,
+  readLaunchRequest,
   resetAutoConnectLatch,
 } from '@ui/app/autoConnect';
 
@@ -117,5 +119,75 @@ describe('defaultHostStatus', () => {
     // The banner must keep telling the truth after the attempt is spent.
     markAutoConnectAttempted();
     expect(defaultHostStatus('deleted-box', HOSTS)).toBe('missing');
+  });
+});
+
+describe('readLaunchRequest', () => {
+  it('reads a plain launch: no requested host, default allowed', () => {
+    expect(readLaunchRequest('')).toEqual({
+      requestedHost: null,
+      defaultAutoConnectAllowed: true,
+    });
+  });
+
+  it('reads the host a launch named, without whitespace', () => {
+    expect(readLaunchRequest('?host=win35')).toEqual({
+      requestedHost: 'win35',
+      defaultAutoConnectAllowed: true,
+    });
+    expect(readLaunchRequest('?window=workspace&host=%20win35%20')).toEqual({
+      requestedHost: 'win35',
+      defaultAutoConnectAllowed: false,
+    });
+  });
+
+  it('marks a secondary window by its window=workspace marker', () => {
+    expect(readLaunchRequest('?window=workspace')).toEqual({
+      requestedHost: null,
+      defaultAutoConnectAllowed: false,
+    });
+  });
+
+  it('reads an empty host value as no host, not as a name', () => {
+    expect(readLaunchRequest('?host=&window=workspace').requestedHost).toBeNull();
+  });
+});
+
+describe('launchDefaultHost', () => {
+  it('an explicitly requested host replaces the stored default', () => {
+    expect(
+      launchDefaultHost({ requestedHost: 'win35', defaultAutoConnectAllowed: true }, 'hetzner'),
+    ).toBe('win35');
+  });
+
+  it('a plain first launch offers the stored default', () => {
+    expect(
+      launchDefaultHost({ requestedHost: null, defaultAutoConnectAllowed: true }, 'hetzner'),
+    ).toBe('hetzner');
+  });
+
+  it('a secondary window offers no default, even with one stored', () => {
+    expect(
+      launchDefaultHost({ requestedHost: null, defaultAutoConnectAllowed: false }, 'hetzner'),
+    ).toBeNull();
+  });
+
+  it('a secondary window asked for a host still gets that host', () => {
+    expect(
+      launchDefaultHost({ requestedHost: 'win35', defaultAutoConnectAllowed: false }, 'hetzner'),
+    ).toBe('win35');
+  });
+
+  it('feeds decideAutoConnect unchanged: a requested unknown host is a plain skip', () => {
+    const decision = decideAutoConnect({
+      defaultHost: launchDefaultHost(
+        { requestedHost: 'ghost', defaultAutoConnectAllowed: false },
+        'hetzner',
+      ),
+      hosts: HOSTS,
+      attempted: false,
+      connected: false,
+    });
+    expect(decision).toEqual({ action: 'skip', reason: 'unknown-host' });
   });
 });

@@ -128,6 +128,7 @@ const ctx = {
   syncAuth: syncAuth as never,
   sync: sync as never,
   openAccountWindow: vi.fn(),
+  openWorkspaceWindow: vi.fn(),
   getWindows,
   broadcast,
   tmuxClients: tmuxClients as never,
@@ -579,6 +580,25 @@ describe('appIpc — title validation and the update check', () => {
     fromWebContents.mockReturnValue(null);
     setTitle({ sender: 'w' }, 'no window');
     expect(win.setTitle).toHaveBeenCalledTimes(2);
+  });
+
+  it('openNewWindow forwards a well-formed host name and no other shape', async () => {
+    const handler = handlers.get(ipc.win.openNewWindow)! as (e: unknown, req?: unknown) => void;
+    const open = vi.mocked(ctx.openWorkspaceWindow);
+    open.mockClear();
+
+    handler({}, { host: 'win35' });
+    expect(open).toHaveBeenLastCalledWith({ requestedHost: 'win35' });
+
+    handler({}, undefined);
+    expect(open).toHaveBeenLastCalledWith(undefined);
+
+    // Anything that is not a plain host token reads as no host at all: the
+    // window opens on the picker rather than carrying a junk name.
+    handler({}, { host: 'two words' });
+    expect(open).toHaveBeenLastCalledWith(undefined);
+    handler({}, { host: 42 });
+    expect(open).toHaveBeenLastCalledWith(undefined);
   });
 
   it('diag:log merges stack into the detail and logs nothing when empty', async () => {

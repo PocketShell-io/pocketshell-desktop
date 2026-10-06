@@ -36,6 +36,12 @@ export interface IpcContext {
   sync: SyncService;
   /** Open or focus the separate Account & sync window. */
   openAccountWindow: () => void;
+  /**
+   * Open another workspace window, optionally for one host (the new window
+   * dials it at launch). Main owns the launch-query spelling; the renderer
+   * only names a host.
+   */
+  openWorkspaceWindow: (opts?: { requestedHost?: string | null }) => void;
   getWindows: () => BrowserWindow[];
   broadcast: (channel: string, payload: unknown) => void;
   tmuxClients: TmuxClientPool;

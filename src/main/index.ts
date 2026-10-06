@@ -19,6 +19,7 @@ import { ipc } from '../shared/channels.js';
 import { readWindowBounds, writeWindowBounds } from './windowState.js';
 import { applyLinkPolicy } from './windowLinks.js';
 import { applyChordDispatch } from './windowChords.js';
+import { parseLaunchHost } from './launchArgs.js';
 
 // Electron + ESM: __dirname is not defined for the bundled output under some
 // loaders; electron-vite emits CJS for main, so __dirname is available. We
@@ -61,8 +62,31 @@ ssh.onCloseConnection((id) => {
 // tab's HTML preview is not a blob URL.
 registerPreviewScheme();
 
-let mainWindow: BrowserWindow | null = null;
 let accountWindow: BrowserWindow | null = null;
+
+/**
+ * Every live workspace window, the app's real window list.
+ *
+ * The app holds ONE process and as many workspace windows as the user opens:
+ * a second launch of the exe (or the picker's New-window button) opens
+ * another one, each an independent renderer that dials its own host — one
+ * window on `hetzner`, another on `win35`. The old single `mainWindow`
+ * variable was the only thing standing in the way; everything the services
+ * share (SSH pool, SFTP, forwards) is already keyed by connection id, and
+ * each window mints its own.
+ */
+const workspaceWindows = new Set<BrowserWindow>();
+
+/**
+ * The host the FIRST launch named on its command line, if any —
+ * `PocketShell.exe win35` cold-starts straight into win35's workspace.
+ * Later launches' arguments arrive through the `second-instance` event and
+ * are parsed there, per launch. Unpackaged (`electron <app-path>`, the e2e
+ * harness), the first positional is the entry path, not an argument.
+ */
+const firstLaunchHost = parseLaunchHost(process.argv, {
+  firstPositionalIsAppPath: !app.isPackaged,
+});
 
 /**
  * The window icon, or undefined when the generated file is not present.
@@ -92,17 +116,39 @@ function loadRenderer(win: BrowserWindow, query?: Record<string, string>): void 
   }
 }
 
-function createWindow(): void {
+/**
+ * Open one workspace window.
+ *
+ * The FIRST window restores the saved geometry; windows opened on top of it
+ * get the default size and Electron's own placement cascade, because two
+ * windows fighting over one stored rect would each leave it half-written.
+ * The store keeps ONE record, so it is written only by whichever window
+ * closes LAST — the geometry the user actually ended up looking at.
+ *
+ * `opts.requestedHost` names the host the window is for (a command-line
+ * launch, or — later — a renderer request); the renderer reads it from the
+ * load query and dials it. Any window that is not a plain first launch also
+ * says `window=workspace` in that query: the shared picker reads it and
+ * stands down from the stored-default auto-connect, which belongs to the
+ * first window — a second window re-dialing the default would open a second
+ * connection to a host the first one already holds, with both windows'
+ * auto-forwards competing for the same local ports.
+ */
+function createWindow(opts: { requestedHost?: string | null } = {}): BrowserWindow {
+  const firstWindow = workspaceWindows.size === 0;
   // Restore the last session's geometry (F18), unless this is a headless test
   // run: the off-screen placement below would otherwise be captured on close
   // and the next real launch would open at -32000,-32000. A headless run never
   // writes bounds, so the user's real geometry survives the test suite.
-  const savedBounds = process.env['POCKETSHELL_HEADLESS'] === '1' ? null : readWindowBounds();
-  mainWindow = new BrowserWindow({
+  const savedBounds =
+    firstWindow && process.env['POCKETSHELL_HEADLESS'] !== '1' ? readWindowBounds() : null;
+  const win = new BrowserWindow({
     width: savedBounds?.width ?? 1280,
     height: savedBounds?.height ?? 800,
     // Omitted entirely when there is no usable saved position — passing
     // `x: undefined` would still override Electron's own centering cascade.
+    // For a second-and-later window there is no saved position BY DESIGN, so
+    // the cascade is what spaces the windows on screen.
     ...(savedBounds?.x != null && savedBounds.y != null
       ? { x: savedBounds.x, y: savedBounds.y }
       : {}),
@@ -143,24 +189,35 @@ function createWindow(): void {
       plugins: true,
     },
   });
+  workspaceWindows.add(win);
 
   // Re-maximize AFTER creation, not in the constructor options: the stored
   // rect is the pre-maximize geometry (windowState.ts), and creating with the
   // normal rect and then maximizing is what keeps the un-maximize target where
   // the user left it.
-  if (savedBounds?.maximized) mainWindow.maximize();
+  if (savedBounds?.maximized) win.maximize();
 
   // Persisted on close rather than on every resize/move: the close-time values
   // are the only ones that are final (a drag writes a dozen interim rects that
   // would each hit the disk), and a crash then costs one launch of geometry —
-  // the same trade the workspace's tab memory makes.
-  mainWindow.on('close', () => {
-    if (mainWindow && process.env['POCKETSHELL_HEADLESS'] !== '1') writeWindowBounds(mainWindow);
+  // the same trade the workspace's tab memory makes. Written only when this
+  // is the LAST workspace window out: with several open, each close would
+  // otherwise overwrite the one record with a geometry the user may already
+  // have left behind.
+  win.on('close', () => {
+    if (process.env['POCKETSHELL_HEADLESS'] !== '1' && workspaceWindows.size === 1) {
+      writeWindowBounds(win);
+    }
   });
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    if (accountWindow && !accountWindow.isDestroyed()) accountWindow.close();
-    accountWindow = null;
+  win.on('closed', () => {
+    workspaceWindows.delete(win);
+    // The account surface orbits the workspace windows: it exists to serve
+    // one, so it closes when the last of them does — not when any single one
+    // does, which would yank it out from under the windows still open.
+    if (workspaceWindows.size === 0) {
+      if (accountWindow && !accountWindow.isDestroyed()) accountWindow.close();
+      accountWindow = null;
+    }
   });
 
   // Electron has no true headless mode. "Headless" here means the window is
@@ -173,24 +230,35 @@ function createWindow(): void {
   // desktop and out of the focus order, so a test run stops stealing the
   // user's keyboard and flashing windows.
   const headless = process.env['POCKETSHELL_HEADLESS'] === '1';
-  mainWindow.on('ready-to-show', () => {
-    if (!mainWindow) return;
+  win.on('ready-to-show', () => {
+    if (win.isDestroyed()) return;
     if (headless) {
-      mainWindow.setPosition(-32000, -32000);
-      mainWindow.showInactive();
+      win.setPosition(-32000, -32000);
+      win.showInactive();
     } else {
-      mainWindow.show();
+      win.show();
     }
   });
 
-  applyLinkPolicy(mainWindow.webContents);
+  applyLinkPolicy(win.webContents);
 
   // Zoom chords are recognised here and DECIDED in the renderer; window
   // chords are decided here. Both policies live in windowChords.ts.
-  applyChordDispatch(mainWindow.webContents, () => mainWindow?.close());
+  applyChordDispatch(win.webContents, () => {
+    if (!win.isDestroyed()) win.close();
+  });
 
-  // electron-vite: dev server URL in dev, built file in prod.
-  loadRenderer(mainWindow);
+  // electron-vite: dev server URL in dev, built file in prod. The query only
+  // appears on a window that needs to say something about its own launch —
+  // the plain first launch stays query-less, exactly as it has always been.
+  const secondary = !firstWindow || opts.requestedHost != null;
+  loadRenderer(
+    win,
+    secondary
+      ? { window: 'workspace', ...(opts.requestedHost ? { host: opts.requestedHost } : {}) }
+      : undefined,
+  );
+  return win;
 }
 
 /** Open the dedicated account surface, or focus the existing one. */
@@ -233,16 +301,29 @@ function openAccountWindow(): void {
   loadRenderer(win, { window: 'account' });
 }
 
+/**
+ * Open another workspace window at the renderer's request (the picker's
+ * New-window button). Main owns the window vocabulary — the `window=
+ * workspace` query that marks a secondary launch lives here — so the
+ * renderer asks with a host name at most and never with a query string.
+ */
+function openWorkspaceWindow(opts?: { requestedHost?: string | null }): void {
+  createWindow(opts);
+}
+
 // Ensure only one instance of the app runs.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+  // A second launch of the exe lands here, and it opens a NEW workspace
+  // window rather than focusing the old one — that is how a second window on
+  // another host gets started (double-click the shortcut again, or launch
+  // `PocketShell.exe win35` and the new window dials win35 at once). The
+  // window arrives in front by virtue of being new; nothing needs focusing
+  // behind it.
+  app.on('second-instance', (_evt, argv) => {
+    createWindow({ requestedHost: parseLaunchHost(argv, { firstPositionalIsAppPath: !app.isPackaged }) });
   });
 
   // A rejection here means no window and no error surfaced anywhere, so the
@@ -297,12 +378,13 @@ if (!gotLock) {
         syncAuth,
         sync,
         openAccountWindow,
+        openWorkspaceWindow,
         getWindows: () => BrowserWindow.getAllWindows(),
       });
-      createWindow();
+      createWindow({ requestedHost: firstLaunchHost });
 
       app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+        if (workspaceWindows.size === 0) createWindow();
       });
     },
     (err: unknown) => {

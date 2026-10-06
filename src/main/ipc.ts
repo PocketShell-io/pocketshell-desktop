@@ -45,6 +45,7 @@ export function registerIpcHandlers(deps: {
   syncAuth: GoogleAuth;
   sync: SyncService;
   openAccountWindow: () => void;
+  openWorkspaceWindow: (opts?: { requestedHost?: string | null }) => void;
   getWindows: () => BrowserWindow[];
 }): void {
   const {
@@ -58,6 +59,7 @@ export function registerIpcHandlers(deps: {
     syncAuth,
     sync,
     openAccountWindow,
+    openWorkspaceWindow,
     getWindows,
   } = deps;
 
@@ -115,6 +117,7 @@ export function registerIpcHandlers(deps: {
     syncAuth,
     sync,
     openAccountWindow,
+    openWorkspaceWindow,
     getWindows,
     broadcast,
     tmuxClients,

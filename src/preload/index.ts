@@ -79,6 +79,15 @@ const api = {
     openAccount: (): Promise<void> => ipcRenderer.invoke(ipc.win.openAccount),
 
     /**
+     * Open another workspace window over this app instance, optionally for
+     * one host (`{ host }` — the new window dials it at launch; without it
+     * the window lands on the host picker). Main validates the name and owns
+     * the launch-query spelling; this side only forwards what it is given.
+     */
+    openNewWindow: (request?: { host?: string }): Promise<void> =>
+      ipcRenderer.invoke(ipc.win.openNewWindow, request),
+
+    /**
      * Scale the whole renderer. `factor` is a multiplier, 1 being unzoomed.
      *
      * `webFrame`, not an IPC round-trip to `webContents.setZoomFactor`, and

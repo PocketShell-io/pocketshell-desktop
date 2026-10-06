@@ -4,6 +4,7 @@ import { ipc } from '../../shared/channels.js';
 import { APP_TITLE } from '../../shared/windowTitle.js';
 import { vscodeRemoteFolderUrl } from '../../shared/vscodeDeepLink.js';
 import { checkForUpdate } from '../update/ReleaseChecker.js';
+import { isValidLaunchHostName } from '../launchArgs.js';
 import { log } from '../log.js';
 
 
@@ -13,6 +14,19 @@ export function registerAppIpc(ctx: IpcContext): void {
   // it remains available while the host picker is being used and gets its
   // own taskbar/Alt-Tab entry.
   ipcMain.handle(ipc.win.openAccount, () => ctx.openAccountWindow());
+
+  // --- win:openNewWindow ----------------------------------------------------
+  // Another workspace window over this same app instance — the multi-window
+  // answer to "one window on hetzner, one on win35". The renderer may name a
+  // host for the new window to dial at launch; the name is validated here
+  // with the same rule the command line uses, because it becomes part of the
+  // new window's load query and the pickers on BOTH ends match it against
+  // the host list — nothing else. No name, or a name that fails the check,
+  // is simply a window that opens on the picker.
+  ipcMain.handle(ipc.win.openNewWindow, (_evt, req?: { host?: unknown }) => {
+    const host = typeof req?.host === 'string' && isValidLaunchHostName(req.host) ? req.host : null;
+    ctx.openWorkspaceWindow(host ? { requestedHost: host } : undefined);
+  });
 
   // --- win:setTitle --------------------------------------------------------
   // The OS window title mirrors the VIEW — "PocketShell" on the picker, the
