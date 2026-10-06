@@ -1296,14 +1296,24 @@ describe('SessionTree — the Maintenance section', () => {
     expect(wrapper.find('.maintenance-section').exists()).toBe(true);
   });
 
-  it('re-emits a row’s close up to the host workspace, which disposes', async () => {
+  it('re-emits the row’s select with the workspace directory, no tab hand-off', async () => {
     openMaintenanceTool('hetzner');
     const wrapper = await open([session('git-a', `${HOME}/git/a`)], [], HOME, 'hetzner');
     expect(wrapper.find('.maintenance-section').exists()).toBe(true);
 
-    await wrapper.get('.maintenance-close').trigger('click');
-    // The section follows the tool list, and the list is the host workspace's
-    // to change — this component's whole job is the re-emit.
-    expect(wrapper.emitted<[string]>('closeTool')).toEqual([['htop']]);
+    await wrapper.get('.maintenance-section .dir-header').trigger('click');
+    // The row opens the workspace and nothing else — the tools are the
+    // workspace's tabs, and which one lands in front is its own memory.
+    const events = wrapper.emitted<[unknown, string?]>('select');
+    expect(events).toHaveLength(1);
+    expect((events![0]![0] as { key: string }).key).toBe(MAINTENANCE_ROOT);
+    expect(events![0]![1]).toBeUndefined();
+  });
+
+  it('counts the host’s open tools on the row', async () => {
+    openMaintenanceTool('hetzner', 'htop');
+    openMaintenanceTool('hetzner', 'usage');
+    const wrapper = await open([session('git-a', `${HOME}/git/a`)], [], HOME, 'hetzner');
+    expect(wrapper.get('.maintenance-section .count').text()).toBe('2');
   });
 });

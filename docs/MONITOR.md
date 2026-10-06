@@ -31,18 +31,21 @@ root rows are headers over real directories, and this one has none. Instead
 the panel renders a **Maintenance** section below the roots
 (`SessionTreeRowsView`) while the host has open tools, the app's own chrome
 rather than the host's data: it survives the session filter, takes no sort
-and no drag, and holds one row per tool like the tabs they are.
+and no drag, and it is ONE row — the tools are the workspace's tabs, so a
+second list of them in the panel would say everything twice. The row leads
+with the wrench, names the workspace, and carries the open-tool count in the
+root headers' notation.
 
-The rows behave like the workspace tabs they mirror. A row's click emits the
-same `select` the folder rows do — navigation, re-click focus and the
-current-row tint are the folder rows' own machinery — with the tool's
-identity as the tab hand-off; the row's `×` closes that tool, and closing
-the last one retires the section, which is the user saying "I don't have
-it". The Host monitor button (header strip, rail, palette — still the
+The row behaves like the folder rows do. Its click emits the same `select`
+— navigation, re-click focus and the current-row tint are the folder rows'
+own machinery — with no tab hand-off: which tool tab lands in front is the
+workspace's own memory. Closing a tool happens at the tab bar's `×`, and
+closing the last one retires the row, which is the user saying "I don't
+have it". The Host monitor button (header strip, rail, palette — still the
 `activity` glyph and the "Host monitor" name) is the door in: it OPENS the
 tool, then navigates. Both surfaces dispose through one list
-(`maintenance.ts`'s per-host `openTools`), so the tab's × and the row's ×
-are the same close.
+(`maintenance.ts`'s per-host `openTools`), so the tab bar and the sidebar
+count are the same list.
 
 ## 3. Tool tab, bare pane, and what outlives what
 
@@ -62,7 +65,7 @@ answer, and quitting htop leaves a live prompt in `~`, so the tab doubles as
 a maintenance shell.
 
 What outlives what, deliberately. **The tool** is the persistent thing —
-open until its `×` closes it, on either surface; the list is session-only
+open until its tab's `×` closes it; the list is session-only
 and a restart forgets it. **The pane** lives while its host's folder
 workspace stays mounted: across folder navigation on the same host it rides
 along mounted-but-hidden (a visited session tab's treatment, minus the

@@ -324,13 +324,13 @@ the new-window query — are documented with the spelling in
 `htop` in a terminal pane of our own, in the `::maintenance::` root — not a
 panel that samples the host — with Provider usage and Port forwarding beside
 it (mounted views, not overlays). Every Host monitor / Provider usage / Port
-forwarding trigger and the session tree's Maintenance section open a tool
-and navigate to that workspace, whose `tool`-kind tabs hold one pane per
+forwarding trigger and the session tree's one-row Maintenance section open
+the workspace and navigate to it, whose `tool`-kind tabs hold one pane per
 tool: a
 bare SSH login shell in `~` with `htop` typed into it over the existing
 `shell:open` typed-mode seam (no new IPC verb) for command tools, the tool's
-component for view tools. Tools persist until closed from either surface;
-the pane rides mounted-but-hidden across folder navigation on its host. The
+component for view tools. Tools persist until closed at the tab bar; the
+pane rides mounted-but-hidden across folder navigation on its host. The
 shape, the doors, the two tool kinds, the identity rules and the rationale
 for dropping the self-sampled panel are the decision record in
 `docs/MONITOR.md`; the constants live in `@ui/app/maintenance.ts`.
