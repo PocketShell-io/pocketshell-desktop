@@ -806,6 +806,45 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
     expect(urlLinks(t, 1, () => undefined)).toEqual([]);
   });
 
+  it('joins the slug the wrapper severed mid-word a few columns short of the margin', () => {
+    // The twelfth report: an SOP portal's markdown list, its addresses cut
+    // mid-word at the renderer's inset width — `…/sops/get-t` over
+    // `he-openai-invoice-and-receipt-from-chatgpt`. The head is the slug's
+    // own rest — hyphenated end to end, no slash, no hex — so the slug
+    // fragment bar admits it where the bare word `available` above stays
+    // refused.
+    const first =
+      '  - https://ops.dtcdev.click/06-finance-and-compliance/create-and-collect-invoices/sops/get-t';
+    const second = 'he-openai-invoice-and-receipt-from-chatgpt';
+    const t = fakeScreen([first, second], first.length + 3);
+
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(`${first}${second}`);
+    expect(scanBufferLine(t, 2).text.trimEnd()).toBe(`${first}${second}`);
+    // The address runs from the `h` of the scheme — the `  - ` bullet stays
+    // outside every range.
+    expect(urlLinks(t, 1, () => undefined).map((l) => l.text)).toEqual([first.slice(4), second]);
+    expect(urlLinks(t, 1, () => undefined)[1]?.range).toEqual({
+      start: { x: 1, y: 2 },
+      end: { x: second.length, y: 2 },
+    });
+
+    const open = vi.fn();
+    const url = `${first.slice(4)}${second}`;
+    urlLinks(t, 1, open)[0]?.activate(CLICK, url);
+    expect(open).toHaveBeenCalledWith(url);
+  });
+
+  it('still refuses a two-group hyphenated word, prose at the slug bar floor', () => {
+    // The slug bar's floor: `well-known` is prose with one hyphen and stays a
+    // space-wrap. The bar wants three hyphen-separated groups, where prose
+    // words end.
+    const first = 'docs: https://example.com/guide';
+    const t = fakeScreen([first, 'well-known facts'], first.length + 2);
+
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe(first);
+    expect(urlLinks(t, 1, () => undefined)).toEqual([]);
+  });
+
   it('joins a full row whose URL is cut right before its next segment', () => {
     // The eleventh report's shape at rule 1's geometry: the wrapper filled
     // the row to its last column and cut the address right before a segment,
