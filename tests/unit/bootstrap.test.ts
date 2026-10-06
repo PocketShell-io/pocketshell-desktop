@@ -15,6 +15,7 @@ import { USER_BIN_DIRS } from '@pocketshell/core';
 function fakeSsh(
   replies: { match: RegExp; stdout: string; exitCode?: number }[],
   log: string[] = [],
+  platform: 'posix' | 'windows' = 'posix',
 ): SshService {
   return {
     exec: (_id: string, command: string) => {
@@ -23,6 +24,7 @@ function fakeSsh(
       if (!hit) return Promise.resolve({ stdout: '', stderr: '', exitCode: 127 });
       return Promise.resolve({ stdout: hit.stdout, stderr: '', exitCode: hit.exitCode ?? 0 });
     },
+    hostPlatform: (_id: string) => Promise.resolve(platform),
   } as unknown as SshService;
 }
 
@@ -99,5 +101,32 @@ describe('runBootstrap', () => {
     expect(result.installer).toBeNull();
     // No helper means the daemon question was never asked, not answered "no".
     expect(result.daemonRunning).toBeNull();
+  });
+
+  it('skips the helper and tmux probes on a Windows host, and says so', async () => {
+    // A Windows dev box (OpenSSH, bash DefaultShell) can never answer those
+    // probes; running them is five round trips spent confirming the known.
+    const log: string[] = [];
+    const ssh = fakeSsh(
+      [
+        { match: /command -v a[' ]/, stdout: 'C:/Users/alexey/bin/a\n' },
+        { match: /command -v uv/, stdout: 'C:/Users/alexey/.local/bin/uv.exe\n' },
+      ],
+      log,
+      'windows',
+    );
+
+    const result = await runBootstrap(ssh, 'conn-1');
+
+    expect(result.platform).toBe('windows');
+    expect(result.pocketshell.installed).toBe(false);
+    expect(result.tmuxctl.installed).toBe(false);
+    expect(result.tmux.installed).toBe(false);
+    expect(result.aplexer.installed).toBe(true);
+    expect(log.some((c) => /command -v pocketshell/.test(c))).toBe(false);
+    expect(log.some((c) => /command -v tmuxctl/.test(c))).toBe(false);
+    expect(log.some((c) => /command -v tmux\b/.test(c))).toBe(false);
+    expect(log.some((c) => /command -v a[' ]/.test(c))).toBe(true);
+    expect(log.some((c) => /command -v uv/.test(c))).toBe(true);
   });
 });

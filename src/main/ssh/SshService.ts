@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import type { ClientChannel, PseudoTtyOptions } from 'ssh2';
-import type { ConnectResult, ExecResult, ShellId } from '@pocketshell/core';
+import type { ConnectResult, ExecResult, HostPlatform, ShellId } from '@pocketshell/core';
 import { newClient, ConnectionRegistry, type ConnectionRecord } from './ConnectionRegistry.js';
 import { ShellTracker } from './ShellTracker.js';
+import { HostPlatformTracker } from './hostPlatform.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { decodePublicKeyBlob } from '@pocketshell/core';
 import { log } from '../log.js';
@@ -81,6 +82,12 @@ export type CloseReason = 'user' | 'lost';
 export class SshService {
   private readonly shells: ShellTracker;
   /**
+   * The far end's OS family, probed once per connection and shared by every
+   * caller that must degrade on a Windows host (bootstrap, session listing,
+   * the port scan). Evicted on close so a re-dial re-probes.
+   */
+  private readonly platforms = new HostPlatformTracker();
+  /**
    * Listeners fired (best-effort) when a connection is closed. `reason`
    * distinguishes a user-initiated disconnect from the transport dropping
    * underneath us, so the UI can say which one happened.
@@ -98,6 +105,15 @@ export class SshService {
   /** Expose the shell tracker so the IPC layer can route input/resize/close. */
   get shellTracker(): ShellTracker {
     return this.shells;
+  }
+
+  /**
+   * The far end's OS family ('posix' | 'windows'), probed once per connection
+   * (one `uname -s` exec, `cmd /c ver` beneath it) and shared. A probe against
+   * an unknown connection throws — callers degrade rather than guess.
+   */
+  hostPlatform(connectionId: string): Promise<HostPlatform> {
+    return this.platforms.platformOf(this, connectionId);
   }
 
   /** Subscribe to connection-close events (for evicting cached per-conn state). */
@@ -373,6 +389,7 @@ export class SshService {
    */
   close(connectionId: string, reason: CloseReason = 'user'): void {
     this.shells.closeAllForConnection(connectionId);
+    this.platforms.forget(connectionId);
     const rec = this.registry.remove(connectionId);
     if (!rec) return;
     for (const listener of this.closeListeners) {
