@@ -1,4 +1,5 @@
 import type { AplexerSessionRecord, AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionResult, RenameSessionResult, ReposListRequest, ReposListResult, ReposScopeResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
+import { bashPathForm, windowsWorkspaceForm } from '@pocketshell/core';
 export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
 /**
  * Project-folder-first session creation — the desktop half of the flow the
@@ -138,7 +139,12 @@ export class ProjectsService {
       return { ok: false, path: null, error: 'Enter a single folder name (no "/" or "..").' };
     }
     const target = childPath(request.parent, safeName);
-    const made = await this.ssh.exec(connectionId, pathAwareCommand(mkdirCommand(target)));
+    // `mkdir` runs in a shell: the SFTP spelling of the parent (`/C:/...`) is
+    // the one form bash refuses, so the request is folded first.
+    const made = await this.ssh.exec(
+      connectionId,
+      pathAwareCommand(mkdirCommand(bashPathForm(target))),
+    );
     if (made.exitCode !== 0) {
       return {
         ok: false,
@@ -324,6 +330,12 @@ export class ProjectsService {
     if (canonical === null) {
       return failed('folder-missing', `Start folder does not exist on the host: ${folder}`);
     }
+    // The aplexer branch speaks drive spellings (`C:/Users/...`): the host
+    // records every workspace in its own folded form, and reuse/free-name
+    // checks compare against the snapshot's workspaces. Everything downstream
+    // of here — the pending row's folder, the tree registry, `a start` —
+    // carries this one spelling.
+    const aplexerFolder = windowsWorkspaceForm(canonical);
     const base = resolveSessionName(request.customName ?? null, canonical, home);
 
     const policy = request.namePolicy ?? 'reuse';
@@ -343,7 +355,7 @@ export class ProjectsService {
       // IS the grouping and must carry the folder.
       return this.startAplexerSession(
         connectionId,
-        canonical,
+        aplexerFolder,
         resolveAplexerTag(request.customName),
         policy,
         failed,
@@ -360,7 +372,7 @@ export class ProjectsService {
         'create-failed',
         'Sessions on a Windows host are aplexer sessions (`a start`), and no aplexer ' +
           'answered. Install aplexer on the host to start sessions here.',
-        { folder: canonical },
+        { folder: aplexerFolder },
       );
     }
 
@@ -491,8 +503,14 @@ export class ProjectsService {
       }
       return this.createAplexerSession(connectionId, folder, free, policy, failed);
     }
+    // The host records workspaces in its own folded spelling (`C:\...`); the
+    // folder here is the app's drive form (`C:/...`). Both name one directory,
+    // and the comparison goes through the same normalisation `findSession`
+    // applies — a raw `===` would miss every Windows-host record and duplicate
+    // the session instead of reusing it.
+    const wanted = windowsWorkspaceForm(folder);
     const live = records
-      ? (records.find((r) => r.workspace === folder && r.tag === base) ?? null)
+      ? (records.find((r) => windowsWorkspaceForm(r.workspace) === wanted && r.tag === base) ?? null)
       : await aplexer.findSession(connectionId, folder, base);
     if (live) {
       return {
@@ -587,8 +605,11 @@ export class ProjectsService {
     base: string,
     records?: AplexerSessionRecord[],
   ): Promise<string | null> {
+    // Same normalisation as the reuse check above: the records carry the
+    // host's folded workspace spelling, the argument carries the app's.
+    const wanted = windowsWorkspaceForm(workspace);
     const tags = records
-      ? new Set(records.filter((r) => r.workspace === workspace).map((r) => r.tag))
+      ? new Set(records.filter((r) => windowsWorkspaceForm(r.workspace) === wanted).map((r) => r.tag))
       : await this.aplexer!.liveTags(connectionId, workspace);
     if (tags === null) return null;
     if (!tags.has(base)) return base;
@@ -933,11 +954,16 @@ export class ProjectsService {
    * round trip on the create path for an answer `cd`'s exit code already
    * carries. The callers that genuinely have a fallback (`createFolder`, which
    * made the directory itself one exec earlier) keep it at the call site.
+   *
+   * The spelling is normalised before the `cd`: a folder picked over SFTP on
+   * a Windows host arrives as `/C:/...`, the one form bash refuses. The
+   * answer is `pwd -P` — an MSYS path there — and the aplexer branch folds it
+   * to the drive form afterwards.
    */
   private async canonicalise(connectionId: string, path: string): Promise<string | null> {
     const res = await this.ssh.exec(
       connectionId,
-      pathAwareCommand(resolveDirectoryCommand(path)),
+      pathAwareCommand(resolveDirectoryCommand(bashPathForm(path))),
     );
     if (res.exitCode !== 0) return null;
     return firstNonEmptyLine(res.stdout) ?? null;

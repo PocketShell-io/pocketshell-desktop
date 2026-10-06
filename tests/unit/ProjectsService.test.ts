@@ -423,6 +423,60 @@ describe('ProjectsService.startSession on an aplexer host', () => {
     ).projects.startSession(CONN, { folder: '~/git/x', customName: 'Staging!' });
     expect(custom.sessionName).toBe('Staging');
   });
+
+  it('speaks drive-form workspaces on a windows host, from any folder spelling', async () => {
+    // The host (win35 shape): `$HOME` and `pwd -P` answer in the MSYS form,
+    // aplexer records workspaces in its backslash form, and a folder picked
+    // over SFTP arrives as `/C:/...` — the one spelling bash refuses. The
+    // create must convert at every boundary and reuse must match the record.
+    const WIN_HOME_MSYS = '/c/Users/User';
+    const record = {
+      id: 'apx-w1',
+      workspace: 'C:\\Users\\User\\git\\x',
+      tag: 'main',
+      phase: 'running',
+      worker_alive: true,
+    };
+    const responders: Responder[] = [
+      (c) => (c.includes('printf %s "$HOME"') ? ok(`${WIN_HOME_MSYS}\n`) : null),
+      (c) => (c.includes('pwd -P') ? ok('C:/Users/User/git/x\n') : null),
+      (c) => (c.includes('command -v a') ? ok('/c/Users/User/bin/a') : null),
+      (c) => (c.includes('a snapshot --json') ? ok(JSON.stringify([record])) : null),
+    ];
+    const { projects, commands } = serviceWithAplexer(responders, 'windows');
+
+    // The reuse check: the folder arrives in the SFTP spelling, the record
+    // carries the host's backslash form — still one session.
+    const reused = await projects.startSession(CONN, { folder: '/C:/Users/User/git/x' });
+    expect(reused).toMatchObject({
+      ok: true,
+      sessionName: 'main',
+      reused: true,
+      via: 'aplexer',
+      aplexerId: 'apx-w1',
+      folder: 'C:/Users/User/git/x',
+    });
+    expect(commands.some((c) => c.includes('a start'))).toBe(false);
+
+    // A create sends `a start` the folded drive form, not the SFTP spelling.
+    const { projects: p2, commands: commands2 } = serviceWithAplexer(
+      responders.concat([
+        (c) =>
+          c.includes('a start')
+            ? ok(JSON.stringify({ ...record, id: 'apx-w2', tag: 'dev' }))
+            : null,
+      ]),
+      'windows',
+    );
+    const created = await p2.startSession(CONN, {
+      folder: '/C:/Users/User/git/x',
+      customName: 'dev',
+    });
+    expect(created.ok).toBe(true);
+    const start = commands2.map(inner).find((c) => c.includes('a start'))!;
+    expect(start).toContain(`--workspace 'C:/Users/User/git/x'`);
+    expect(start).not.toContain('/C:/');
+  });
 });
 
 describe('ProjectsService.deriveSessionName on an aplexer host', () => {
