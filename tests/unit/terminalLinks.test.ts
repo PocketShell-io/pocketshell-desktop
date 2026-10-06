@@ -1764,3 +1764,59 @@ describe('pathLinks', () => {
     expect(files.reveal).toBe('tmp/a.mp3');
   });
 });
+
+describe('scanBufferLine — a command echo cut ahead of the transcript result gutter', () => {
+  // The agent transcript prefixes each tool block's rows with its elbow
+  // marker (`⎿ `), and a long command echo runs INTO that block: the bullet
+  // row wrapped after `/home/alexey/tmp/` and the command's own tail landed
+  // on the block's first row, elbow and all. The elbow was no gutter the
+  // rules knew and no space the hanging indent reads past — the head read
+  // `⎿` and the fit guard refused — so the lock path stayed two fragments,
+  // the first opening a directory, the second linkifying alone as a
+  // relative path resolving nowhere.
+  const PROSE =
+    'A git lock file exists — checking whether a git process is actually touching it first.';
+  const RAN = `• Ran pgrep -af 'git ' | grep -v pgrep | head; echo ---; ls -la /home/alexey/tmp/`;
+  const CONT = '⎿ mem-hub/.git/index.lock 2>/dev/null; date';
+  const RESULT = '⎿ 2838831 /usr/bin/python3 -m launcher --config-dir /home/alexey/git/';
+  const ROWS = [PROSE, 'it.', RAN, CONT, RESULT];
+  const term = (): Terminal => fakeScreen(ROWS, PROSE.length);
+
+  it('joins the elbow-marked tail of the command echo, dropping the marker', () => {
+    // The command row ends five columns short of the prose row's margin — no
+    // rule 1 geometry — and the elbow is the marker the join reads past, like
+    // the `│` gutter it sits beside.
+    expect(scanBufferLine(term(), 3).text.trimEnd()).toBe(`${RAN}${CONT.slice(2)}`);
+    expect(scanBufferLine(term(), 4).text.trimEnd()).toBe(`${RAN}${CONT.slice(2)}`);
+  });
+
+  it('keeps the result block below a whole command echo a separate line', () => {
+    // `date` ended the command's tail cleanly: the result row is its own
+    // logical line and never glues upward onto the echo.
+    expect(scanBufferLine(term(), 5).text.trimEnd()).toBe(RESULT);
+  });
+
+  it('linkifies the whole lock path, the elbow outside every range', () => {
+    const t = term();
+    const context = (): { sessionName: string } => ({ sessionName: 'mem-hub' });
+    for (const line of [3, 4]) {
+      expect(pathLinks(t, line, context).map((l) => l.text)).toEqual([
+        '/home/alexey/tmp/',
+        'mem-hub/.git/index.lock',
+      ]);
+    }
+    const links = pathLinks(t, 3, context);
+    expect(links[0]?.range).toEqual({
+      start: { x: RAN.indexOf('/home') + 1, y: 3 },
+      end: { x: RAN.length, y: 3 },
+    });
+    expect(links[1]?.range).toEqual({
+      start: { x: 3, y: 4 },
+      end: { x: 2 + 'mem-hub/.git/index.lock'.length, y: 4 },
+    });
+
+    const files = useFilesStore();
+    links[0]?.activate(CLICK, '/home/alexey/tmp/mem-hub/.git/index.lock');
+    expect(files.reveal).toBe('/home/alexey/tmp/mem-hub/.git/index.lock');
+  });
+});
