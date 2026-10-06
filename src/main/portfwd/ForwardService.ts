@@ -63,7 +63,9 @@ export class ForwardService {
 
   /** Run a one-shot remote port scan (does not require the forwarder running). */
   async scan(connectionId: string): Promise<RemotePort[]> {
-    return scanRemotePorts(this.ssh, connectionId);
+    return scanRemotePorts(this.ssh, connectionId, {
+      platform: await this.ssh.hostPlatform(connectionId),
+    });
   }
 
   /** Start the auto-forwarder for a connection (idempotent). */
@@ -84,6 +86,7 @@ export class ForwardService {
       names: numericKeys(persisted.names),
       intents,
       configForwards,
+      platform: this.ssh.hostPlatform(connectionId),
     });
     fwd.onStates((states) => {
       for (const l of this.listeners) l(connectionId, states);

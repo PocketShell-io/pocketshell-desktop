@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import type { SshService } from '../ssh/SshService.js';
 import type { ConnectionRegistry } from '../ssh/ConnectionRegistry.js';
 import { LOOPBACK_HOST, MAX_PORT } from '@pocketshell/core';
+import type { HostPlatform } from '@pocketshell/core';
 import { Forwarder, forwardKey, type ForwardState, type ForwardOrigin } from './Forwarder.js';
 import { scanRemoteListeners, type RemotePort, type ScanResult } from './scanRemotePorts.js';
 import type { PortIntent } from './PortfwdStore.js';
@@ -81,6 +82,14 @@ export interface AutoForwarderOptions {
    * `forwarder.py:916-922`) and surfaced with `origin: 'ssh-config'`.
    */
   configForwards?: ForwardSpec[];
+  /**
+   * The host's OS family, as the caller's already-running promise. Windows
+   * hosts take the `netstat -ano` scan arm; POSIX hosts (and the default)
+   * take the `ss`/net-tools arm. A promise rather than a value so a
+   * synchronous `startAuto` can hand off the single-flight probe without
+   * delaying the forwarder's construction.
+   */
+  platform?: Promise<HostPlatform>;
 }
 
 
@@ -104,6 +113,8 @@ export class AutoForwarder {
   private readonly configPorts = new Set<number>();
   private readonly listeners = new Set<(states: ForwardState[]) => void>();
   private config: AutoForwardConfig;
+  /** Resolved once per scan tick, before the latch — see scanAndForward. */
+  private readonly platform: Promise<HostPlatform>;
   /** Single-flight guard: overlapping scans are DROPPED, not queued. */
   private scanning = false;
   private status: AutoForwarderStatus = {
@@ -129,6 +140,10 @@ export class AutoForwarder {
     for (const spec of this.configForwards) {
       if (spec.kind === 'local') this.configPorts.add(spec.destPort);
     }
+    // The platform promise is cache-warm (SshService probes once per
+    // connection, single-flight) and every construction site passes it; the
+    // default keeps hand-built test/option-less instances on the POSIX arm.
+    this.platform = options.platform ?? Promise.resolve('posix');
   }
 
   /** Subscribe to the forward-state snapshot (called after each scan). */
@@ -337,12 +352,18 @@ export class AutoForwarder {
   }
 
   private async scanAndForward(): Promise<void> {
+    // The platform answer is resolved BEFORE the single-flight latch: it is
+    // a cache-warm promise (SshService probes once per connection), and
+    // asking it inside the latch would add a tick between latch acquisition
+    // and the exec, re-ordering concurrent scan requests against the drop
+    // rule below.
+    const platform = await this.platform;
     // Overlapping scans are dropped, not queued (`dashboard.py:936-938`).
     // Without this, two slow scans can interleave their teardown decisions.
     if (this.scanning) return;
     this.scanning = true;
     try {
-      const result = await this.scan();
+      const result = await this.scan(platform);
       this.status = {
         scanning: false,
         lastScanAt: Date.now(),
@@ -467,8 +488,8 @@ export class AutoForwarder {
     }
   }
 
-  private async scan(): Promise<ScanResult> {
-    return scanRemoteListeners(this.ssh, this.connectionId);
+  private async scan(platform: HostPlatform): Promise<ScanResult> {
+    return scanRemoteListeners(this.ssh, this.connectionId, { platform });
   }
 
   // ---------------------------------------------------------------------

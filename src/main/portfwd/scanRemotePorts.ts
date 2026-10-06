@@ -1,5 +1,11 @@
 import type { SshService } from '../ssh/SshService.js';
 import { pathAwareCommand } from '../helper/bootstrap.js';
+import type { HostPlatform } from '@pocketshell/core';
+import {
+  parseNetstatWindowsAno,
+  PORT_LISTENER_SCAN_COMMAND_WINDOWS,
+  SECTION_WIN_NETSTAT_ANO,
+} from '@pocketshell/core';
 import {
   parseSsTln,
   parseSsTlnp,
@@ -127,14 +133,30 @@ export function mergeScanSections(stdout: string): RemotePort[] {
  *
  * Two execs at most: one sentinel-delimited listener probe, and one
  * `/proc/<pid>/cwd` probe that is skipped entirely when nothing was attributed.
+ *
+ * On a Windows host the POSIX probes are the wrong tool: no `ss`, no
+ * net-tools, and a `/proc` that does not exist. The probe is the Windows
+ * arm ({@link PORT_LISTENER_SCAN_COMMAND_WINDOWS} — `netstat -ano`, which a
+ * bash DefaultShell resolves from System32), the single section is parsed
+ * with the Windows parser, and the cwd probe is skipped — attribution stops
+ * at the PID, which `netstat -ano` carries and `/proc` could not extend.
+ *
+ * [platform] is the host answer from `ssh.hostPlatform` (cached there);
+ * anything not `'windows'` runs the POSIX probe, including the 'posix'
+ * default a caller that cannot ask gets.
  */
 export async function scanRemoteListeners(
   ssh: SshService,
   connectionId: string,
+  options: { platform?: HostPlatform } = {},
 ): Promise<ScanResult> {
+  const windows = options.platform === 'windows';
   let listener;
   try {
-    listener = await ssh.exec(connectionId, pathAwareCommand(LISTENER_SCAN_COMMAND));
+    listener = await ssh.exec(
+      connectionId,
+      windows ? PORT_LISTENER_SCAN_COMMAND_WINDOWS : pathAwareCommand(LISTENER_SCAN_COMMAND),
+    );
   } catch (e) {
     return { ok: false, ports: [], error: (e as Error).message };
   }
@@ -151,7 +173,11 @@ export async function scanRemoteListeners(
     return { ok: false, ports: [], error: 'port scan produced no output' };
   }
 
-  const ports = mergeScanSections(listener.stdout);
+  const ports = windows
+    ? parseNetstatWindowsAno(sections[SECTION_WIN_NETSTAT_ANO] ?? '')
+    : mergeScanSections(listener.stdout);
+  if (windows) return { ok: true, ports, error: null };
+
   const pids = [...new Set(ports.map((p) => p.pid))].filter(
     (n): n is number => Number.isInteger(n) && (n as number) > 0,
   );
@@ -184,6 +210,7 @@ export async function scanRemoteListeners(
 export async function scanRemotePorts(
   ssh: SshService,
   connectionId: string,
+  options: { platform?: HostPlatform } = {},
 ): Promise<RemotePort[]> {
-  return (await scanRemoteListeners(ssh, connectionId)).ports;
+  return (await scanRemoteListeners(ssh, connectionId, options)).ports;
 }

@@ -42,6 +42,7 @@ function scanStdout(parts: {
 function fakeSsh(
   replies: { match: RegExp; stdout: string; stderr?: string; exitCode?: number }[],
   log: string[] = [],
+  platform: 'posix' | 'windows' = 'posix',
 ): SshService {
   return {
     exec: (_id: string, command: string) => {
@@ -54,6 +55,7 @@ function fakeSsh(
         exitCode: hit.exitCode ?? 0,
       });
     },
+    hostPlatform: (_id: string) => Promise.resolve(platform),
   } as unknown as SshService;
 }
 
@@ -286,5 +288,54 @@ describe('scanRemoteListeners', () => {
     expect(result.ok).toBe(true);
     expect(result.ports.length).toBeGreaterThan(0);
     expect(result.ports.every((p) => p.cwd === null)).toBe(true);
+  });
+
+  it('runs the Windows arm on a windows host: netstat -ano, one exec, no cwd probe', async () => {
+    const log: string[] = [];
+    const ssh = fakeSsh(
+      [
+        {
+          match: /netstat -ano/,
+          stdout: [
+            '<<<PS_WIN_NETSTAT_ANO>>>',
+            '',
+            'Active Connections',
+            '',
+            '  Proto  Local Address          Foreign Address        State           PID',
+            '  TCP    0.0.0.0:22               0.0.0.0:0              LISTENING       5000',
+            '  TCP    127.0.0.1:8000          0.0.0.0:0              LISTENING       7000',
+            '  TCP    [::]:22                 [::]:0                 LISTENING       5000',
+            '  UDP    0.0.0.0:5353            *:*                                    6000',
+          ].join('\r\n'),
+        },
+      ],
+      log,
+      'windows',
+    );
+    const result = await scanRemoteListeners(ssh, 'c1', { platform: 'windows' });
+    expect(result.ok).toBe(true);
+    expect(result.ports.map((p) => p.port).sort((a, b) => a - b)).toEqual([22, 8000]);
+    expect(result.ports.find((p) => p.port === 8000)).toMatchObject({
+      port: 8000,
+      pid: 7000,
+      process: null,
+      cwd: null,
+    });
+    // One round trip: the POSIX arm's `ss -tln` and /proc readlink loop must
+    // both stay off a host that has neither.
+    expect(log).toHaveLength(1);
+    expect(log[0]).toContain('netstat -ano');
+  });
+
+  it('keeps the POSIX arm on a posix host even when netstat -ano would answer', async () => {
+    const log: string[] = [];
+    const ssh = fakeSsh(
+      [{ match: /ss -tln/, stdout: scanStdout({ ssTln: fixture('debian-root-ss-tln') }) }],
+      log,
+      'posix',
+    );
+    const result = await scanRemoteListeners(ssh, 'c1', { platform: 'posix' });
+    expect(result.ok).toBe(true);
+    expect(log[0]).toContain('ss -tln');
   });
 });

@@ -24,6 +24,10 @@ class ScriptedSsh {
   private queue: { ports: number[] | null }[] = [];
   execCount = 0;
 
+  hostPlatform(_id: string): Promise<'posix' | 'windows'> {
+    return Promise.resolve('posix');
+  }
+
   /** Queue one scan result. `null` means the scan FAILS (non-zero exit). */
   push(ports: number[] | null): this {
     this.queue.push({ ports });
@@ -466,6 +470,7 @@ describe('policy', () => {
 describe('forward metadata', () => {
   it('carries the scanned process name onto the forward state', async () => {
     const ssh = {
+      hostPlatform: (_id: string) => Promise.resolve('posix'),
       exec: (_id: string, command: string) => {
         if (/readlink/.test(command)) {
           return Promise.resolve({ stdout: '1812\t/srv/app\n', stderr: '', exitCode: 0 });

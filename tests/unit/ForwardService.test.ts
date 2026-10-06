@@ -15,6 +15,10 @@ import type { ForwardState } from '../../src/main/portfwd/Forwarder';
 class ScriptedSsh {
   private closeListeners = new Set<(connectionId: string, reason: CloseReason) => void>();
 
+  hostPlatform(_id: string): Promise<'posix' | 'windows'> {
+    return Promise.resolve('posix');
+  }
+
   onCloseConnection(listener: (connectionId: string, reason: CloseReason) => void): () => void {
     this.closeListeners.add(listener);
     return () => this.closeListeners.delete(listener);
