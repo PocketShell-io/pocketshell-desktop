@@ -4,11 +4,13 @@ import { pathAwareCommand, runBootstrap } from '@main/helper/bootstrap';
 import { USER_BIN_DIRS } from '@pocketshell/core';
 
 /**
- * Bootstrap is the app's answer to "is this host ready?", and until now it
- * answered without ever looking at `tmuxctl` — the one binary the session-join
- * command actually runs. A host with `pocketshell` but no `tmuxctl` got a green
- * chip and a terminal that failed on every click, which is precisely the class
- * of bug these tests exist to close.
+ * Bootstrap is the app's answer to "is this host ready?". Readiness is
+ * `pocketshell` alone (`missingHostTools` in the core decides it): the 0.5.x
+ * helper carries aplexer as a pinned dependency, and the app finds its
+ * bundled `a` through the USER_BIN_DIRS the probe also searches. The tmuxctl
+ * and tmux probes ride along for the record — a pre-0.5 helper still routes
+ * its legacy tmux paths through them — which is why these tests pin how they
+ * are probed, not what the host is judged to be missing.
  */
 
 /** Minimal SshService double: one canned reply per command substring. */
@@ -74,22 +76,32 @@ describe('runBootstrap', () => {
     expect(log.some((c) => /command -v tmuxctl/.test(c) && c.includes('.local/bin'))).toBe(true);
   });
 
-  it('reports a host with the helper but no tmuxctl as join-broken', async () => {
-    // The exact shape that used to read as a healthy host: pocketshell present,
-    // tmuxctl absent, so every session click failed in the terminal instead.
-    const ssh = fakeSsh([
-      { match: /command -v pocketshell/, stdout: '/usr/bin/pocketshell\n' },
-      { match: /pocketshell --version/, stdout: 'pocketshell 0.4.44\n' },
-      { match: /command -v tmux\b/, stdout: '/usr/bin/tmux\n' },
-      { match: /tmux --version/, stdout: 'tmux 3.4\n' },
-      // tmuxctl, uv/pipx and systemctl all fall through to exit 127.
-    ]);
+  it('reports a host with the helper but no tmuxctl for the record — readiness rides the bundled aplexer', async () => {
+    // The shape the old framing called broken: pocketshell present, tmuxctl
+    // absent. On a current helper that is just a host without the legacy tmux
+    // paths — the join rides the bundled `a` — so the probe records the
+    // absence without any readiness verdict hanging off it.
+    const log: string[] = [];
+    const ssh = fakeSsh(
+      [
+        { match: /command -v pocketshell/, stdout: '/usr/bin/pocketshell\n' },
+        { match: /pocketshell --version/, stdout: 'pocketshell 0.4.44\n' },
+        { match: /command -v tmux\b/, stdout: '/usr/bin/tmux\n' },
+        { match: /tmux --version/, stdout: 'tmux 3.4\n' },
+        // tmuxctl, `a`, uv/pipx and systemctl all fall through to exit 127.
+      ],
+      log,
+    );
 
     const result = await runBootstrap(ssh, 'conn-1');
 
     expect(result.pocketshell.installed).toBe(true);
     expect(result.tmuxctl.installed).toBe(false);
     expect(result.tmuxctl.path).toBeNull();
+    // The aplexer probe rides the same widened PATH as the helper probe — on
+    // a uv/pipx pocketshell host that PATH is what makes the bundled `a`
+    // findable, so this is the join's real binary being searched properly.
+    expect(log.some((c) => /command -v a[' ]/.test(c) && c.includes('uv/tools/pocketshell/bin'))).toBe(true);
   });
 
   it('never throws on a host where nothing is installed', async () => {
