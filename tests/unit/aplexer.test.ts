@@ -238,7 +238,7 @@ describe('aplexer commands', () => {
 });
 
 /** Minimal SshService fake: scripted exec answers, tracked shells. */
-function makeSsh(): {
+function makeSsh(platform: 'posix' | 'windows' = 'posix'): {
   ssh: SshService;
   execCalls: string[];
   answerExec: (stdout: string, exitCode: number, stderr?: string) => void;
@@ -254,6 +254,7 @@ function makeSsh(): {
   let counter = 0;
   const ssh = {
     shellTracker: { get: (id: ShellId) => shells.get(id) },
+    hostPlatform: async (_connectionId: string) => platform,
     exec: async (_connectionId: string, command: string): Promise<ExecResult> => {
       execCalls.push(command);
       if (failure) throw failure;
@@ -477,6 +478,19 @@ describe('PocketshellClient.listSessions', () => {
     const rows = await client.listSessions('c1');
     expect(rows.map((s) => s.name)).toEqual(['main', 'work']);
     expect(execCalls.some((c) => c.includes('a snapshot'))).toBe(false);
+  });
+
+  it('answers empty on a windows host with no aplexer — no helper exec, no tmux probe', async () => {
+    // The legacy path cannot succeed on Windows: the helper and tmux do not
+    // exist there, and this method is the panel's five-second poll, so each
+    // wasted exec would be perpetual.
+    const { ssh, execCalls } = makeSsh('windows');
+    const client = new PocketshellClient(ssh, new AplexerClient(ssh));
+    const rows = await client.listSessions('c1');
+    expect(rows).toEqual([]);
+    expect(execCalls.some((c) => c.includes('command -v a'))).toBe(true);
+    expect(execCalls.some((c) => c.includes('pocketshell sessions list'))).toBe(false);
+    expect(execCalls.some((c) => c.includes('tmux list-sessions'))).toBe(false);
   });
 });
 

@@ -47,7 +47,10 @@ const fail = (exitCode: number, stderr = '', stdout = ''): ExecResult => ({
  * the host as much as on what comes back, so a change to the wire form of a
  * command shows up here rather than only on a live box.
  */
-function fakeSsh(responders: Responder[]): { ssh: SshService; commands: string[] } {
+function fakeSsh(
+  responders: Responder[],
+  platform: 'posix' | 'windows' = 'posix',
+): { ssh: SshService; commands: string[] } {
   const commands: string[] = [];
   const ssh = {
     exec: (_connectionId: string, command: string): Promise<ExecResult> => {
@@ -58,6 +61,8 @@ function fakeSsh(responders: Responder[]): { ssh: SshService; commands: string[]
       }
       return Promise.resolve(fail(127, 'sh: not found'));
     },
+    hostPlatform: (_connectionId: string): Promise<'posix' | 'windows'> =>
+      Promise.resolve(platform),
   } as unknown as SshService;
   return { ssh, commands };
 }
@@ -66,20 +71,26 @@ const homeResponder: Responder = (c) => (c.includes('printf %s "$HOME"') ? ok(HO
 const pwdResponder: Responder = (c) => (c.includes('pwd -P') ? ok(`${HOME}/git/x\n`) : null);
 const noSessionResponder: Responder = (c) => (c.includes('has-session') ? fail(1) : null);
 
-function service(responders: Responder[]): {
+function service(
+  responders: Responder[],
+  platform: 'posix' | 'windows' = 'posix',
+): {
   projects: ProjectsService;
   commands: string[];
 } {
-  const { ssh, commands } = fakeSsh(responders);
+  const { ssh, commands } = fakeSsh(responders, platform);
   return { projects: new ProjectsService(ssh, new PocketshellClient(ssh)), commands };
 }
 
 /** The same harness, with the aplexer client wired — the main-session path. */
-function serviceWithAplexer(responders: Responder[]): {
+function serviceWithAplexer(
+  responders: Responder[],
+  platform: 'posix' | 'windows' = 'posix',
+): {
   projects: ProjectsService;
   commands: string[];
 } {
-  const { ssh, commands } = fakeSsh(responders);
+  const { ssh, commands } = fakeSsh(responders, platform);
   const aplexer = new AplexerClient(ssh);
   return {
     projects: new ProjectsService(ssh, new PocketshellClient(ssh, aplexer), aplexer),
@@ -316,6 +327,24 @@ describe('ProjectsService.startSession', () => {
       (c) => (c.includes('sessions create') ? ok('git-x-7\n') : null),
     ]);
     expect((await projects.startSession(CONN, { folder: '~/git/x' })).sessionName).toBe('git-x-7');
+  });
+
+  it('refuses without tmux execs on a windows host with no aplexer', async () => {
+    // tmux and the helper cannot exist on Windows; the whole tmux path is a
+    // chain of round trips that all answer "command not found". The refusal
+    // must come before the locator, the free-name walk, and the create.
+    const { projects, commands } = service(
+      [homeResponder, pwdResponder],
+      'windows',
+    );
+    const out = await projects.startSession(CONN, { folder: '~/git/x', namePolicy: 'unique' });
+    expect(out.ok).toBe(false);
+    expect(out.code).toBe('create-failed');
+    expect(out.error).toContain('aplexer');
+    expect(commands.some((c) => c.includes('has-session'))).toBe(false);
+    expect(commands.some((c) => c.includes('__ps_n='))).toBe(false);
+    expect(commands.some((c) => c.includes('sessions create'))).toBe(false);
+    expect(commands.some((c) => c.includes('new-session'))).toBe(false);
   });
 });
 

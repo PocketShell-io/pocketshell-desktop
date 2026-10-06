@@ -350,6 +350,12 @@ export class PocketshellClient {
    * raw `tmux list-sessions` fallback beneath it. Returns [] when no server
    * of either kind is running (the canonical "empty" state, not an error).
    *
+   * A Windows host never runs the legacy path: the helper and tmux cannot
+   * exist there, so those execs are three round trips spent re-answering a
+   * settled question — and this method is the panel's five-second poll, so
+   * the waste would be perpetual. On Windows the answer is the aplexer arm
+   * or empty, nothing between.
+   *
    * ORDER CONTRACT: what comes back is already in the order the panel shows
    * it. The aplexer arm is the host's own sort, untouched; the legacy arms
    * are {@link byCreationOrder}. The renderer groups but does not re-sort.
@@ -361,6 +367,10 @@ export class PocketshellClient {
         log('sessions', `listed: [${aplexerRows.map((session) => session.name).join(", ")}]`);
         return this.withRepoRoots(connectionId, aplexerRows);
       }
+    }
+    if ((await this.ssh.hostPlatform(connectionId)) === 'windows') {
+      log('sessions', 'listed: [] (windows host, no aplexer)');
+      return [];
     }
     // Primary + companion in ONE round-trip. `pocketshell sessions list` gives
     // names and creation times; the tmux probe gives the cwd, attached flag,
@@ -820,6 +830,21 @@ export class PocketshellClient {
     connectionId: string,
     opts: { name: string; cwd: string },
   ): Promise<CreateSessionOutcome> {
+    // No helper path on a Windows host: `pocketshell` and tmux both cannot
+    // exist there, so running the create (and its tmux fallback) is two execs
+    // spent re-confirming what the platform probe already settled, answered
+    // with a raw "command not found" that names nothing actionable. Aplexer
+    // is the session manager on Windows; when it is missing, say so.
+    if ((await this.ssh.hostPlatform(connectionId)) === 'windows') {
+      return {
+        ok: false,
+        name: null,
+        via: 'tmux-fallback',
+        error:
+          'Sessions on a Windows host are aplexer sessions (`a start`), and no aplexer ' +
+          'answered. Install aplexer on the host to start sessions here.',
+      };
+    }
     const res = await this.ssh.exec(
       connectionId,
       pathAwareCommand(createSessionCommand(opts.name, opts.cwd)),
@@ -840,6 +865,8 @@ export class PocketshellClient {
         error: annotateHelperRejection(hostMessage, output),
       };
     }
+    // No tmux fallback on a Windows host — the guard at the top of this
+    // method already answered for that case.
     const fallback = await this.ssh.exec(
       connectionId,
       pathAwareCommand(fallbackCreateSessionCommand(opts.name, opts.cwd)),

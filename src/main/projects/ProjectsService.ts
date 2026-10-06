@@ -351,6 +351,19 @@ export class ProjectsService {
       );
     }
 
+    // A Windows host ends here only when aplexer is missing — tmux and the
+    // helper cannot exist on it, so the tmux path below (the locator, the
+    // free-name walk, the create) is a chain of round trips that all answer
+    // "command not found". Refuse now, with the sentence that names the cure.
+    if ((await this.ssh.hostPlatform(connectionId)) === 'windows') {
+      return failed(
+        'create-failed',
+        'Sessions on a Windows host are aplexer sessions (`a start`), and no aplexer ' +
+          'answered. Install aplexer on the host to start sessions here.',
+        { folder: canonical },
+      );
+    }
+
     let name = base;
     let reused = false;
     if (policy === 'unique') {

@@ -63,6 +63,8 @@ function fakeSsh(
           }),
         }
       : undefined,
+    hostPlatform: (_connectionId: string): Promise<'posix' | 'windows'> =>
+      Promise.resolve('posix'),
     exec: (_connectionId: string, command: string, opts?: SshOptions): Promise<ExecResult> => {
       calls.push({ command, stdin: opts?.stdin });
       for (const responder of responders) {
