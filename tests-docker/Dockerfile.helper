@@ -58,15 +58,21 @@ ENV PATH="/home/testuser/.local/bin:${PATH}"
 # spawns — both must land on PATH.
 #
 # PINNED, like pocketshell/tmuxctl above. 0.1.9 exec-fails on this image:
-# its new startup filesystem check calls renameat2, which Alpine's gcompat
+# its startup filesystem check calls renameat2, which Alpine's gcompat
 # does not provide ("Error relocating /usr/local/bin/a: renameat2: symbol
 # not found") — every `a` invocation dies at load time, the snapshot reads
-# as unreachable, and the app renders an empty session tree. Pin until
-# aplexer ships a binary the musl base can load (or the fixture base moves
-# to glibc); bump deliberately, together with whatever the new snapshot
-# behavior changes in the E2E world. The catch either way is Docker's layer
-# cache: this layer only rebuilds when its inputs change — force with
-# `docker compose build --no-cache`.
+# as unreachable, and the app renders an empty session tree. 0.1.10 is
+# verified to fail the same way (the check is unconditional — "session state
+# filesystem must support RENAME_EXCHANGE", no env escape — and gcompat 1.1.0
+# on alpine 3.20 AND 3.22 both lack the symbol), so the pin stays at 0.1.8.
+# Real (glibc) hosts are unaffected: 0.1.10 is verified working there with
+# the app's whole command set — snapshot, start, rename, PTY attach, kill,
+# warnings, ack — and it reads, renames, and kills records written by 0.1.8,
+# so a host upgrading aplexer under live sessions keeps working. Bump this
+# pin when aplexer ships a renameat2 fallback or the fixture base moves to
+# glibc; the catch either way is Docker's layer cache: this layer only
+# rebuilds when its inputs change — force with `docker compose build
+# --no-cache`.
 ARG APLEXER_VERSION=0.1.8
 RUN set -eux; \
     case "$(uname -m)" in \
@@ -75,7 +81,7 @@ RUN set -eux; \
       *) echo "no aplexer release binary for $(uname -m)" >&2; exit 1 ;; \
     esac; \
     echo "aplexer version: ${APLEXER_VERSION}"; \
-    base="https://github.com/alexeygrigorev/aplexer/releases/download/v${APLEXER_VERSION}"; \
+    base="https://github.com/PocketShell-io/aplexer/releases/download/v${APLEXER_VERSION}"; \
     wget -q -O /usr/local/bin/a "$base/a-linux-$asset_arch"; \
     wget -q -O /usr/local/bin/aplexer "$base/aplexer-linux-$asset_arch"; \
     chmod 0755 /usr/local/bin/a /usr/local/bin/aplexer
