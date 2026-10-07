@@ -280,6 +280,8 @@ function makeSsh(platform: 'posix' | 'windows' = 'posix'): {
   const ssh = {
     shellTracker: { get: (id: ShellId) => shells.get(id) },
     hostPlatform: async (_connectionId: string) => platform,
+    // These joins ride the SSH path: not the self connection.
+    isLocal: () => false,
     exec: async (_connectionId: string, command: string): Promise<ExecResult> => {
       execCalls.push(command);
       if (failure) throw failure;
@@ -537,6 +539,7 @@ describe('TmuxClientPool with aplexer sessions', () => {
     const ssh = {
       shellTracker: { get: (id: ShellId) => (live.has(id) ? { id } : undefined) },
       hostPlatform: async (_c: string): Promise<'posix' | 'windows'> => 'posix',
+      isLocal: () => false,
       openTrackedShell: async (_c: string, o: { command?: string }): Promise<ShellId> => {
         const id = `shell-${++counter}`;
         calls.push({ kind: 'open', detail: o.command ?? '' });
@@ -583,6 +586,7 @@ describe('TmuxClientPool with aplexer sessions', () => {
     const ssh = {
       shellTracker: { get: (id: ShellId) => (live.has(id) ? { id } : undefined) },
       hostPlatform: async (_c: string): Promise<'posix' | 'windows'> => 'windows',
+      isLocal: () => false,
       openTrackedShell: async (_c: string, o: { command?: string }): Promise<ShellId> => {
         const id = `shell-${++counter}`;
         calls.push({ kind: 'open', detail: o.command ?? '' });
@@ -617,6 +621,7 @@ describe('TmuxClientPool with aplexer sessions', () => {
     const ssh = {
       shellTracker: { get: (id: ShellId) => (live.has(id) ? { id } : undefined) },
       hostPlatform: async (_c: string): Promise<'posix' | 'windows'> => 'posix',
+      isLocal: () => false,
       openTrackedShell: async (_c: string, o: { command?: string }): Promise<ShellId> => {
         const id = `shell-${++counter}`;
         commands.push(o.command ?? '');

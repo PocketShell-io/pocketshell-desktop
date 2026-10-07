@@ -877,8 +877,14 @@ export class TmuxClientPool {
     // The aplexer join on a Windows host takes the ConPTY-safe spelling (the
     // whole script in one double-quoted argv word) and joins by cd+tag — see
     // aplexerAttachCommand. The probe is the per-connection cached one.
+    // A LOCAL Windows connection keeps the POSIX spelling: that wrapper exists
+    // for Windows OpenSSH re-splitting the exec line into argv, and a local
+    // spawn hands bash the command as one word already — the wrapped form
+    // would itself be the syntax error it was invented to prevent.
     const windows =
-      isAplexer && (await this.ssh.hostPlatform(connectionId)) === 'windows';
+      isAplexer &&
+      !this.ssh.isLocal(connectionId) &&
+      (await this.ssh.hostPlatform(connectionId)) === 'windows';
     const command = isAplexer
       ? aplexerAttachCommand({
           id: target.aplexerId,

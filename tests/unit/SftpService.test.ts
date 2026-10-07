@@ -1,4 +1,7 @@
 import { Readable, Writable } from 'node:stream';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Client } from 'ssh2';
 import { describe, expect, it } from 'vitest';
 import { SftpService } from '@main/sftp/SftpService';
@@ -277,5 +280,89 @@ describe('SftpService.createFile', () => {
     await expect(h.sftp.createFile(h.connectionId, '/home/me/notes.md')).rejects.toThrow(
       'Failure',
     );
+  });
+});
+
+describe('SftpService — the local (self) connection', () => {
+  // A real temp directory: the local backing IS node:fs, so a fake would only
+  // restate it. Each test gets a fresh dir that outlives nothing.
+  function localHarness(): { sftp: SftpService; id: string; root: string } {
+    const registry = new ConnectionRegistry();
+    const id = registry.register({
+      kind: 'local',
+      label: 'self',
+      host: 'self',
+      port: 0,
+      user: 'me',
+      knownHosts: null,
+      connectedAt: 0,
+    });
+    const root = mkdtempSync(join(tmpdir(), 'ps-self-'));
+    return { sftp: new SftpService(registry), id, root };
+  }
+
+  it('lists a directory with the shared entry shapes', async () => {
+    const h = localHarness();
+    writeFileSync(join(h.root, 'a.txt'), 'hi');
+    mkdirSync(join(h.root, 'sub'));
+    const entries = await h.sftp.list(h.id, h.root);
+    const byName = new Map(entries.map((e) => [e.name, e]));
+    expect(byName.get('a.txt')?.type).toBe('file');
+    expect(byName.get('sub')?.type).toBe('dir');
+    rmSync(h.root, { recursive: true, force: true });
+  });
+
+  it('round-trips read, write, rename, mkdir, delete', async () => {
+    const h = localHarness();
+    const p = join(h.root, 'notes.md');
+    await h.sftp.writeFile(h.id, p, '# hello');
+    expect(await h.sftp.readFile(h.id, p)).toBe('# hello');
+    expect((await h.sftp.stat(h.id, p)).type).toBe('file');
+    expect(await h.sftp.exists(h.id, p)).toBe(true);
+
+    const dir = join(h.root, 'made');
+    await h.sftp.mkdir(h.id, dir);
+    const moved = join(dir, 'renamed.md');
+    await h.sftp.rename(h.id, p, moved);
+    expect(existsSync(p)).toBe(false);
+    await h.sftp.deleteFile(h.id, moved);
+    await h.sftp.rmdir(h.id, dir);
+    expect(existsSync(dir)).toBe(false);
+    rmSync(h.root, { recursive: true, force: true });
+  });
+
+  it('createFile refuses to overwrite, and realPath resolves', async () => {
+    const h = localHarness();
+    const p = join(h.root, 'new.md');
+    await h.sftp.createFile(h.id, p, 'first');
+    await expect(h.sftp.createFile(h.id, p, 'second')).rejects.toThrow(/Already exists/);
+    expect(readFileSync(p, 'utf8')).toBe('first');
+    expect(await h.sftp.realPath(h.id, p)).toBe(p);
+    rmSync(h.root, { recursive: true, force: true });
+  });
+
+  it('readBinary carries raw bytes under the ceiling', async () => {
+    const h = localHarness();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff]);
+    const p = join(h.root, 'shot.png');
+    writeFileSync(p, png);
+    expect((await h.sftp.readBinary(h.id, p, 1024)).equals(png)).toBe(true);
+    await expect(h.sftp.readBinary(h.id, p, 4)).rejects.toThrow(/the limit is/);
+    rmSync(h.root, { recursive: true, force: true });
+  });
+
+  it('upload and download copy through the same machine', async () => {
+    const h = localHarness();
+    const src = join(h.root, 'src.txt');
+    writeFileSync(src, 'payload');
+    const uploaded = join(h.root, 'uploaded.txt');
+    let progress = 0;
+    await h.sftp.upload(h.id, src, uploaded, (p) => (progress = p.total ?? 0));
+    expect(readFileSync(uploaded, 'utf8')).toBe('payload');
+    expect(progress).toBe(Buffer.byteLength('payload'));
+    const downloaded = join(h.root, 'downloaded.txt');
+    await h.sftp.download(h.id, uploaded, downloaded);
+    expect(readFileSync(downloaded, 'utf8')).toBe('payload');
+    rmSync(h.root, { recursive: true, force: true });
   });
 });

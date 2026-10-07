@@ -853,3 +853,39 @@ describe('TmuxClientPool — aiming at the session’s own tmux server', () => {
     await expect(pool.redraw(joined.shellId)).resolves.toBe(false);
   });
 });
+
+describe('TmuxClientPool — the aplexer join spelling on Windows', () => {
+  /** The shared fake plus what the join asks about the host. */
+  function makeWindowsSsh(isLocal: boolean): ReturnType<typeof makeSsh> {
+    const harness = makeSsh();
+    const ssh = harness.ssh as unknown as Record<string, unknown>;
+    ssh.hostPlatform = async () => 'windows';
+    ssh.isLocal = () => isLocal;
+    return harness;
+  }
+
+  const aplexerTarget = {
+    backend: 'aplexer' as const,
+    workspace: String.raw`C:\\Users\\me\\git\\x`,
+    tag: 'review',
+  };
+
+  it('a remote Windows host gets the ConPTY-safe wrapped spelling', async () => {
+    const harness = makeWindowsSsh(false);
+    const pool = new TmuxClientPool(harness.ssh);
+    await pool.attach('c1', 'review', { ...sink, ...aplexerTarget });
+    // One double-quoted argv word, joined by cd+tag.
+    expect(harness.calls[0]?.detail.startsWith('"( ')).toBe(true);
+    expect(harness.calls[0]?.detail).toContain("cd 'C:");
+  });
+
+  it('the local (self) Windows connection keeps the POSIX spelling', async () => {
+    const harness = makeWindowsSsh(true);
+    const pool = new TmuxClientPool(harness.ssh);
+    await pool.attach('c1', 'review', { ...sink, ...aplexerTarget });
+    // bash receives the command as one word already, so the wrapper the SSH
+    // path needs would itself be the syntax error it prevents: bare `( PATH=`.
+    expect(harness.calls[0]?.detail.startsWith('( PATH=')).toBe(true);
+    expect(harness.calls[0]?.detail).toContain('a attach --workspace');
+  });
+});

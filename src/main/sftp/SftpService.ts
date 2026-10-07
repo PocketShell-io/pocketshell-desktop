@@ -2,6 +2,8 @@ import type { TransferProgress } from '@pocketshell/core';
 export type { TransferProgress } from '@pocketshell/core';
 import type { SFTPWrapper } from 'ssh2';
 import { stat as fsStat } from 'node:fs';
+import { promises as fsPromises } from 'node:fs';
+import { join } from 'node:path';
 import type { ConnectionRegistry, ConnectionRecord } from '../ssh/ConnectionRegistry.js';
 import { oversizeMessage } from '@pocketshell/core';
 import {
@@ -19,7 +21,10 @@ import {
 export type { DirEntry, FileStat };
 
 /**
- * SFTP service over an existing ssh2 connection.
+ * SFTP service over an existing ssh2 connection — or over this machine's own
+ * filesystem, for a `local` (self) connection, where every method below answers
+ * from `node:fs` with the exact same shapes (`toDirEntry`/`toFileStat` are
+ * shared code, so the Files pane cannot tell the transports apart).
  *
  * The Android app has no file browser (out of scope there); this is net-new
  * for desktop. We reuse the live ssh2 `Client` from a connectionId (no second
@@ -37,6 +42,14 @@ export class SftpService {
   private readonly wrappers = new Map<string, Promise<SFTPWrapper>>();
 
   constructor(private readonly registry: ConnectionRegistry) {}
+
+  /**
+   * True when the connection is this machine: every operation then runs
+   * against the local filesystem instead of an SFTP channel.
+   */
+  private isLocal(connectionId: string): boolean {
+    return this.registry.get(connectionId)?.kind === 'local';
+  }
 
   /** Acquire (and cache) the SFTP wrapper for a connection. */
   private sftp(connectionId: string): Promise<SFTPWrapper> {
@@ -66,6 +79,7 @@ export class SftpService {
 
   /** True if the path exists (any type). */
   async exists(connectionId: string, path: string): Promise<boolean> {
+    if (this.isLocal(connectionId)) return localFs.exists(path);
     const sftp = await this.sftp(connectionId);
     try {
       await stat(sftp, path);
@@ -77,12 +91,14 @@ export class SftpService {
 
   /** Stat a path. Rejects if it does not exist. */
   async stat(connectionId: string, path: string): Promise<FileStat> {
+    if (this.isLocal(connectionId)) return localFs.stat(path);
     const sftp = await this.sftp(connectionId);
     return toFileStat(await stat(sftp, path));
   }
 
   /** List directory entries. Rejects if the path is not a directory. */
   async list(connectionId: string, path: string): Promise<DirEntry[]> {
+    if (this.isLocal(connectionId)) return localFs.list(path);
     const sftp = await this.sftp(connectionId);
     return new Promise<DirEntry[]>((resolve, reject) => {
       sftp.readdir(path, (err, list) => {
@@ -97,6 +113,7 @@ export class SftpService {
 
   /** Read a file as a UTF-8 string. */
   async readFile(connectionId: string, path: string): Promise<string> {
+    if (this.isLocal(connectionId)) return localFs.readFile(path);
     const sftp = await this.sftp(connectionId);
     return new Promise<string>((resolve, reject) => {
       const chunks: Buffer[] = [];
@@ -126,6 +143,7 @@ export class SftpService {
    * oversized one.
    */
   async readBinary(connectionId: string, path: string, maxBytes: number): Promise<Buffer> {
+    if (this.isLocal(connectionId)) return localFs.readBinary(path, maxBytes);
     const sftp = await this.sftp(connectionId);
     // Stat first so an oversized file is refused BEFORE it is dragged
     // across the wire, rather than after. `stat` follows symlinks, so a
@@ -156,6 +174,7 @@ export class SftpService {
 
   /** Write a UTF-8 string to a file (overwrites). */
   async writeFile(connectionId: string, path: string, content: string): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.writeFile(path, content);
     const sftp = await this.sftp(connectionId);
     return new Promise<void>((resolve, reject) => {
       const stream = sftp.createWriteStream(path);
@@ -178,6 +197,7 @@ export class SftpService {
    * stat and the open.
    */
   async createFile(connectionId: string, path: string, content = ''): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.createFile(path, content);
     const sftp = await this.sftp(connectionId);
     if (await this.exists(connectionId, path)) {
       throw new Error(`Already exists: ${path}`);
@@ -192,6 +212,7 @@ export class SftpService {
 
   /** Create a directory. Rejects if it already exists. */
   async mkdir(connectionId: string, path: string): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.mkdir(path);
     const sftp = await this.sftp(connectionId);
     return new Promise<void>((resolve, reject) => {
       sftp.mkdir(path, (err) => (err ? reject(err) : resolve()));
@@ -200,6 +221,7 @@ export class SftpService {
 
   /** Rename/move a path. */
   async rename(connectionId: string, fromPath: string, toPath: string): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.rename(fromPath, toPath);
     const sftp = await this.sftp(connectionId);
     return new Promise<void>((resolve, reject) => {
       sftp.rename(fromPath, toPath, (err) => (err ? reject(err) : resolve()));
@@ -208,6 +230,7 @@ export class SftpService {
 
   /** Delete a file. */
   async deleteFile(connectionId: string, path: string): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.deleteFile(path);
     const sftp = await this.sftp(connectionId);
     return new Promise<void>((resolve, reject) => {
       sftp.unlink(path, (err) => (err ? reject(err) : resolve()));
@@ -216,6 +239,7 @@ export class SftpService {
 
   /** Remove an empty directory. */
   async rmdir(connectionId: string, path: string): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.rmdir(path);
     const sftp = await this.sftp(connectionId);
     return new Promise<void>((resolve, reject) => {
       sftp.rmdir(path, (err) => (err ? reject(err) : resolve()));
@@ -224,6 +248,7 @@ export class SftpService {
 
   /** Resolve a (possibly relative or symlink) path to an absolute one. */
   async realPath(connectionId: string, path: string): Promise<string> {
+    if (this.isLocal(connectionId)) return localFs.realPath(path);
     const sftp = await this.sftp(connectionId);
     return new Promise<string>((resolve, reject) => {
       sftp.realpath(path, (err, abs) => (err ? reject(err) : resolve(abs)));
@@ -240,6 +265,7 @@ export class SftpService {
     remotePath: string,
     onProgress?: (p: TransferProgress) => void,
   ): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.upload(localPath, remotePath, onProgress);
     const sftp = await this.sftp(connectionId);
     const total = await localSize(localPath);
     return new Promise<void>((resolve, reject) => {
@@ -261,6 +287,7 @@ export class SftpService {
     localPath: string,
     onProgress?: (p: TransferProgress) => void,
   ): Promise<void> {
+    if (this.isLocal(connectionId)) return localFs.download(remotePath, localPath, onProgress);
     const sftp = await this.sftp(connectionId);
     const statRes = toFileStat(await stat(sftp, remotePath));
     const total = statRes.size;
@@ -279,11 +306,134 @@ export class SftpService {
 // helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * The self connection's file operations, straight off `node:fs`.
+ *
+ * Same contracts as the SFTP wrappers above: stat-shapes go through the
+ * shared `toDirEntry`/`toFileStat` (an fs.Stats satisfies `SftpAttrsLike`
+ * once mtimes are seconds), expected failures reject, and the size ceiling
+ * of `readBinary` holds. The local copy is instant, so `upload`/`download`
+ * report one final complete progress step rather than a wire's worth.
+ */
+const localFs = {
+  async exists(path: string): Promise<boolean> {
+    try {
+      await fsPromises.stat(path);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async stat(path: string): Promise<FileStat> {
+    return toFileStat(attrs(await fsPromises.stat(path)));
+  },
+
+  async list(path: string): Promise<DirEntry[]> {
+    const dirents = await fsPromises.readdir(path, { withFileTypes: true });
+    return Promise.all(
+      dirents.map(async (dirent) => {
+        // `stat` follows symlinks, like the SFTP listing's attrs do; a broken
+        // link keeps its own kind rather than vanishing from the listing.
+        try {
+          return toDirEntry(attrs(await fsPromises.stat(join(path, dirent.name))), dirent.name);
+        } catch {
+          return toDirEntry(
+            {
+              isDirectory: () => dirent.isDirectory(),
+              isFile: () => dirent.isFile(),
+              isSymbolicLink: () => dirent.isSymbolicLink(),
+              longname: '',
+            },
+            dirent.name,
+          );
+        }
+      }),
+    );
+  },
+
+  async readFile(path: string): Promise<string> {
+    return fsPromises.readFile(path, 'utf8');
+  },
+
+  async readBinary(path: string, maxBytes: number): Promise<Buffer> {
+    const info = toFileStat(attrs(await fsPromises.stat(path)));
+    if (info.type !== 'file') throw new Error(`Not a regular file: ${path}`);
+    assertReadable(info.size, maxBytes, path);
+    const bytes = await fsPromises.readFile(path);
+    // The stat was a snapshot; hold the ceiling against what actually read.
+    if (bytes.length > maxBytes) throw new Error(oversizeMessage(bytes.length, maxBytes, path));
+    return bytes;
+  },
+
+  async writeFile(path: string, content: string): Promise<void> {
+    await fsPromises.writeFile(path, content, 'utf8');
+  },
+
+  async createFile(path: string, content: string): Promise<void> {
+    if (await this.exists(path)) throw new Error(`Already exists: ${path}`);
+    await fsPromises.writeFile(path, content, { encoding: 'utf8', flag: 'wx' });
+  },
+
+  async mkdir(path: string): Promise<void> {
+    await fsPromises.mkdir(path);
+  },
+
+  async rename(fromPath: string, toPath: string): Promise<void> {
+    await fsPromises.rename(fromPath, toPath);
+  },
+
+  async deleteFile(path: string): Promise<void> {
+    await fsPromises.unlink(path);
+  },
+
+  async rmdir(path: string): Promise<void> {
+    await fsPromises.rmdir(path);
+  },
+
+  async realPath(path: string): Promise<string> {
+    return fsPromises.realpath(path);
+  },
+
+  async upload(
+    localPath: string,
+    remotePath: string,
+    onProgress?: (p: TransferProgress) => void,
+  ): Promise<void> {
+    const total = await localSize(localPath);
+    await fsPromises.copyFile(localPath, remotePath);
+    onProgress?.({ bytes: total, total });
+  },
+
+  async download(
+    remotePath: string,
+    localPath: string,
+    onProgress?: (p: TransferProgress) => void,
+  ): Promise<void> {
+    const total = (await fsPromises.stat(remotePath)).size;
+    await fsPromises.copyFile(remotePath, localPath);
+    onProgress?.({ bytes: total, total });
+  },
+};
+
+/** fs.Stats dressed as the shared attrs shape — mtimes in whole seconds. */
+function attrs(st: Awaited<ReturnType<typeof fsPromises.stat>>): SftpAttrsLike {
+  return {
+    isFile: () => st.isFile(),
+    isDirectory: () => st.isDirectory(),
+    isSymbolicLink: () => st.isSymbolicLink(),
+    size: Number(st.size),
+    mtime: Math.floor(Number(st.mtimeMs) / 1000),
+    atime: Math.floor(Number(st.atimeMs) / 1000),
+    mode: Number(st.mode),
+  };
+}
+
 function openSftp(rec: ConnectionRecord): Promise<SFTPWrapper> {
-  // The local (self) connection gets its own backing; until that lands, a
-  // Files tab on it says so instead of crashing on a record with no client.
+  // Local connections never reach here — their methods take the localFs
+  // branch first; the narrowing is what lets `.client` compile.
   if (rec.kind !== 'ssh') {
-    return Promise.reject(new Error('The file browser is not available on a local connection yet.'));
+    return Promise.reject(new Error('No SFTP channel on a local connection.'));
   }
   return new Promise((resolve, reject) => {
     rec.client.sftp((err, sftp) => (err ? reject(err) : resolve(sftp)));
