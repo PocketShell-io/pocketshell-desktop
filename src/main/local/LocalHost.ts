@@ -321,7 +321,7 @@ export function openLocalShell(opts: {
     cols: opts.cols ?? 80,
     rows: opts.rows ?? 24,
     cwd: homedir(),
-    env: { ...process.env },
+    env: process.env,
   });
 }
 

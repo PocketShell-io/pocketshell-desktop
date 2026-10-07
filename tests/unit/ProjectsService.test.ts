@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import os from 'node:os';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ExecResult } from '@pocketshell/core';
@@ -63,6 +64,7 @@ function fakeSsh(
     },
     hostPlatform: (_connectionId: string): Promise<'posix' | 'windows'> =>
       Promise.resolve(platform),
+    isLocal: () => false,
   } as unknown as SshService;
   return { ssh, commands };
 }
@@ -119,6 +121,26 @@ describe('ProjectsService.home', () => {
     projects.evict(CONN);
     await projects.home(CONN);
     expect(commands.filter((c) => c.includes('$HOME"')).length).toBe(2);
+  });
+
+  it('a local connection answers os.homedir() without an exec', async () => {
+    // Git Bash's $HOME would come back as MSYS spelling (/c/Users/...), which
+    // the fs layers read against the current drive - a wrong tree. The local
+    // home is known in-process, so no exec runs at all.
+    const execs = vi.fn();
+    const ssh = {
+      exec: (_id: string, command: string): Promise<ExecResult> => {
+        execs();
+        return Promise.resolve(homeResponder(command) ?? fail(127, 'sh: not found'));
+      },
+      hostPlatform: (): Promise<'posix' | 'windows'> => Promise.resolve('windows'),
+      isLocal: () => true,
+    } as unknown as SshService;
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh));
+    const out = await projects.home(CONN);
+    expect(out.ok).toBe(true);
+    expect(out.home).toBe(os.homedir().replace(/\\/g, '/'));
+    expect(execs).not.toHaveBeenCalled();
   });
 });
 

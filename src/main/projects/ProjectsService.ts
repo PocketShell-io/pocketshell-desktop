@@ -29,6 +29,7 @@ import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
 import { pathAwareCommand } from '../helper/bootstrap.js';
 import { firstNonEmptyLine, lastNonEmptyLine } from '../helper/parsers.js';
+import { homedir } from 'node:os';
 import {
   HOME_COMMAND,
   freeSessionNameCommand,
@@ -86,10 +87,24 @@ export class ProjectsService {
     this.homes.delete(connectionId);
   }
 
-  /** Resolve (and cache) the remote `$HOME`. */
+  /**
+   * Resolve (and cache) the remote `$HOME`.
+   *
+   * A local (self) connection answers from `os.homedir()` without an exec.
+   * The exec path would return Git Bash's `$HOME` — and MSYS converts any
+   * HOME we hand it to its own spelling (`/c/Users/...`), which the SFTP/fs
+   * layers below read against the CURRENT DRIVE: `/c/Users/alexey` resolves
+   * to `C:\c\Users\alexey`, a different tree. Forward slashes, to match the
+   * local realpath and the renderer's crumb splitting.
+   */
   async home(connectionId: string): Promise<HomeResult> {
     const cached = this.homes.get(connectionId);
     if (cached != null) return { ok: true, home: cached, error: null };
+    if (this.ssh.isLocal(connectionId)) {
+      const home = homedir().replace(/\\/g, '/');
+      this.homes.set(connectionId, home);
+      return { ok: true, home, error: null };
+    }
     const res = await this.ssh.exec(connectionId, pathAwareCommand(HOME_COMMAND));
     const home = res.stdout.trim();
     if (res.exitCode !== 0 || home.length === 0) {

@@ -1,13 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SshService } from '../../src/main/ssh/SshService';
 import { AplexerClient } from '../../src/main/helper/AplexerClient';
+import { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import { runBootstrap } from '../../src/main/helper/bootstrap';
 import { TmuxClientPool } from '../../src/main/ssh/TmuxClientPool';
 import { SftpService } from '../../src/main/sftp/SftpService';
+import { ProjectsService } from '../../src/main/projects/ProjectsService';
 import { localBash } from '../../src/main/local/LocalHost';
 
 /**
@@ -47,6 +49,7 @@ describe.skipIf(!envReady)('LocalSelf — a self dial against this machine', () 
       const aplexer = new AplexerClient(ssh);
       const pool = new TmuxClientPool(ssh);
       const sftp = new SftpService(ssh.registry_);
+      const projects = new ProjectsService(ssh, new PocketshellClient(ssh, aplexer), aplexer);
 
       try {
         // Connect, exactly as the renderer's dial does for a `local` host.
@@ -54,6 +57,17 @@ describe.skipIf(!envReady)('LocalSelf — a self dial against this machine', () 
         expect(dial.ok).toBe(true);
         const id = dial.ok && dial.connectionId ? dial.connectionId : '';
         expect(await ssh.hostPlatform(id)).toBe('windows');
+
+        // The folder picker's root: the REAL home in the forward-slash drive
+        // form — never Git Bash's MSYS spelling, which the fs layers resolve
+        // against the current drive (`/c/Users/...` -> `C:\c\Users\...`, a
+        // different tree).
+        const home = await projects.home(id);
+        expect(home.ok).toBe(true);
+        expect(home.home).toBe(homedir().replace(/\\/g, '/'));
+        expect(await sftp.realPath(id, home.home ?? '')).toBe(home.home);
+        const homeEntries = await sftp.list(id, home.home ?? '');
+        expect(homeEntries.length).toBeGreaterThan(0);
 
         // Bootstrap: on a Windows answer the helper/tmux probes are skipped,
         // and `a` is expected to answer.

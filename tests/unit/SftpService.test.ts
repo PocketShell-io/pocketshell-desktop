@@ -337,7 +337,9 @@ describe('SftpService — the local (self) connection', () => {
     await h.sftp.createFile(h.id, p, 'first');
     await expect(h.sftp.createFile(h.id, p, 'second')).rejects.toThrow(/Already exists/);
     expect(readFileSync(p, 'utf8')).toBe('first');
-    expect(await h.sftp.realPath(h.id, p)).toBe(p);
+    // Forward slashes: the local realPath matches the spelling $HOME and
+    // the renderer's crumb splitting use (see LocalHost/SftpService).
+    expect(await h.sftp.realPath(h.id, p)).toBe(p.replace(/\\/g, '/'));
     rmSync(h.root, { recursive: true, force: true });
   });
 

@@ -108,4 +108,23 @@ test.describe('self host (local, no SSH)', () => {
     const term = page.locator('.terminal-area > .terminal-slot:visible > .terminal');
     await expect(term).toBeVisible({ timeout: 15_000 });
   });
+
+  test('the new-session browser starts in the real home, never the MSYS spelling', async () => {
+    // The regression: home resolved to Git Bash's `/c/Users/...`, which the
+    // fs layers read against the current drive — the browser then walked
+    // `C:\c\Users\...`, a different (wrong) tree that happens to exist.
+    // Back on the session panel (the workspace went full-screen above), the
+    // panel's own "any folder" button raises the folder browser.
+    await page.locator('.dir-header', { hasText: 'ps-self-e2e' }).click();
+    await page.locator('button[title="New session in any folder"]').click();
+    const crumbbar = page.locator('.crumbbar');
+    await expect(crumbbar).toBeVisible({ timeout: 10_000 });
+    await expect(crumbbar).not.toContainText('c\\Users');
+    // Land on `~` and stay there: the real home lists without an error, and
+    // its crumbs carry no backslash-MSYS hybrid.
+    await crumbbar.locator('button[title="Home folder"]').click();
+    await page.waitForTimeout(1_000);
+    await expect(crumbbar).not.toContainText('c\\Users');
+    await expect(page.locator('.browse-error, .error')).toHaveCount(0);
+  });
 });

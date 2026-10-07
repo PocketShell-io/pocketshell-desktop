@@ -392,7 +392,12 @@ const localFs = {
   },
 
   async realPath(path: string): Promise<string> {
-    return fsPromises.realpath(path);
+    // Forward slashes, to match the `$HOME` the local exec environment hands
+    // out (`localSpawnEnv`): the renderer composes display paths and crumb
+    // trails by prefix-matching and splitting on `/`, and a realpath that
+    // flipped `C:/Users/...` to backslashes would break that match and fall
+    // back to showing whole absolute paths.
+    return (await fsPromises.realpath(path)).replace(/\\/g, '/');
   },
 
   async upload(
