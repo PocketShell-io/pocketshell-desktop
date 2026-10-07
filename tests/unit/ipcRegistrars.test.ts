@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HostEntry } from '@pocketshell/core';
 import { log } from '../../src/main/log';
 import { checkForUpdate } from '../../src/main/update/ReleaseChecker';
 import { runBootstrap } from '../../src/main/helper/bootstrap';
@@ -200,9 +201,21 @@ describe('terminalIpc — the composer session fence', () => {
     expect(mockOf(ssh, 'shellClose')).toHaveBeenCalledWith('shell-1');
   });
 
-  it('listConfigHosts reads ~/.ssh/config', async () => {
+  it('listConfigHosts reads ~/.ssh/config, with self leading', async () => {
     const handler = handlers.get(ipc.ssh.listConfigHosts)!;
-    await expect((handler as () => Promise<unknown>)()).resolves.toEqual([{ name: 'hetzner' }]);
+    await expect((handler as () => Promise<unknown>)()).resolves.toEqual([
+      expect.objectContaining({ id: 'self', local: true }),
+      { name: 'hetzner' },
+    ]);
+  });
+
+  it('listConfigHosts yields the built-in self to a config host of that name', async () => {
+    // A user who already names a host `self` keeps theirs, and the list
+    // shows it once.
+    const { readSshConfig } = await import('../../src/main/ssh-config/SshConfigParser');
+    vi.mocked(readSshConfig).mockReturnValueOnce([{ name: 'self' } as HostEntry]);
+    const handler = handlers.get(ipc.ssh.listConfigHosts)!;
+    await expect((handler as () => Promise<unknown>)()).resolves.toEqual([{ name: 'self' }]);
   });
 });
 
