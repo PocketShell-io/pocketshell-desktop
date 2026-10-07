@@ -44,11 +44,16 @@ vi.mock('@ui/app/ipc', () => ({
     },
     // The chained agent step mounts LaunchSessionDialog, which asks the host
     // for its profiles on mount. An empty list is the common real answer and
-    // the one that needs no picker. `kinds` is the capability probe behind the
-    // Grok option; the pinned 0.4.44 answer is the three baseline engines.
+    // the one that needs no picker. `kinds` and `binaries` are the capability
+    // probes behind the engine segments; the store asks both in one breath
+    // on every dialog open (agents.ts loadAgentKinds), so a mock that omits
+    // either is not a slower host but a broken one. The pinned 0.4.44 answer
+    // is the three baseline engines, and the binaries answer says the helper
+    // and those same engines are on the host's PATH.
     agent: {
       profiles: vi.fn().mockResolvedValue([]),
       kinds: vi.fn().mockResolvedValue(['claude', 'codex', 'opencode']),
+      binaries: vi.fn().mockResolvedValue(['pocketshell', 'claude', 'codex', 'opencode']),
     },
     ssh: { onState: vi.fn(), listConfigHosts: vi.fn().mockResolvedValue([]) },
     helper: { usage: vi.fn().mockResolvedValue([]) },
@@ -220,6 +225,21 @@ describe('NewSessionDialog agent chain', () => {
 
     // The agent step is up …
     expect(wrapper.text()).toContain('Session type');
+    // … answering its capability probes as "helper and the three baseline
+    // engines are on this host's PATH": every baseline kind segment is live
+    // (no `unavailable` register, no refusal tooltip), while an engine the
+    // answer omits — grok is not installed here — is dimmed with its own
+    // sentence. That gate is the binaries probe's whole job on this step.
+    const segment = (label: string) =>
+      wrapper.findAll('.segment').find((s) => s.text().trim() === label);
+    for (const label of ['Claude Code', 'Codex', 'OpenCode']) {
+      expect(segment(label), label).toBeDefined();
+      expect(segment(label)!.classes()).not.toContain('unavailable');
+    }
+    const grok = segment('Grok');
+    expect(grok).toBeDefined();
+    expect(grok!.classes()).toContain('unavailable');
+    expect(grok!.attributes('title')).toContain('no `grok` on its PATH');
     // … and the host has not been asked for anything.
     expect(startSession).not.toHaveBeenCalled();
     expect(parkedAgentLaunch.value).toBeNull();
