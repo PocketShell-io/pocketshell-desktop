@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
 import type { ExecResult, HostEntry, HostPlatform } from '@pocketshell/core';
@@ -231,22 +231,44 @@ function pty(): NodePty | null {
 }
 
 /**
- * Whether [file] names a program this machine can exec — an absolute path
- * must exist, a bare name must resolve on PATH the way a spawn would search
- * it. The check exists because a PTY open is the one spawn here whose
- * miss is silent: node-pty on POSIX reports a missing executable as a CHILD
- * EXIT, not as a throw from spawn, so a chosen shell this machine does not
- * have used to open a channel that died before its first byte — the caller
- * saw an open that resolved and immediately closed, never the error the
- * contract promises. Asked only about the resolved choice, never about bash:
- * bash's existence is what `localBash` already answers.
+ * Whether [file] names a program this machine can exec. A candidate counts
+ * only when it resolves (through symlinks) to a REGULAR file this process
+ * may execute: an absolute path is that file itself, a bare name is searched
+ * on PATH the way a spawn would search it — an empty PATH entry searches
+ * nothing, since this check will not claim a program it could only find
+ * through "the current directory". A directory, a permissionless file, a
+ * dangling symlink or an uninspectable path is unavailable here, before the
+ * PTY opens. The check exists because a PTY open is the one spawn here whose
+ * miss is silent: node-pty on POSIX reports a missing — or unrunnable —
+ * executable as a CHILD EXIT, not as a throw from spawn, so a chosen shell
+ * this machine cannot run used to open a channel that died before its first
+ * byte — the caller saw an open that resolved and immediately closed, never
+ * the error the contract promises. Asked only about the resolved choice,
+ * never about bash: bash's existence is what `localBash` already answers.
+ * On Windows there is no execute bit to ask — access(X_OK) degenerates to
+ * existence — so the regular file is the preflight answer, and a file that
+ * exists but cannot actually run still surfaces the real spawn error from
+ * the open below.
  */
 function executableFound(file: string): boolean {
-  if (isAbsolute(file)) return existsSync(file);
-  for (const dir of (process.env['PATH'] ?? '').split(delimiter)) {
-    if (dir !== '' && existsSync(join(dir, file))) return true;
+  const candidates = isAbsolute(file)
+    ? [file]
+    : (process.env['PATH'] ?? '')
+        .split(delimiter)
+        .filter((dir) => dir !== '')
+        .map((dir) => join(dir, file));
+  return candidates.some(isRunnableCandidate);
+}
+
+/** stat+access on one candidate; any failure reads as unavailable. */
+function isRunnableCandidate(candidate: string): boolean {
+  try {
+    if (!statSync(candidate).isFile()) return false;
+    if (process.platform !== 'win32') accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 /**
@@ -335,9 +357,10 @@ class LocalPtyChannel {
  * default shell. That is the one place the user's choice applies (`shell`, a
  * core `LocalShellChoice`): a bare terminal on this machine runs what the
  * user picked, Git Bash unless they said otherwise. A choice whose binary is
- * missing (pwsh not installed) surfaces here as the open's error, not as a
- * silent fall-back to bash — a terminal that is quietly the wrong shell is
- * worse than one that says why it did not open.
+ * missing or not runnable (pwsh not installed, a directory or a
+ * permissionless file where the program should be) surfaces here as the
+ * open's error, not as a silent fall-back to bash — a terminal that is
+ * quietly the wrong shell is worse than one that says why it did not open.
  */
 export function openLocalShell(opts: {
   cols?: number;
