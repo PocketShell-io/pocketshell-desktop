@@ -101,6 +101,9 @@ const { registerPortsIpc } = await import('../../src/main/ipc/portsIpc');
 const { registerPreviewIpc } = await import('../../src/main/ipc/previewIpc');
 const { registerSyncIpc } = await import('../../src/main/ipc/syncIpc');
 const { decryptEnvelope, encryptToEnvelope } = await import('../../src/main/sync/SyncCrypto');
+// The writer is module-mocked below; this import hands the tests the SAME spy
+// the syncIpc handler calls, so "never called" is assertable directly.
+const { applyHostsToConfig } = await import('../../src/main/ssh-config/SshConfigWriter');
 
 const ssh = fakeService();
 const helper = fakeService();
@@ -780,5 +783,98 @@ describe('syncIpc — the session account-host cache', () => {
     await invoke(ipc.sync.logout);
     await expect(invoke(ipc.sync.accountHosts)).resolves.toBeNull();
     expect(mockOf(syncAuth, 'logout')).toHaveBeenCalled();
+  });
+});
+
+describe('terminalIpc — the shared payload’s gateway marker rides to the dial (#3059)', () => {
+  // The IPC-level regression for the marker handoff: the renderer hands the
+  // shared connect payload to this handler, and a PRESENT gateway marker —
+  // presence and value — must reach SshService.connect as received, so the
+  // dial site refuses before any key read or socket. `link` deliberately ends
+  // at this boundary (plain SSH is this process's only transport; a link-only
+  // host dials as the ordinary address it carries), and an ordinary payload
+  // gains no marker: spreading an unconditional `gateway: undefined` would
+  // fabricate the very marker that refuses. The SshService's own refusal is
+  // pinned in gatewayGuard.test.ts; this pins the hop before it.
+  const invoke = async (payload: Record<string, unknown>): Promise<unknown> => {
+    const handler = handlers.get(ipc.ssh.connect)! as (e: unknown, p: unknown) => Promise<unknown>;
+    return handler({}, payload);
+  };
+  const forwarded = (): Record<string, unknown> =>
+    mockOf(ssh, 'connect').mock.calls[0]![0] as Record<string, unknown>;
+
+  it('forwards a present gateway marker verbatim — presence and value, never rewritten', async () => {
+    mockOf(ssh, 'connect').mockResolvedValue({ ok: true, connectionId: 'c-1' });
+    const gateway = { serverUrl: 'wss://gateway.pocketshell.io', deviceId: 'device-1' };
+
+    await invoke({ host: 'box.example.com', port: 22, user: 'u', gateway });
+
+    expect(mockOf(ssh, 'connect')).toHaveBeenCalledTimes(1);
+    expect(Object.prototype.hasOwnProperty.call(forwarded(), 'gateway')).toBe(true);
+    expect(forwarded()['gateway']).toBe(gateway);
+  });
+
+  it('forwards a null marker as present, and fabricates no marker when none was sent', async () => {
+    mockOf(ssh, 'connect').mockResolvedValue({ ok: true, connectionId: 'c-2' });
+
+    // A null marker is a present marker: forwarded as null, not dropped.
+    await invoke({ host: 'box.example.com', user: 'u', gateway: null });
+    expect(Object.prototype.hasOwnProperty.call(forwarded(), 'gateway')).toBe(true);
+    expect(forwarded()['gateway']).toBeNull();
+
+    // `link` ends here by design: ignored exactly as before.
+    mockOf(ssh, 'connect').mockClear();
+    const link = { relayUrl: 'wss://relay.example:8765', hostId: 'nat-box' };
+    await invoke({ host: 'box.example.com', user: 'u', link });
+    expect(Object.prototype.hasOwnProperty.call(forwarded(), 'gateway')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(forwarded(), 'link')).toBe(false);
+
+    // The ordinary dial gains neither key.
+    mockOf(ssh, 'connect').mockClear();
+    await invoke({ host: 'box.example.com', user: 'u' });
+    expect(Object.prototype.hasOwnProperty.call(forwarded(), 'gateway')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(forwarded(), 'link')).toBe(false);
+  });
+});
+
+describe('syncIpc — an applyHosts batch carrying a gateway entry is refused whole (#3059)', () => {
+  // The restore path's IPC-level regression: the shared sync store applies a
+  // whole account batch through sync:applyHosts, and one gateway entry must
+  // decline the entire batch BEFORE the config writer is asked for anything —
+  // a half-written restore would strand the gateway host as a plain address.
+  // The writer's and service's own refusals stay pinned in gatewayGuard.test.ts.
+  const invoke = async (hosts: unknown): Promise<unknown> => {
+    const handler = handlers.get(ipc.sync.applyHosts)! as (e: unknown, h: unknown) => Promise<unknown>;
+    return handler({}, hosts);
+  };
+  const writer = applyHostsToConfig as ReturnType<typeof vi.fn>;
+
+  it('throws the named-entry refusal and never reaches the config writer', async () => {
+    const batch = [
+      { name: 'alpha', hostname: 'alpha.example', port: 22, user: 'u' },
+      { name: 'gw-box', hostname: 'gw.example', port: 22, user: 'u', gateway: { serverUrl: 'wss://gateway.pocketshell.io', deviceId: 'device-1' } },
+      { name: 'beta', hostname: 'beta.example', port: 22, user: 'u' },
+    ];
+
+    await expect(invoke(batch)).rejects.toThrow(/gw-box.*does not support.*nothing was added/s);
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it('a present-null marker refuses the whole batch the same way', async () => {
+    await expect(
+      invoke([{ name: 'gw-box', hostname: 'gw.example', port: 22, user: 'u', gateway: null }]),
+    ).rejects.toThrow(/gw-box.*does not support/s);
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it('an ordinary batch still lands in the config (positive control)', async () => {
+    const batch = [
+      { name: 'alpha', hostname: 'alpha.example', port: 22, user: 'u' },
+      { name: 'beta', hostname: 'beta.example', port: 2222, user: 'root' },
+    ];
+
+    await expect(invoke(batch)).resolves.toEqual({ added: [] });
+    expect(writer).toHaveBeenCalledTimes(1);
+    expect(writer.mock.calls[0]![1]).toHaveLength(2);
   });
 });
