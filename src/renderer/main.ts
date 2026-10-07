@@ -1,11 +1,14 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
+import { markRaw } from 'vue';
 import '@ui/styles.css';
 import App from './App.vue';
 import { router } from './router';
 import { recordDiagError } from '@ui/app/diag';
 import { provideApi, api } from '@ui/app/ipc';
+import { provideExtensions } from '@ui/app/extensions';
 import { useConnectionStore } from '@ui/app/stores/connection';
+import LocalShellSettingsSection from './LocalShellSettingsSection.vue';
 
 /**
  * The three nets under "an unhandled renderer error must be visible".
@@ -34,6 +37,20 @@ provideApi({
     sourceName: '~/.ssh/config',
     emptyHint: 'No hosts found in ~/.ssh/config. Add one there to get started.',
   },
+});
+
+// The desktop's own Settings section: the local terminal's shell (Settings →
+// Advanced → Local terminal). Contributed, not shared — the shared app must
+// not branch on platform, and a platform without local hosts has no use for
+// the choice.
+provideExtensions({
+  'settings.sections': [
+    {
+      id: 'local-shell',
+      title: 'Local terminal',
+      component: markRaw(LocalShellSettingsSection),
+    },
+  ],
 });
 
 const app = createApp(App);
