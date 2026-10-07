@@ -235,12 +235,16 @@ test.describe('folder-first session creation + port panel controls', () => {
   });
 
   test('the port panel shows discovered ports with process and folder columns', async () => {
-    // Unrelated to the create flow, and repaired only so this spec can finish:
-    // the panel's foot row of labelled buttons is gone, and Ports has its own
-    // header icon (renderer/hostPanels.ts) whose accessible name is its
-    // `title` — one click, no kebab to open first.
+    // Ports opens from its own header icon — one click, no kebab (the icon's
+    // accessible name is its `title`). It is not an overlay any more: the
+    // header icon opens the PORTS TOOL in the maintenance workspace — a
+    // closable tab whose pane mounts the same port view this test reads —
+    // so what must be visible is that tab and its pane.
     await page.getByRole('button', { name: 'Port forwarding' }).click();
-    await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toBeVisible();
+    await expect(
+      page.getByTitle('Port forwarding — tunnels and listeners on this host.'),
+    ).toBeVisible();
+    await expect(page.locator('.tool-view-slot .fwd-table')).toBeVisible({ timeout: 20_000 });
 
     // Normalise the toggle. Auto-forward is PERSISTED per host (PortfwdStore),
     // so a previous suite run legitimately leaves it on and the assertions
@@ -308,7 +312,11 @@ test.describe('folder-first session creation + port panel controls', () => {
     await expect(page.getByRole('button', { name: 'Auto-forward: OFF' })).toBeVisible({
       timeout: 20_000,
     });
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toHaveCount(0);
+    // The tool tab's `×` is what ends the ports tool — the Escape that used
+    // to dismiss the overlay has nothing to dismiss here.
+    await page.getByTitle('Close this tool').click();
+    await expect(page.getByTitle('Port forwarding — tunnels and listeners on this host.')).toHaveCount(
+      0,
+    );
   });
 });
