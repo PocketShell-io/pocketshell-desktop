@@ -231,12 +231,26 @@ function pty(): NodePty | null {
 }
 
 /**
- * Whether [file] names a program this machine can exec. A candidate counts
- * only when it resolves (through symlinks) to a REGULAR file this process
- * may execute: an absolute path is that file itself, a bare name is searched
- * on PATH the way a spawn would search it — an empty PATH entry searches
- * nothing, since this check will not claim a program it could only find
- * through "the current directory". A directory, a permissionless file, a
+ * The ONE concrete file a bare-shell open will spawn, or null when nothing
+ * would run — resolved under the same search the PTY child would otherwise
+ * have performed, so the availability answer and the spawned binary are the
+ * same file rather than two searches that can disagree. An absolute [file]
+ * is that file itself. A bare name is searched on PATH in order, under an
+ * explicit policy:
+ *
+ * - an EMPTY entry searches nothing — "the current directory" is never a
+ *   candidate; and because the winner is returned as an absolute path that
+ *   the open spawns directly, the child performs no PATH search of its own,
+ *   so nothing an empty entry would have found in the child's cwd can
+ *   re-enter there;
+ * - a RELATIVE entry is resolved against [terminalCwd] — the working
+ *   directory this open itself gives the PTY child, which is exactly where
+ *   the child would have resolved it; the main process's own cwd is
+ *   deliberately not consulted, or a runnable shell would be refused (or a
+ *   dead one admitted) whenever the two differ.
+ *
+ * A candidate counts only when it resolves (through symlinks) to a REGULAR
+ * file this process may execute: a directory, a permissionless file, a
  * dangling symlink or an uninspectable path is unavailable here, before the
  * PTY opens. The check exists because a PTY open is the one spawn here whose
  * miss is silent: node-pty on POSIX reports a missing — or unrunnable —
@@ -250,14 +264,14 @@ function pty(): NodePty | null {
  * exists but cannot actually run still surfaces the real spawn error from
  * the open below.
  */
-function executableFound(file: string): boolean {
-  const candidates = isAbsolute(file)
-    ? [file]
-    : (process.env['PATH'] ?? '')
-        .split(delimiter)
-        .filter((dir) => dir !== '')
-        .map((dir) => join(dir, file));
-  return candidates.some(isRunnableCandidate);
+function resolveExecutableCandidate(file: string, terminalCwd: string): string | null {
+  if (isAbsolute(file)) return isRunnableCandidate(file) ? file : null;
+  for (const dir of (process.env['PATH'] ?? '').split(delimiter)) {
+    if (dir === '') continue;
+    const candidate = join(isAbsolute(dir) ? dir : join(terminalCwd, dir), file);
+    if (isRunnableCandidate(candidate)) return candidate;
+  }
+  return null;
 }
 
 /** stat+access on one candidate; any failure reads as unavailable. */
@@ -361,6 +375,9 @@ class LocalPtyChannel {
  * permissionless file where the program should be) surfaces here as the
  * open's error, not as a silent fall-back to bash — a terminal that is
  * quietly the wrong shell is worse than one that says why it did not open.
+ * And what opens is the exact file the PATH policy resolved (see
+ * {@link resolveExecutableCandidate}) — never the bare name, which would let
+ * the child run a PATH search the preflight never checked.
  */
 export function openLocalShell(opts: {
   cols?: number;
@@ -373,24 +390,33 @@ export function openLocalShell(opts: {
   const ptyApi = pty();
   if (!bash) throw new Error('No bash found on this machine — a local terminal cannot open.');
   if (!ptyApi) throw new Error('The local PTY module failed to load — a local terminal cannot open.');
+  // One working directory for the whole open: relative PATH entries resolve
+  // against it AND the child runs in it, so the availability check and the
+  // spawned process cannot disagree about where a candidate lives.
+  const terminalCwd = homedir();
   const chosen = opts.command
     ? { file: bash, args: ['-c', opts.command] }
     : resolveLocalShell(opts.shell ?? '', { systemRoot: process.env['SystemRoot'] }) ?? {
         file: bash,
         args: ['--login', '-i'],
       };
-  if (!opts.command && !executableFound(chosen.file)) {
+  // A bare shell spawns the RESOLVED candidate — never the original bare
+  // name, which would hand the child a PATH search of its own and let it
+  // land somewhere the preflight never looked.
+  const resolved =
+    opts.command ? chosen.file : resolveExecutableCandidate(chosen.file, terminalCwd);
+  if (!resolved) {
     throw new Error(
       `Could not open the ${opts.shell || 'default'} shell (${chosen.file}): ` +
         'the executable is not on this machine.',
     );
   }
   try {
-    return ptyApi.spawn(chosen.file, chosen.args, {
+    return ptyApi.spawn(resolved, chosen.args, {
       name: opts.term ?? 'xterm-256color',
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
-      cwd: homedir(),
+      cwd: terminalCwd,
       env: process.env,
     });
   } catch (err) {

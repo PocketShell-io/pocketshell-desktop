@@ -116,107 +116,78 @@ describe('SshService — a local dial', () => {
   it('connects without a transport and answers isLocal', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
-    expect(result.ok).toBe(true);
-    expect(ssh.isLocal(result.ok && result.connectionId ? result.connectionId : '')).toBe(true);
-    ssh.close(result.ok && result.connectionId ? result.connectionId : '');
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    try {
+      expect(result.ok).toBe(true);
+      expect(ssh.isLocal(connectionId)).toBe(true);
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('answers hostPlatform from the process, no probe exec', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    expect(await ssh.hostPlatform(connectionId)).toBe(localHostPlatform());
-    expect(localHostPlatform()).toBe(process.platform === 'win32' ? 'windows' : 'posix');
-    ssh.close(connectionId);
+    try {
+      expect(await ssh.hostPlatform(connectionId)).toBe(localHostPlatform());
+      expect(localHostPlatform()).toBe(process.platform === 'win32' ? 'windows' : 'posix');
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('execs through the local bash', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    const res = await ssh.exec(connectionId, 'echo routed-locally');
-    expect(res.exitCode).toBe(0);
-    expect(res.stdout.trim()).toBe('routed-locally');
-    ssh.close(connectionId);
+    try {
+      const res = await ssh.exec(connectionId, 'echo routed-locally');
+      expect(res.exitCode).toBe(0);
+      expect(res.stdout.trim()).toBe('routed-locally');
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('close forgets the record', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    ssh.close(connectionId);
-    expect(ssh.isLocal(connectionId)).toBe(false);
-    await expect(ssh.exec(connectionId, 'true')).rejects.toThrow(/Unknown connection/);
+    try {
+      ssh.close(connectionId);
+      expect(ssh.isLocal(connectionId)).toBe(false);
+      await expect(ssh.exec(connectionId, 'true')).rejects.toThrow(/Unknown connection/);
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('opens a real PTY for a command and streams its bytes', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    // Both ends awaited: the command's own output AND its exit. Killing a
-    // live ConPTY from inside a vitest worker takes the worker down with it
-    // (an unhandled socket error during teardown), so a test never leaves
-    // one running — the shell exits by itself and the exit is awaited.
-    const [saw, exitCode] = await new Promise<[string, number]>((resolve, reject) => {
-      let output = '';
-      let exit = -1;
-      const timer = setTimeout(() => reject(new Error('PTY never finished in 15s')), 15_000);
-      const settle = () => {
-        if (output.includes('pty-alive') && exit >= 0) {
-          clearTimeout(timer);
-          resolve([output, exit]);
-        }
-      };
-      void ssh
-        .openTrackedShell(connectionId, {
-          command: 'echo pty-alive',
-          commandMode: 'exec',
-          cols: 100,
-          rows: 30,
-          onData: (data) => {
-            output += data.toString('utf8');
-            settle();
-          },
-          onExit: (code) => {
-            exit = code;
-            settle();
-          },
-        })
-        .catch(reject);
-    });
-    expect(saw).toContain('pty-alive');
-    expect(exitCode).toBe(0);
-    ssh.close(connectionId);
-  });
-
-  it.skipIf(!chosenShell)(
-    'opens the chosen shell for a bare terminal when this machine has it',
-    async () => {
-      const ssh = new SshService();
-      const result = await ssh.connect({ host: 'self', user: 'me', local: true });
-      const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-      // A bare shell with the choice set lands in the CHOSEN program: its
-      // first paint (the `PS ...>` prompt for the PowerShell flavors, the
-      // version banner for cmd) is unmistakable, and bash never prints it.
-      // The choice under test is whatever this machine actually has — on a
-      // runner without any of the Windows shells the refusal test below is
-      // the behavior this machine can show instead.
-      const marker = FIRST_PAINT_OF[chosenShell!];
-      const sawChosen = await new Promise<boolean>((resolve, reject) => {
+    try {
+      // Both ends awaited: the command's own output AND its exit. Killing a
+      // live ConPTY from inside a vitest worker takes the worker down with it
+      // (an unhandled socket error during teardown), so a test never leaves
+      // one running — the shell exits by itself and the exit is awaited.
+      const [saw, exitCode] = await new Promise<[string, number]>((resolve, reject) => {
         let output = '';
         let exit = -1;
-        const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
+        const timer = setTimeout(() => reject(new Error('PTY never finished in 15s')), 15_000);
         const settle = () => {
-          if (output.includes(marker) && exit >= 0) {
+          if (output.includes('pty-alive') && exit >= 0) {
             clearTimeout(timer);
-            resolve(true);
+            resolve([output, exit]);
           }
         };
         void ssh
           .openTrackedShell(connectionId, {
-            shell: chosenShell,
-            command: 'exit',
-            commandMode: 'typed',
+            command: 'echo pty-alive',
+            commandMode: 'exec',
+            cols: 100,
+            rows: 30,
             onData: (data) => {
               output += data.toString('utf8');
               settle();
@@ -228,8 +199,57 @@ describe('SshService — a local dial', () => {
           })
           .catch(reject);
       });
-      expect(sawChosen).toBe(true);
+      expect(saw).toContain('pty-alive');
+      expect(exitCode).toBe(0);
+    } finally {
       ssh.close(connectionId);
+    }
+  });
+
+  it.skipIf(!chosenShell)(
+    'opens the chosen shell for a bare terminal when this machine has it',
+    async () => {
+      const ssh = new SshService();
+      const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+      const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+      try {
+        // A bare shell with the choice set lands in the CHOSEN program: its
+        // first paint (the `PS ...>` prompt for the PowerShell flavors, the
+        // version banner for cmd) is unmistakable, and bash never prints it.
+        // The choice under test is whatever this machine actually has — on a
+        // runner without any of the Windows shells the refusal test below is
+        // the behavior this machine can show instead.
+        const marker = FIRST_PAINT_OF[chosenShell!];
+        const sawChosen = await new Promise<boolean>((resolve, reject) => {
+          let output = '';
+          let exit = -1;
+          const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
+          const settle = () => {
+            if (output.includes(marker) && exit >= 0) {
+              clearTimeout(timer);
+              resolve(true);
+            }
+          };
+          void ssh
+            .openTrackedShell(connectionId, {
+              shell: chosenShell,
+              command: 'exit',
+              commandMode: 'typed',
+              onData: (data) => {
+                output += data.toString('utf8');
+                settle();
+              },
+              onExit: (code) => {
+                exit = code;
+                settle();
+              },
+            })
+            .catch(reject);
+        });
+        expect(sawChosen).toBe(true);
+      } finally {
+        ssh.close(connectionId);
+      }
     },
   );
 
@@ -237,39 +257,42 @@ describe('SshService — a local dial', () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    // A session join carries its POSIX script and must reach bash even with
-    // the choice set: the join output is the bash-echoed sentinel. The choice
-    // here is deliberately spelled as one this machine may not even have —
-    // exec mode ignores it (the command IS the channel), and that ignorance
-    // is the point.
-    const sawBash = await new Promise<boolean>((resolve, reject) => {
-      let output = '';
-      let exit = -1;
-      const timer = setTimeout(() => reject(new Error('join never finished in 15s')), 15_000);
-      const settle = () => {
-        if (output.includes('join-is-bash') && exit >= 0) {
-          clearTimeout(timer);
-          resolve(true);
-        }
-      };
-      void ssh
-        .openTrackedShell(connectionId, {
-          shell: 'powershell',
-          command: 'echo join-is-bash',
-          commandMode: 'exec',
-          onData: (data) => {
-            output += data.toString('utf8');
-            settle();
-          },
-          onExit: (code) => {
-            exit = code;
-            settle();
-          },
-        })
-        .catch(reject);
-    });
-    expect(sawBash).toBe(true);
-    ssh.close(connectionId);
+    try {
+      // A session join carries its POSIX script and must reach bash even with
+      // the choice set: the join output is the bash-echoed sentinel. The choice
+      // here is deliberately spelled as one this machine may not even have —
+      // exec mode ignores it (the command IS the channel), and that ignorance
+      // is the point.
+      const sawBash = await new Promise<boolean>((resolve, reject) => {
+        let output = '';
+        let exit = -1;
+        const timer = setTimeout(() => reject(new Error('join never finished in 15s')), 15_000);
+        const settle = () => {
+          if (output.includes('join-is-bash') && exit >= 0) {
+            clearTimeout(timer);
+            resolve(true);
+          }
+        };
+        void ssh
+          .openTrackedShell(connectionId, {
+            shell: 'powershell',
+            command: 'echo join-is-bash',
+            commandMode: 'exec',
+            onData: (data) => {
+              output += data.toString('utf8');
+              settle();
+            },
+            onExit: (code) => {
+              exit = code;
+              settle();
+            },
+          })
+          .catch(reject);
+      });
+      expect(sawBash).toBe(true);
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('refuses a shell choice whose binary is missing instead of falling back to bash', async () => {
@@ -295,58 +318,97 @@ describe('SshService — a local dial', () => {
       ).rejects.toThrow(/Could not open the pwsh shell/);
     } finally {
       process.env['PATH'] = realPath;
+      ssh.close(connectionId);
     }
-    ssh.close(connectionId);
   });
 
   it('delivers a command-run exit code through the shell onExit', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    const exitCode = await new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('shell never exited in 10s')), 10_000);
-      void ssh
-        .openTrackedShell(connectionId, {
-          command: 'exit 7',
-          commandMode: 'exec',
-          onData: () => undefined,
-          onExit: (code) => {
-            clearTimeout(timer);
-            resolve(code);
-          },
-        })
-        .catch(reject);
-    });
-    expect(exitCode).toBe(7);
-    ssh.close(connectionId);
+    try {
+      const exitCode = await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('shell never exited in 10s')), 10_000);
+        void ssh
+          .openTrackedShell(connectionId, {
+            command: 'exit 7',
+            commandMode: 'exec',
+            onData: () => undefined,
+            onExit: (code) => {
+              clearTimeout(timer);
+              resolve(code);
+            },
+          })
+          .catch(reject);
+      });
+      expect(exitCode).toBe(7);
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 });
 
 /**
- * Runs [body] with PATH — and, when asked, SystemRoot — pointed at a fresh
- * owned temp directory, so the availability controls below plant their
+ * The fixture root the absolute-choice controls plant against: nested one
+ * directory INSIDE the owned temp root, because the resolver builds Windows
+ * candidates with literal backslashes, and on POSIX a backslash is an
+ * ordinary filename character. At the temp root itself the planted candidate
+ * would be a SIBLING of the owned tree (`<root>\System32\…powershell.exe`
+ * beside it under /tmp) that the cleanup below could never reach; nested,
+ * the whole backslash name stays inside the owned root and is removed with
+ * it. Stray entries from older runs are never globbed away — this
+ * containment is what keeps new ones from existing.
+ */
+const WINDOWS_FIXTURE_ROOT = 'windows-fixture';
+
+/**
+ * Runs [body] with PATH — and, when asked, SystemRoot and HOME — pointed at a
+ * fresh owned temp directory, so the availability controls below plant their
  * candidates on a real filesystem and a real search path without leaking
- * either into the rest of the worker. Both are restored in the finally,
- * whatever the body decided.
+ * either into the rest of the worker. `searchPath` replaces PATH wholesale —
+ * a relative or empty-entry spelling is exactly what some controls are about
+ * — and may be a function of the fresh root, since the spelling depends on
+ * where the root landed; `asHome` makes the terminal's working directory —
+ * homedir() — the owned root for the duration.
+ *
+ * The environment is restored no matter how the body ends, and INDEPENDENTLY
+ * of the cleanup: a failed removal neither skips the restore nor masks the
+ * body's own error — the body's failure is the one the test reports, and a
+ * failed cleanup surfaces only when nothing else did.
  */
 async function withTempSearchPath(
   body: (root: string) => Promise<void>,
-  opts: { asSystemRoot?: boolean } = {},
+  opts: { asSystemRoot?: boolean; asHome?: boolean; searchPath?: string | ((root: string) => string) } = {},
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'local-shell-availability-'));
   const realPath = process.env['PATH'];
   const realSystemRoot = process.env['SystemRoot'];
+  const realHome = process.env['HOME'];
+  let bodyError: Error | undefined;
+  let cleanupError: Error | undefined;
   try {
-    process.env['PATH'] = root;
-    if (opts.asSystemRoot) process.env['SystemRoot'] = root;
+    process.env['PATH'] =
+      typeof opts.searchPath === 'function' ? opts.searchPath(root) : (opts.searchPath ?? root);
+    if (opts.asSystemRoot) process.env['SystemRoot'] = join(root, WINDOWS_FIXTURE_ROOT);
+    if (opts.asHome) process.env['HOME'] = root;
     await body(root);
+  } catch (err) {
+    bodyError = err instanceof Error ? err : new Error(String(err));
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch (err) {
+      cleanupError = err instanceof Error ? err : new Error(String(err));
+    }
     if (realSystemRoot === undefined) delete process.env['SystemRoot'];
     else process.env['SystemRoot'] = realSystemRoot;
+    if (realHome === undefined) delete process.env['HOME'];
+    else process.env['HOME'] = realHome;
     if (realPath === undefined) delete process.env['PATH'];
     else process.env['PATH'] = realPath;
   }
+  if (bodyError !== undefined) throw bodyError;
+  if (cleanupError !== undefined) throw cleanupError;
 }
 
 /** A local dial, opened the way every test above opens one. */
@@ -359,25 +421,38 @@ async function openSelfConnection(): Promise<[SshService, string]> {
 /**
  * A bare-shell open that settles only when [marker] has streamed AND the
  * child has exited by itself — the same never-leaving-a-live-PTY shape the
- * PTY tests above use, with the same 15s bound.
+ * PTY tests above use, with the same 15s bound. Resolves the accumulated
+ * output so an assertion can pin WHICH executable answered (the selected
+ * marker), not only that something did. Every ending clears the timer, and a
+ * timeout also closes the shell it opened — a wedged PTY never outlives the
+ * test that tripped over it.
  */
 function openBareShellExpecting(
   ssh: SshService,
   connectionId: string,
   shell: string,
   marker: string,
-): Promise<boolean> {
-  return new Promise<boolean>((resolve, reject) => {
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     let output = '';
     let exit = -1;
-    const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
-    const settle = () => {
-      if (output.includes(marker) && exit >= 0) {
-        clearTimeout(timer);
-        resolve(true);
-      }
+    let shellId: string | null = null;
+    let settled = false;
+    const finish = (err: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (shellId !== null) ssh.shellClose(shellId);
+      reject(err);
     };
-    void ssh
+    const timer = setTimeout(() => finish(new Error('shell never finished in 15s')), 15_000);
+    const settle = (): void => {
+      if (settled || !output.includes(marker) || exit < 0) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(output);
+    };
+    ssh
       .openTrackedShell(connectionId, {
         shell,
         onData: (data) => {
@@ -389,7 +464,10 @@ function openBareShellExpecting(
           settle();
         },
       })
-      .catch(reject);
+      .then((id) => {
+        shellId = id;
+      })
+      .catch((err: unknown) => finish(err instanceof Error ? err : new Error(String(err))));
   });
 }
 
@@ -399,85 +477,109 @@ function openBareShellExpecting(
  * directory, a permissionless file, an uninspectable path piece, a symlink,
  * a genuinely runnable program — never by re-asking the main process's own
  * predicate. Every refusal must carry the contract's error sentence and
- * open nothing; every admitted candidate must genuinely run.
+ * open nothing; every admitted candidate must genuinely run, and the
+ * exact-candidate controls below further pin WHICH file ran: the one the
+ * open's PATH policy resolved, identified by the program's own `$0`, not
+ * just any program a spawn-side re-search could have dug up.
  */
 describe('the availability gate behind a bare local shell', () => {
   it('refuses a directory standing where the chosen absolute program would be', async () => {
     const [ssh, connectionId] = await openSelfConnection();
-    await withTempSearchPath(
-      async (root) => {
-        // The resolver builds the absolute candidate under SystemRoot, so a
-        // temp SystemRoot moves that candidate into the temp directory —
-        // where this test plants a DIRECTORY in the program's place.
-        const candidate = resolveLocalShell('powershell', { systemRoot: root })!.file;
-        mkdirSync(candidate, { recursive: true });
-        await expect(
-          ssh.openTrackedShell(connectionId, { shell: 'powershell', onData: () => undefined }),
-        ).rejects.toThrow(/the executable is not on this machine/);
-      },
-      { asSystemRoot: true },
-    );
-    ssh.close(connectionId);
+    try {
+      await withTempSearchPath(
+        async () => {
+          // The resolver builds the absolute candidate under SystemRoot, so a
+          // fixture SystemRoot INSIDE the owned temp root moves that candidate
+          // into the tree this helper removes — even though its backslash
+          // spelling is a single literal filename on POSIX — where this test
+          // plants a DIRECTORY in the program's place.
+          const candidate = resolveLocalShell('powershell', {
+            systemRoot: process.env['SystemRoot'],
+          })!.file;
+          mkdirSync(candidate, { recursive: true });
+          await expect(
+            ssh.openTrackedShell(connectionId, { shell: 'powershell', onData: () => undefined }),
+          ).rejects.toThrow(/the executable is not on this machine/);
+        },
+        { asSystemRoot: true },
+      );
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('refuses a permissionless regular file standing where the chosen absolute program would be', async () => {
     const [ssh, connectionId] = await openSelfConnection();
-    await withTempSearchPath(
-      async (root) => {
-        const candidate = resolveLocalShell('powershell', { systemRoot: root })!.file;
-        mkdirSync(dirname(candidate), { recursive: true });
-        writeFileSync(candidate, 'this is not a program\n');
-        // POSIX refuses in the preflight: the file carries no execute
-        // permission. Windows has no permission bit to ask, so the admission
-        // there falls through to the real spawn, whose failure is the same
-        // refusal — the sentence is what both platforms owe the caller.
-        await expect(
-          ssh.openTrackedShell(connectionId, { shell: 'powershell', onData: () => undefined }),
-        ).rejects.toThrow(/Could not open the powershell shell/);
-      },
-      { asSystemRoot: true },
-    );
-    ssh.close(connectionId);
+    try {
+      await withTempSearchPath(
+        async () => {
+          const candidate = resolveLocalShell('powershell', {
+            systemRoot: process.env['SystemRoot'],
+          })!.file;
+          mkdirSync(dirname(candidate), { recursive: true });
+          writeFileSync(candidate, 'this is not a program\n');
+          // POSIX refuses in the preflight: the file carries no execute
+          // permission. Windows has no permission bit to ask, so the admission
+          // there falls through to the real spawn, whose failure is the same
+          // refusal — the sentence is what both platforms owe the caller.
+          await expect(
+            ssh.openTrackedShell(connectionId, { shell: 'powershell', onData: () => undefined }),
+          ).rejects.toThrow(/Could not open the powershell shell/);
+        },
+        { asSystemRoot: true },
+      );
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('refuses a directory named pwsh.exe found on PATH', async () => {
     const [ssh, connectionId] = await openSelfConnection();
-    await withTempSearchPath(async (root) => {
-      mkdirSync(join(root, 'pwsh.exe'));
-      await expect(
-        ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
-      ).rejects.toThrow(/the executable is not on this machine/);
-    });
-    ssh.close(connectionId);
+    try {
+      await withTempSearchPath(async (root) => {
+        mkdirSync(join(root, 'pwsh.exe'));
+        await expect(
+          ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
+        ).rejects.toThrow(/the executable is not on this machine/);
+      });
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('refuses a permissionless pwsh.exe found on PATH', async () => {
     const [ssh, connectionId] = await openSelfConnection();
-    await withTempSearchPath(async (root) => {
-      writeFileSync(join(root, 'pwsh.exe'), 'this is not a program\n');
-      // Same platform split as the absolute case above: preflight refusal on
-      // POSIX, real spawn failure on Windows — one refusal sentence.
-      await expect(
-        ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
-      ).rejects.toThrow(/Could not open the pwsh shell/);
-    });
-    ssh.close(connectionId);
+    try {
+      await withTempSearchPath(async (root) => {
+        writeFileSync(join(root, 'pwsh.exe'), 'this is not a program\n');
+        // Same platform split as the absolute case above: preflight refusal on
+        // POSIX, real spawn failure on Windows — one refusal sentence.
+        await expect(
+          ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
+        ).rejects.toThrow(/Could not open the pwsh shell/);
+      });
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   it('refuses when the candidate cannot even be inspected — the PATH entry is a file', async () => {
     const [ssh, connectionId] = await openSelfConnection();
-    await withTempSearchPath(async (root) => {
-      // A PATH entry that is itself a regular file puts every candidate
-      // under it behind an ENOTDIR: an inspection failure must read as
-      // unavailable, not as an unhandled error.
-      const notADirectory = join(root, 'path-is-a-file');
-      writeFileSync(notADirectory, '');
-      process.env['PATH'] = notADirectory;
-      await expect(
-        ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
-      ).rejects.toThrow(/the executable is not on this machine/);
-    });
-    ssh.close(connectionId);
+    try {
+      await withTempSearchPath(async (root) => {
+        // A PATH entry that is itself a regular file puts every candidate
+        // under it behind an ENOTDIR: an inspection failure must read as
+        // unavailable, not as an unhandled error.
+        const notADirectory = join(root, 'path-is-a-file');
+        writeFileSync(notADirectory, '');
+        process.env['PATH'] = notADirectory;
+        await expect(
+          ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
+        ).rejects.toThrow(/the executable is not on this machine/);
+      });
+    } finally {
+      ssh.close(connectionId);
+    }
   });
 
   // The runnable candidates below are shebang scripts — a POSIX shape, so
@@ -488,15 +590,18 @@ describe('the availability gate behind a bare local shell', () => {
     'opens a genuinely executable pwsh.exe found on PATH',
     async () => {
       const [ssh, connectionId] = await openSelfConnection();
-      await withTempSearchPath(async (root) => {
-        const script = join(root, 'pwsh.exe');
-        writeFileSync(script, '#!/bin/sh\nprintf availability-gate-ok\nexit 0\n');
-        chmodSync(script, 0o755);
-        expect(await openBareShellExpecting(ssh, connectionId, 'pwsh', 'availability-gate-ok')).toBe(
-          true,
-        );
-      });
-      ssh.close(connectionId);
+      try {
+        await withTempSearchPath(async (root) => {
+          const script = join(root, 'pwsh.exe');
+          writeFileSync(script, '#!/bin/sh\nprintf availability-gate-ok\nexit 0\n');
+          chmodSync(script, 0o755);
+          expect(await openBareShellExpecting(ssh, connectionId, 'pwsh', 'availability-gate-ok')).toContain(
+            'availability-gate-ok',
+          );
+        });
+      } finally {
+        ssh.close(connectionId);
+      }
     },
   );
 
@@ -504,16 +609,19 @@ describe('the availability gate behind a bare local shell', () => {
     'runs a PATH symlink to a runnable program as the program it points at',
     async () => {
       const [ssh, connectionId] = await openSelfConnection();
-      await withTempSearchPath(async (root) => {
-        const real = join(root, 'real-shell');
-        writeFileSync(real, '#!/bin/sh\nprintf symlink-points-here\nexit 0\n');
-        chmodSync(real, 0o755);
-        symlinkSync(real, join(root, 'pwsh.exe'));
-        expect(
-          await openBareShellExpecting(ssh, connectionId, 'pwsh', 'symlink-points-here'),
-        ).toBe(true);
-      });
-      ssh.close(connectionId);
+      try {
+        await withTempSearchPath(async (root) => {
+          const real = join(root, 'real-shell');
+          writeFileSync(real, '#!/bin/sh\nprintf symlink-points-here\nexit 0\n');
+          chmodSync(real, 0o755);
+          symlinkSync(real, join(root, 'pwsh.exe'));
+          expect(
+            await openBareShellExpecting(ssh, connectionId, 'pwsh', 'symlink-points-here'),
+          ).toContain('symlink-points-here');
+        });
+      } finally {
+        ssh.close(connectionId);
+      }
     },
   );
 
@@ -521,13 +629,94 @@ describe('the availability gate behind a bare local shell', () => {
     'refuses a PATH entry that is a symlink pointing at nothing',
     async () => {
       const [ssh, connectionId] = await openSelfConnection();
-      await withTempSearchPath(async (root) => {
-        symlinkSync(join(root, 'no-such-program'), join(root, 'pwsh.exe'));
-        await expect(
-          ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
-        ).rejects.toThrow(/the executable is not on this machine/);
-      });
-      ssh.close(connectionId);
+      try {
+        await withTempSearchPath(async (root) => {
+          symlinkSync(join(root, 'no-such-program'), join(root, 'pwsh.exe'));
+          await expect(
+            ssh.openTrackedShell(connectionId, { shell: 'pwsh', onData: () => undefined }),
+          ).rejects.toThrow(/the executable is not on this machine/);
+        });
+      } finally {
+        ssh.close(connectionId);
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'resolves a relative PATH entry against the terminal cwd and spawns that exact file',
+    async () => {
+      const [ssh, connectionId] = await openSelfConnection();
+      try {
+        await withTempSearchPath(
+          async (root) => {
+            // `bin` is relative on purpose: it means the working directory of
+            // whatever process resolves it. The terminal's cwd — homedir,
+            // redirected here into the owned root — is where the PTY child
+            // would run and where a spawn-side search would look; the vitest
+            // process's cwd (the repo) is NOT that place, and only under the
+            // terminal cwd does this entry hold the candidate. A check that
+            // resolves against the main process's cwd refuses this runnable
+            // shell; the open must resolve the entry against the terminal cwd
+            // and spawn the file it finds there, by its absolute path — $0 is
+            // the exact file this test planted, never a bare name the child
+            // re-searched for.
+            mkdirSync(join(root, 'bin'), { recursive: true });
+            const script = join(root, 'bin', 'pwsh.exe');
+            writeFileSync(script, '#!/bin/sh\nprintf "terminal-cwd-selected:%s\\n" "$0"\n');
+            chmodSync(script, 0o755);
+            const out = await openBareShellExpecting(
+              ssh,
+              connectionId,
+              'pwsh',
+              `terminal-cwd-selected:${join(root, 'bin', 'pwsh.exe')}`,
+            );
+            expect(out).toContain(`terminal-cwd-selected:${join(root, 'bin', 'pwsh.exe')}`);
+          },
+          { asHome: true, searchPath: 'bin' },
+        );
+      } finally {
+        ssh.close(connectionId);
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'does not let an empty PATH entry resurrect a same-name program from the terminal cwd',
+    async () => {
+      const [ssh, connectionId] = await openSelfConnection();
+      try {
+        await withTempSearchPath(
+          async (root) => {
+            // A decoy stands in the terminal cwd (the PTY child's cwd, via the
+            // HOME redirect) under the SAME NAME as the real candidate. To a
+            // spawn-side search the empty first PATH entry means "current
+            // directory", so a bare-name spawn finds and runs the decoy FIRST;
+            // the later good entry never answers. The open must skip the
+            // empty entry in its own search AND spawn the good candidate by
+            // its resolved absolute path — a skipped entry cannot re-enter
+            // through the child, and the decoy never runs.
+            const decoy = join(root, 'pwsh.exe');
+            writeFileSync(decoy, '#!/bin/sh\nprintf "cwd-decoy-ran zero=%s\\n" "$0"\n');
+            chmodSync(decoy, 0o755);
+            const goodDir = join(root, 'good');
+            mkdirSync(goodDir, { recursive: true });
+            const good = join(goodDir, 'pwsh.exe');
+            writeFileSync(good, '#!/bin/sh\nprintf "later-good-ran zero=%s\\n" "$0"\n');
+            chmodSync(good, 0o755);
+            const out = await openBareShellExpecting(
+              ssh,
+              connectionId,
+              'pwsh',
+              `later-good-ran zero=${good}`,
+            );
+            expect(out).toContain(`later-good-ran zero=${good}`);
+            expect(out).not.toContain('cwd-decoy-ran');
+          },
+          { asHome: true, searchPath: (root) => `${delimiter}${join(root, 'good')}` },
+        );
+      } finally {
+        ssh.close(connectionId);
+      }
     },
   );
 });
