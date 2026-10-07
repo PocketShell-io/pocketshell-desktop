@@ -128,6 +128,85 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
+  it('opens the chosen shell for a bare terminal, and keeps joins on bash', async () => {
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    // A bare shell with the choice set lands in PowerShell: its prompt line
+    // ("PS ...>") is unmistakable and bash never prints it.
+    const sawPs = await new Promise<boolean>((resolve, reject) => {
+      let output = '';
+      let exit = -1;
+      const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
+      const settle = () => {
+        if (output.includes('PS ') && exit >= 0) {
+          clearTimeout(timer);
+          resolve(true);
+        }
+      };
+      void ssh
+        .openTrackedShell(connectionId, {
+          shell: 'powershell',
+          command: 'exit',
+          commandMode: 'typed',
+          onData: (data) => {
+            output += data.toString('utf8');
+            settle();
+          },
+          onExit: (code) => {
+            exit = code;
+            settle();
+          },
+        })
+        .catch(reject);
+    });
+    expect(sawPs).toBe(true);
+
+    // A session join carries its POSIX script and must reach bash even with
+    // the choice set: the join output is the bash-echoed sentinel.
+    const sawBash = await new Promise<boolean>((resolve, reject) => {
+      let output = '';
+      let exit = -1;
+      const timer = setTimeout(() => reject(new Error('join never finished in 15s')), 15_000);
+      const settle = () => {
+        if (output.includes('join-is-bash') && exit >= 0) {
+          clearTimeout(timer);
+          resolve(true);
+        }
+      };
+      void ssh
+        .openTrackedShell(connectionId, {
+          shell: 'powershell',
+          command: 'echo join-is-bash',
+          commandMode: 'exec',
+          onData: (data) => {
+            output += data.toString('utf8');
+            settle();
+          },
+          onExit: (code) => {
+            exit = code;
+            settle();
+          },
+        })
+        .catch(reject);
+    });
+    expect(sawBash).toBe(true);
+    ssh.close(connectionId);
+  });
+
+  it('refuses an unresolvable shell choice instead of falling back to bash', async () => {
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    await expect(
+      ssh.openTrackedShell(connectionId, {
+        shell: 'pwsh',
+        onData: () => undefined,
+      }),
+    ).rejects.toThrow(/Could not open the pwsh shell/);
+    ssh.close(connectionId);
+  });
+
   it('delivers a command-run exit code through the shell onExit', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });

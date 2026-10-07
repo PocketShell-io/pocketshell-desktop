@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ExecResult, HostEntry, HostPlatform } from '@pocketshell/core';
 import type { ExecOptions } from '../ssh/SshService.js';
 import { EXEC_DEFAULT_TIMEOUT_MS } from '../ssh/SshService.js';
+import { resolveLocalShell } from '@pocketshell/core';
 import { log } from '../log.js';
 
 /**
@@ -265,6 +266,13 @@ class LocalPtyChannel {
   }
 
   write(data: string | Buffer): void {
+    // A trailing LF becomes CR: a Windows console's Enter is `\r`, and bash —
+    // which accepts either — is the only reason the SSH path's `\n` typing
+    // ever worked. Without this, a typed command (`htop`, an `exit`) sits on
+    // PowerShell's input line forever.
+    if (typeof data === 'string' && data.endsWith('\n') && !data.endsWith('\r\n')) {
+      data = data.slice(0, -1) + '\r';
+    }
     this.proc.write(typeof data === 'string' ? data : data.toString('utf8'));
   }
 
@@ -301,28 +309,47 @@ class LocalPtyChannel {
  * `command` given runs AS the PTY (`bash -c <command>`) — the `'exec'` mode
  * of the SSH path, and what a session join uses; the POSIX command spelling
  * is correct here precisely because there is no sshd re-splitting argv behind
- * the caller's back. Without one, an interactive login shell opens — the
- * local twin of sshd's default shell.
+ * the caller's back. Session joins always run under bash, chosen shell or
+ * not: the join scripts are POSIX.
+ *
+ * Without a command, an interactive shell opens — the local twin of sshd's
+ * default shell. That is the one place the user's choice applies (`shell`, a
+ * core `LocalShellChoice`): a bare terminal on this machine runs what the
+ * user picked, Git Bash unless they said otherwise. A choice whose binary is
+ * missing (pwsh not installed) surfaces here as the open's error, not as a
+ * silent fall-back to bash — a terminal that is quietly the wrong shell is
+ * worse than one that says why it did not open.
  */
 export function openLocalShell(opts: {
   cols?: number;
   rows?: number;
   term?: string;
   command?: string;
+  shell?: string;
 }): import('@lydell/node-pty').IPty {
   const bash = localBash();
   const ptyApi = pty();
   if (!bash) throw new Error('No bash found on this machine — a local terminal cannot open.');
   if (!ptyApi) throw new Error('The local PTY module failed to load — a local terminal cannot open.');
-  const file = bash;
-  const args = opts.command ? ['-c', opts.command] : ['--login', '-i'];
-  return ptyApi.spawn(file, args, {
-    name: opts.term ?? 'xterm-256color',
-    cols: opts.cols ?? 80,
-    rows: opts.rows ?? 24,
-    cwd: homedir(),
-    env: process.env,
-  });
+  const chosen = opts.command
+    ? { file: bash, args: ['-c', opts.command] }
+    : resolveLocalShell(opts.shell ?? '', { systemRoot: process.env['SystemRoot'] }) ?? {
+        file: bash,
+        args: ['--login', '-i'],
+      };
+  try {
+    return ptyApi.spawn(chosen.file, chosen.args, {
+      name: opts.term ?? 'xterm-256color',
+      cols: opts.cols ?? 80,
+      rows: opts.rows ?? 24,
+      cwd: homedir(),
+      env: process.env,
+    });
+  } catch (err) {
+    throw new Error(
+      `Could not open the ${opts.shell || 'default'} shell (${chosen.file}): ${(err as Error).message}`,
+    );
+  }
 }
 
 export { LocalPtyChannel };

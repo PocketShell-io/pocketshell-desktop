@@ -183,6 +183,8 @@ const api = {
       command?: string;
       cols?: number;
       rows?: number;
+      /** The interactive shell for a LOCAL terminal (core `LocalShellChoice`). */
+      shell?: string;
     }): Promise<ShellId> => ipcRenderer.invoke(ipc.shell.open, payload),
 
     /**

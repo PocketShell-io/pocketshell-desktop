@@ -73,12 +73,13 @@ export function registerTerminalIpc(ctx: IpcContext): void {
     ipc.shell.open,
     async (
       _evt,
-      payload: { connectionId: string; command?: string; cols?: number; rows?: number },
+      payload: { connectionId: string; command?: string; cols?: number; rows?: number; shell?: string },
     ) => {
       const shellId = await ssh.openTrackedShell(payload.connectionId, {
         command: payload.command,
         cols: payload.cols,
         rows: payload.rows,
+        ...(payload.shell ? { shell: payload.shell } : {}),
         onData: (data: Buffer) => {
           // Copy into a fresh Uint8Array view so the structured-clone across
           // the IPC boundary does not detach the underlying ssh2 buffer.

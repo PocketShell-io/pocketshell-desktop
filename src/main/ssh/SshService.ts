@@ -336,6 +336,13 @@ export class SshService {
       term?: string;
       command?: string;
       commandMode?: 'typed' | 'exec';
+      /**
+       * The interactive shell a LOCAL terminal opens (core
+       * `LocalShellChoice`). Read only for a local record's bare shell — a
+       * remote host's login shell is sshd's business, and a session join
+       * keeps its POSIX script under bash either way.
+       */
+      shell?: string;
       onData: (data: Buffer) => void;
       onExit?: (exitCode: number) => void;
     },
@@ -353,6 +360,7 @@ export class SshService {
       : new LocalPtyChannel(
           openLocalShell({
             command: opts.commandMode === 'exec' ? opts.command : undefined,
+            shell: opts.shell,
             term: pty.term,
             cols: pty.cols,
             rows: pty.rows,
