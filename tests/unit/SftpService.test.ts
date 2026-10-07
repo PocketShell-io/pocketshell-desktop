@@ -1,5 +1,13 @@
 import { Readable, Writable } from 'node:stream';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Client } from 'ssh2';
@@ -337,9 +345,15 @@ describe('SftpService — the local (self) connection', () => {
     await h.sftp.createFile(h.id, p, 'first');
     await expect(h.sftp.createFile(h.id, p, 'second')).rejects.toThrow(/Already exists/);
     expect(readFileSync(p, 'utf8')).toBe('first');
-    // Forward slashes: the local realPath matches the spelling $HOME and
-    // the renderer's crumb splitting use (see LocalHost/SftpService).
-    expect(await h.sftp.realPath(h.id, p)).toBe(p.replace(/\\/g, '/'));
+    // Canonical AND forward-slashed: the temp root's own spelling is not —
+    // macOS hands out `/var/folders/...` whose canonical answer lives under
+    // `/private/var`, and Windows may hand out a short name (`RUNNER~1`)
+    // whose canonical answer is the long one — so the expectation is
+    // canonicalized here independently, by node's own fs, rather than
+    // assumed equal to the path we asked with. The service's realPath must
+    // resolve to that same real file, spelled the way $HOME and the
+    // renderer's crumb splitting use (see LocalHost/SftpService).
+    expect(await h.sftp.realPath(h.id, p)).toBe(realpathSync(p).replace(/\\/g, '/'));
     rmSync(h.root, { recursive: true, force: true });
   });
 
