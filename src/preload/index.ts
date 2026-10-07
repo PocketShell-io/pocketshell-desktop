@@ -149,6 +149,8 @@ const api = {
       privateKey?: string;
       passphrase?: string;
       tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
+      /** True for the self host: main answers locally, no SSH. */
+      local?: boolean;
     }): Promise<ConnectResult> => ipcRenderer.invoke(ipc.ssh.connect, payload),
 
     /** Execute a command; no throw on non-zero exit. */

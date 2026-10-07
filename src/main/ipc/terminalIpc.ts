@@ -4,13 +4,18 @@ import { ipc } from '../../shared/channels.js';
 import type { HostEntry } from '@pocketshell/core';
 import { readSshConfig } from '../ssh-config/SshConfigParser.js';
 import { KnownHosts } from '../ssh-config/KnownHosts.js';
+import { withSelfEntry } from '../local/LocalHost.js';
 
 
 export function registerTerminalIpc(ctx: IpcContext): void {
   const { ssh, broadcast, tmuxClients } = ctx;
   // --- ssh:listConfigHosts -------------------------------------------------
+  // `self` leads the list: this machine, dialled locally (no SSH). It is not
+  // a config host — `fromConfig: false` and an `id` keep it out of any
+  // config-write path — but it rides the config group because that is the
+  // group the picker renders by default.
   ipcMain.handle(ipc.ssh.listConfigHosts, async (): Promise<HostEntry[]> => {
-    return readSshConfig();
+    return withSelfEntry(readSshConfig());
   });
 
   // --- ssh:connect ---------------------------------------------------------
@@ -28,6 +33,8 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         privateKey?: string;
         passphrase?: string;
         tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
+        /** True for the self host: main answers locally, no SSH. */
+        local?: boolean;
       },
     ) => {
       const knownHosts = new KnownHosts();
@@ -41,6 +48,7 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         passphrase: payload.passphrase,
         knownHosts,
         tofuDecision: payload.tofuDecision,
+        ...(payload.local ? { local: true } : {}),
       });
     },
   );

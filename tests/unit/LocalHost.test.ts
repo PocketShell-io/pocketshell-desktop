@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { SshService } from '../../src/main/ssh/SshService';
-import { execLocal, localBash, localHostPlatform } from '../../src/main/local/LocalHost';
+import {
+  execLocal,
+  localBash,
+  localHostPlatform,
+  selfHostEntry,
+  withSelfEntry,
+} from '../../src/main/local/LocalHost';
+import type { HostEntry } from '@pocketshell/core';
 
 /**
  * The local ("self") transport, against THIS machine's real bash — the exec
@@ -141,5 +148,38 @@ describe('SshService — a local dial', () => {
     });
     expect(exitCode).toBe(7);
     ssh.close(connectionId);
+  });
+});
+
+describe('the self host entry', () => {
+  it('is the local machine, identified as `self`', () => {
+    const entry = selfHostEntry();
+    expect(entry.id).toBe('self');
+    expect(entry.name).toBe('self');
+    expect(entry.local).toBe(true);
+    expect(entry.fromConfig).toBe(false);
+    expect(entry.identityFile).toBeNull();
+    expect(entry.user.length).toBeGreaterThan(0);
+  });
+
+  it('leads the picker list, and yields to a config host already named self', () => {
+    const configHost = (name: string): HostEntry => ({
+      name,
+      hostname: `${name}.example`,
+      port: 22,
+      user: 'me',
+      identityFile: null,
+      proxyJump: null,
+      forwardAgent: false,
+      localForwards: [],
+      remoteForwards: [],
+      fromConfig: true,
+    });
+    expect(withSelfEntry([configHost('hetzner')]).map((host) => host.name)).toEqual([
+      'self',
+      'hetzner',
+    ]);
+    const taken = [configHost('self'), configHost('hetzner')];
+    expect(withSelfEntry(taken)).toBe(taken);
   });
 });

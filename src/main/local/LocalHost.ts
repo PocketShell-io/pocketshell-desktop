@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
-import type { ExecResult, HostPlatform } from '@pocketshell/core';
+import type { ExecResult, HostEntry, HostPlatform } from '@pocketshell/core';
 import type { ExecOptions } from '../ssh/SshService.js';
 import { EXEC_DEFAULT_TIMEOUT_MS } from '../ssh/SshService.js';
 import { log } from '../log.js';
@@ -69,6 +69,40 @@ function findBash(): string | null {
     // no bash anywhere
   }
   return null;
+}
+
+/**
+ * The `self` entry the desktop lists first in the host picker: this machine,
+ * no SSH. `hostname` is identity only — the dial is `local: true` and never
+ * resolves the name. `id: 'self'` makes it default-host eligible and stable
+ * across list reloads (`hostEntryId` prefers `id`).
+ */
+export function selfHostEntry(): HostEntry {
+  return {
+    id: 'self',
+    name: 'self',
+    hostname: 'self',
+    port: 0,
+    user: userInfo().username,
+    identityFile: null,
+    proxyJump: null,
+    forwardAgent: false,
+    localForwards: [],
+    remoteForwards: [],
+    fromConfig: false,
+    local: true,
+  };
+}
+
+/**
+ * [configHosts] with `self` leading — unless the user already names a config
+ * host `self`, in which case theirs wins (theirs resolves somewhere real, and
+ * a duplicate identity would break the picker's keyed rows).
+ */
+export function withSelfEntry(configHosts: HostEntry[]): HostEntry[] {
+  return configHosts.some((host) => host.name === 'self')
+    ? configHosts
+    : [selfHostEntry(), ...configHosts];
 }
 
 /** The platform answer without a probe: the process knows what it runs on. */
