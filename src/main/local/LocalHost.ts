@@ -166,3 +166,129 @@ export function execLocalBackground(command: string): void {
     // fire-and-forget: nothing to report to
   }
 }
+
+// ---------------------------------------------------------------------------
+// PTY shells
+// ---------------------------------------------------------------------------
+
+/**
+ * The node-pty module, loaded on the first local shell and cached.
+ *
+ * Lazy on purpose: it is a native binding, and a machine where it fails to
+ * load must still be able to dial SSH hosts — the failure surfaces as an
+ * honest error on the local shell open, not as a dead app at startup.
+ * require() (not import): the main bundle is CJS and the package is
+ * externalised, so this is a plain runtime load from node_modules.
+ */
+type NodePty = typeof import('@lydell/node-pty');
+let ptyModule: NodePty | null | undefined;
+
+function pty(): NodePty | null {
+  if (ptyModule !== undefined) return ptyModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ptyModule = require('@lydell/node-pty') as NodePty;
+  } catch (err) {
+    log('local', `node-pty failed to load: ${(err as Error).message}`);
+    ptyModule = null;
+  }
+  return ptyModule;
+}
+
+/**
+ * A node-pty process dressed as the channel shape {@link ShellTracker} holds
+ * (the ssh2 `ClientChannel` surface): EventEmitter-style `on('data'/'close')`,
+ * `write`, ssh2-ordered `setWindow(rows, cols)`, and idempotent `end`/`close`.
+ * 'close' fires exactly once, with the child's exit code.
+ */
+class LocalPtyChannel {
+  private readonly dataListeners = new Set<(chunk: Buffer) => void>();
+  private readonly closeListeners = new Set<(exitCode?: number) => void>();
+  private exited = false;
+
+  constructor(private readonly proc: import('@lydell/node-pty').IPty) {
+    proc.onData((chunk) => {
+      for (const listener of this.dataListeners) listener(Buffer.from(chunk));
+    });
+    proc.onExit(({ exitCode }) => {
+      if (this.exited) return;
+      this.exited = true;
+      for (const listener of this.closeListeners) listener(exitCode);
+    });
+  }
+
+  on(event: 'data', listener: (chunk: Buffer) => void): void;
+  on(event: 'close', listener: (exitCode?: number) => void): void;
+  // The implementation signature stays invisible to callers; `string` and
+  // `never[]` are supertypes of both overloads' parameters, which is what
+  // their compatibility check requires.
+  on(event: string, listener: (...args: never[]) => void): void {
+    if (event === 'data') {
+      this.dataListeners.add(listener as unknown as (chunk: Buffer) => void);
+    } else {
+      this.closeListeners.add(listener as unknown as (exitCode?: number) => void);
+    }
+  }
+
+  write(data: string | Buffer): void {
+    this.proc.write(typeof data === 'string' ? data : data.toString('utf8'));
+  }
+
+  /** ssh2's argument order; the pixel sizes are meaningless to a local PTY. */
+  setWindow(rows: number, cols: number, _height: number, _width: number): void {
+    try {
+      this.proc.resize(cols, rows);
+    } catch {
+      // a PTY whose child is gone refuses resizes; nothing to save
+    }
+  }
+
+  end(): void {
+    this.kill();
+  }
+
+  close(): void {
+    this.kill();
+  }
+
+  private kill(): void {
+    if (this.exited) return;
+    try {
+      this.proc.kill();
+    } catch {
+      // already gone
+    }
+  }
+}
+
+/**
+ * Open a local PTY shell.
+ *
+ * `command` given runs AS the PTY (`bash -c <command>`) — the `'exec'` mode
+ * of the SSH path, and what a session join uses; the POSIX command spelling
+ * is correct here precisely because there is no sshd re-splitting argv behind
+ * the caller's back. Without one, an interactive login shell opens — the
+ * local twin of sshd's default shell.
+ */
+export function openLocalShell(opts: {
+  cols?: number;
+  rows?: number;
+  term?: string;
+  command?: string;
+}): import('@lydell/node-pty').IPty {
+  const bash = localBash();
+  const ptyApi = pty();
+  if (!bash) throw new Error('No bash found on this machine — a local terminal cannot open.');
+  if (!ptyApi) throw new Error('The local PTY module failed to load — a local terminal cannot open.');
+  const file = bash;
+  const args = opts.command ? ['-c', opts.command] : ['--login', '-i'];
+  return ptyApi.spawn(file, args, {
+    name: opts.term ?? 'xterm-256color',
+    cols: opts.cols ?? 80,
+    rows: opts.rows ?? 24,
+    cwd: homedir(),
+    env: { ...process.env },
+  });
+}
+
+export { LocalPtyChannel };

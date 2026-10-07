@@ -8,11 +8,17 @@ import {
   type SshConnectionRecord,
   type LocalConnectionRecord,
 } from './ConnectionRegistry.js';
-import { ShellTracker } from './ShellTracker.js';
+import { ShellTracker, type ShellChannel } from './ShellTracker.js';
 import { HostPlatformTracker } from './hostPlatform.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { decodePublicKeyBlob } from '@pocketshell/core';
-import { execLocal, execLocalBackground, localHostPlatform } from '../local/LocalHost.js';
+import {
+  execLocal,
+  execLocalBackground,
+  localHostPlatform,
+  LocalPtyChannel,
+  openLocalShell,
+} from '../local/LocalHost.js';
 import { log } from '../log.js';
 
 /**
@@ -335,25 +341,30 @@ export class SshService {
     },
   ): Promise<ShellId> {
     const rec = this.registry.require(connectionId);
-    if (!isSshRecord(rec)) {
-      // Local PTY shells arrive with the node-pty work; until then the
-      // session panel on a local connection answers honestly rather than
-      // crashing on a record with no client.
-      throw new Error('PTY shells are not available on a local connection yet.');
-    }
     const pty = {
       term: opts.term ?? PTY_TERM,
       cols: opts.cols ?? PTY_DEFAULT_COLS,
       rows: opts.rows ?? PTY_DEFAULT_ROWS,
     };
-    const channel =
-      opts.commandMode === 'exec' && opts.command
+    const channel: ShellChannel = isSshRecord(rec)
+      ? opts.commandMode === 'exec' && opts.command
         ? await openExecWithPty(rec, opts.command, pty)
-        : await openShell(rec, pty);
+        : await openShell(rec, pty)
+      : new LocalPtyChannel(
+          openLocalShell({
+            command: opts.commandMode === 'exec' ? opts.command : undefined,
+            term: pty.term,
+            cols: pty.cols,
+            rows: pty.rows,
+          }),
+        );
     const id = this.shells.register({ channel, connectionId });
     channel.on('data', (chunk: Buffer) => opts.onData(chunk));
-    channel.on('close', () => {
-      opts.onExit?.(0);
+    channel.on('close', (code?: number) => {
+      // The local PTY knows its real exit code; ssh2 exec channels pass one
+      // on close too. A bare shell channel (and ssh2's own shell open) gives
+      // none — 0 is the long-standing answer here.
+      opts.onExit?.(code ?? 0);
       this.shells.remove(id);
     });
     // In the default mode the PTY runs an interactive login shell and the

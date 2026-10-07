@@ -49,13 +49,14 @@ describe('SshService — a local dial', () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     expect(result.ok).toBe(true);
-    expect(ssh.isLocal(result.ok ? result.connectionId : '')).toBe(true);
-    ssh.close(result.ok ? result.connectionId : '');
+    expect(ssh.isLocal(result.ok && result.connectionId ? result.connectionId : '')).toBe(true);
+    ssh.close(result.ok && result.connectionId ? result.connectionId : '');
   });
 
   it('answers hostPlatform from the process, no probe exec', async () => {
     const ssh = new SshService();
-    const { connectionId } = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
     expect(await ssh.hostPlatform(connectionId)).toBe(localHostPlatform());
     expect(localHostPlatform()).toBe(process.platform === 'win32' ? 'windows' : 'posix');
     ssh.close(connectionId);
@@ -63,7 +64,8 @@ describe('SshService — a local dial', () => {
 
   it('execs through the local bash', async () => {
     const ssh = new SshService();
-    const { connectionId } = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
     const res = await ssh.exec(connectionId, 'echo routed-locally');
     expect(res.exitCode).toBe(0);
     expect(res.stdout.trim()).toBe('routed-locally');
@@ -72,18 +74,72 @@ describe('SshService — a local dial', () => {
 
   it('close forgets the record', async () => {
     const ssh = new SshService();
-    const { connectionId } = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
     ssh.close(connectionId);
     expect(ssh.isLocal(connectionId)).toBe(false);
     await expect(ssh.exec(connectionId, 'true')).rejects.toThrow(/Unknown connection/);
   });
 
-  it('openTrackedShell refuses a local record until the PTY work lands', async () => {
+  it('opens a real PTY for a command and streams its bytes', async () => {
     const ssh = new SshService();
-    const { connectionId } = await ssh.connect({ host: 'self', user: 'me', local: true });
-    await expect(
-      ssh.openTrackedShell(connectionId, { onData: () => undefined }),
-    ).rejects.toThrow(/not available on a local connection/);
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    // Both ends awaited: the command's own output AND its exit. Killing a
+    // live ConPTY from inside a vitest worker takes the worker down with it
+    // (an unhandled socket error during teardown), so a test never leaves
+    // one running — the shell exits by itself and the exit is awaited.
+    const [saw, exitCode] = await new Promise<[string, number]>((resolve, reject) => {
+      let output = '';
+      let exit = -1;
+      const timer = setTimeout(() => reject(new Error('PTY never finished in 15s')), 15_000);
+      const settle = () => {
+        if (output.includes('pty-alive') && exit >= 0) {
+          clearTimeout(timer);
+          resolve([output, exit]);
+        }
+      };
+      void ssh
+        .openTrackedShell(connectionId, {
+          command: 'echo pty-alive',
+          commandMode: 'exec',
+          cols: 100,
+          rows: 30,
+          onData: (data) => {
+            output += data.toString('utf8');
+            settle();
+          },
+          onExit: (code) => {
+            exit = code;
+            settle();
+          },
+        })
+        .catch(reject);
+    });
+    expect(saw).toContain('pty-alive');
+    expect(exitCode).toBe(0);
+    ssh.close(connectionId);
+  });
+
+  it('delivers a command-run exit code through the shell onExit', async () => {
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('shell never exited in 10s')), 10_000);
+      void ssh
+        .openTrackedShell(connectionId, {
+          command: 'exit 7',
+          commandMode: 'exec',
+          onData: () => undefined,
+          onExit: (code) => {
+            clearTimeout(timer);
+            resolve(code);
+          },
+        })
+        .catch(reject);
+    });
+    expect(exitCode).toBe(7);
     ssh.close(connectionId);
   });
 });
