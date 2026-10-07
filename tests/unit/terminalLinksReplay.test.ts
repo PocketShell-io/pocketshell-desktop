@@ -143,3 +143,59 @@ describe('a captured Codex screen, replayed into a real buffer', () => {
     expect(pathLinks(term, y, () => ({ sessionName: 'zoomcamp-ops' }))).toEqual([]);
   });
 });
+
+describe('the thirteenth report: a Codex attachment list that underlines its fill', () => {
+  // The Codex transcript underlines attachment paths and then paints each
+  // row's remaining columns with the attribute still active, so the at-rest
+  // underline runs through empty space to the pane's edge — on the wrapped
+  // path's BOTH rows:
+  //
+  //     - ~/.pocketshell/attachments/ai-shipping-labs/homeowkr/20261007-222328-01-
+  //     video1884788668.mp4
+  //
+  // The fragments must claim what the CLI presents underlined: the click a
+  // user lands on that underline has to open the whole path, not fall dead.
+  it('claims the underlined fill past the cut, on both rows of the wrapped path', async () => {
+    const cols = 91;
+    const cut = '- ~/.pocketshell/attachments/ai-shipping-labs/homeowkr/20261007-222328-01-';
+    const cont = 'video1884788668.mp4';
+    const bytes =
+      `Attached files:\r\n` +
+      `- \x1b[4m${cut.slice(2)}${' '.repeat(cols - cut.length)}\x1b[24m\r\n` +
+      `\x1b[4m${cont}${' '.repeat(cols - cont.length)}\x1b[24m\r\n` +
+      `\r\n`;
+    const term = new Terminal({ cols, rows: 12, allowProposedApi: true }) as unknown as XtermTerminal;
+    await new Promise<void>((resolve) => term.write(bytes, resolve));
+
+    const y = rowOf(term, '222328-01-');
+    expect(y).toBeGreaterThan(0);
+    // The ranges are absolute, so whichever row the mouse is over answers with
+    // the same two fragments: the cut row's claim runs from the path's head
+    // through the join-dropped underlined fill to the pane's edge, the
+    // continuation's from its first cell through its own fill.
+    const expected = [
+      { start: { x: 3, y }, end: { x: cols, y } },
+      { start: { x: 1, y: y + 1 }, end: { x: cols, y: y + 1 } },
+    ];
+    for (const line of [y, y + 1]) {
+      expect(pathLinks(term, line, () => ({ sessionName: 'zoomcamp-ops' })).map((l) => l.range)).toEqual(
+        expected,
+      );
+    }
+  });
+
+  it('keeps a plain-fill row bare: the underline claim follows the attribute only', async () => {
+    const cols = 91;
+    const whole = '- ~/.pocketshell/attachments/ai-shipping-labs/homeowkr/20261007-222257-01-image.png';
+    const bytes =
+      `Attached files:\r\n` +
+      `- \x1b[4m${whole.slice(2)}\x1b[24m${' '.repeat(cols - whole.length)}\x1b[0m\r\n`;
+    const term = new Terminal({ cols, rows: 12, allowProposedApi: true }) as unknown as XtermTerminal;
+    await new Promise<void>((resolve) => term.write(bytes, resolve));
+
+    const y = rowOf(term, '222257-01-image.png');
+    expect(pathLinks(term, y, () => ({ sessionName: 'zoomcamp-ops' })).map((l) => l.range)).toEqual([
+      { start: { x: 3, y }, end: { x: whole.length, y } },
+    ]);
+  });
+});

@@ -29,7 +29,7 @@ const { useSessionsStore } = await import('@ui/app/stores/sessions');
 
 /** One row of the fake buffer. `cells` is one entry per CELL, not per char. */
 interface FakeRow {
-  cells: { chars: string; width: number }[];
+  cells: { chars: string; width: number; underline?: boolean }[];
   isWrapped: boolean;
 }
 
@@ -65,9 +65,36 @@ function fakeScreen(rows: string[], width: number): Terminal {
   );
 }
 
+/**
+ * A fake buffer whose cells carry the underline attribute, run by run.
+ *
+ * Each row is painted from its list of runs in order; the fill past the last
+ * run is plain spaces. This is the thirteenth report's material: a CLI that
+ * underlines not just a path but the fill cells after it, so the at-rest
+ * underline runs into empty space — and the fragment's claim follows it.
+ */
+function fakeAttrScreen(rows: { text: string; underline?: boolean }[][], width: number): Terminal {
+  return buildTerminal(
+    rows.map((runs) => {
+      const cells: FakeRow['cells'] = [];
+      for (const run of runs) {
+        for (const ch of run.text) {
+          cells.push({ chars: ch, width: 1, underline: run.underline });
+        }
+      }
+      while (cells.length < width) cells.push({ chars: ' ', width: 1 });
+      return { cells, isWrapped: false };
+    }),
+  );
+}
+
 function buildTerminal(lines: FakeRow[]): Terminal {
   const buffer = {
-    getNullCell: () => ({ getChars: () => '', getWidth: () => 1 }),
+    getNullCell: () => ({
+      getChars: () => '',
+      getWidth: () => 1,
+      isUnderline: () => 0,
+    }),
     getLine: (y: number) => {
       const line = lines[y];
       if (!line) return undefined;
@@ -77,7 +104,11 @@ function buildTerminal(lines: FakeRow[]): Terminal {
         getCell: (x: number) => {
           const cell = line.cells[x];
           if (!cell) return undefined;
-          return { getChars: () => cell.chars, getWidth: () => cell.width };
+          return {
+            getChars: () => cell.chars,
+            getWidth: () => cell.width,
+            isUnderline: () => (cell.underline ? 1 : 0),
+          };
         },
       };
     },
@@ -144,8 +175,8 @@ describe('scanBufferLine', () => {
     const scanned = scanBufferLine(term, 1);
     expect(scanned.text).toBe('漢x');
     expect(scanned.cells).toEqual([
-      { x: 0, y: 0 },
-      { x: 2, y: 0 },
+      { x: 0, y: 0, u: false },
+      { x: 2, y: 0, u: false },
     ]);
   });
 });
@@ -1818,5 +1849,101 @@ describe('scanBufferLine — a command echo cut ahead of the transcript result g
     const files = useFilesStore();
     links[0]?.activate(CLICK, '/home/alexey/tmp/mem-hub/.git/index.lock');
     expect(files.reveal).toBe('/home/alexey/tmp/mem-hub/.git/index.lock');
+  });
+});
+
+describe('linksPerRow — the fill a CLI underlined past its own text', () => {
+  // The thirteenth report, a Codex transcript's attachment list. The CLI
+  // underlines its file paths and then paints each row's remaining fill with
+  // the attribute still active, so the at-rest underline runs through empty
+  // space to the pane's edge — on the wrapped path's BOTH rows. A fragment
+  // ending at the text left most of what the user reads as the link a dead
+  // zone no click could leave from; the claim now follows the CLI's own
+  // underline.
+  const CUT = '- ~/.pocketshell/attachments/ai-shipping-labs/homeowkr/20261007-222328-01-';
+  const CONT = 'video1884788668.mp4';
+  const WIDTH = 91;
+  const u = (text: string): { text: string; underline: boolean } => ({ text, underline: true });
+  const p = (text: string): { text: string; underline: boolean } => ({ text, underline: false });
+
+  it('claims the underlined fill after a single-row path, and stops where it ends', () => {
+    // `saved ` plain, the path underlined, five underlined spaces of fill, the
+    // rest of the row plain: the fragment runs to the last underlined column
+    // and not one cell further.
+    const term = fakeAttrScreen(
+      [[p('saved '), u('~/att/photo.png'), u('     ')]],
+      60,
+    );
+    expect(pathLinks(term, 1, () => ({ sessionName: 'git-foo' }))[0]?.range).toEqual({
+      start: { x: 7, y: 1 },
+      end: { x: 26, y: 1 },
+    });
+  });
+
+  it('leaves a plain fill bare — every CLI that underlines only its text', () => {
+    const term = fakeAttrScreen([[u('saved ~/att/photo.png')]], 60);
+    expect(pathLinks(term, 1, () => ({ sessionName: 'git-foo' }))[0]?.range).toEqual({
+      start: { x: 7, y: 1 },
+      end: { x: 21, y: 1 },
+    });
+  });
+
+  it('claims the underlined fill on BOTH rows of the wrapped attachment path', () => {
+    // The cut row's fill is not in the flattened line at all — the join
+    // dropped it to keep the glued token whole — so its underlined stretch
+    // comes from the tail the flattening remembered; the continuation's fill
+    // stayed in the array and is walked directly.
+    const term = fakeAttrScreen(
+      [
+        [p('- '), u(CUT.slice(2)), u(' '.repeat(WIDTH - CUT.length))],
+        [u(CONT), u(' '.repeat(WIDTH - CONT.length))],
+      ],
+      WIDTH,
+    );
+    expect(pathLinks(term, 1, () => ({ sessionName: 'git-foo' })).map((l) => l.range)).toEqual([
+      { start: { x: 3, y: 1 }, end: { x: WIDTH, y: 1 } },
+      { start: { x: 1, y: 2 }, end: { x: WIDTH, y: 2 } },
+    ]);
+    expect(pathLinks(term, 2, () => ({ sessionName: 'git-foo' })).map((l) => l.range)).toEqual([
+      { start: { x: 3, y: 1 }, end: { x: WIDTH, y: 1 } },
+      { start: { x: 1, y: 2 }, end: { x: WIDTH, y: 2 } },
+    ]);
+  });
+
+  it('still opens the whole path from a click on the underlined padding', () => {
+    const term = fakeAttrScreen(
+      [
+        [p('- '), u(CUT.slice(2)), u(' '.repeat(WIDTH - CUT.length))],
+        [u(CONT), u(' '.repeat(WIDTH - CONT.length))],
+      ],
+      WIDTH,
+    );
+    const files = useFilesStore();
+    const sessions = useSessionsStore();
+    sessions.sessions = [
+      { name: 'git-foo', created: 0, activity: 0, attached: true, path: '~/git/foo' },
+    ];
+    const links = pathLinks(term, 2, () => ({ sessionName: 'git-foo' }));
+    links[0]?.activate(CLICK, links[0]?.text);
+    // The store keeps its home-relative form (resolveRemotePath strips the
+    // tilde itself); the point here is the WHOLE path, not the row-two
+    // fragment the click's cell sits on.
+    expect(files.reveal).toBe(
+      '.pocketshell/attachments/ai-shipping-labs/homeowkr/20261007-222328-01-video1884788668.mp4',
+    );
+  });
+
+  it('stops the claim before a second path sharing the row', () => {
+    // Underlined separator spaces do not weld two paths into one claim: the
+    // walk stops at the first non-space cell, so the second path keeps its
+    // own fragment.
+    const term = fakeAttrScreen(
+      [[u('~/a/one.png'), u('  '), u('~/b/two.png'), u('    ')]],
+      40,
+    );
+    expect(pathLinks(term, 1, () => ({ sessionName: 'git-foo' })).map((l) => l.range)).toEqual([
+      { start: { x: 1, y: 1 }, end: { x: 13, y: 1 } },
+      { start: { x: 14, y: 1 }, end: { x: 28, y: 1 } },
+    ]);
   });
 });
