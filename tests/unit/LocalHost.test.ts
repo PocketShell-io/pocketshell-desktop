@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
 import { SshService } from '../../src/main/ssh/SshService';
 import {
   execLocal,
@@ -7,6 +9,7 @@ import {
   selfHostEntry,
   withSelfEntry,
 } from '../../src/main/local/LocalHost';
+import { resolveLocalShell } from '@pocketshell/core';
 import type { HostEntry } from '@pocketshell/core';
 
 /**
@@ -17,6 +20,40 @@ import type { HostEntry } from '@pocketshell/core';
  * Skipped where no bash exists (the exec tests), never for the service-level
  * tests: a local dial itself cannot fail — no transport, no keys.
  */
+
+/**
+ * Whether THIS machine can actually exec the shell a choice resolves to —
+ * the same question the main process's open asks before spawning (absolute
+ * path must exist, bare name must be on PATH), answered here with the same
+ * public resolver so the tests below can pick their subject by availability
+ * instead of assuming what the runner image has installed.
+ */
+function choiceSpawnable(choice: string): boolean {
+  const resolved = resolveLocalShell(choice, { systemRoot: process.env['SystemRoot'] });
+  if (!resolved) return false;
+  if (isAbsolute(resolved.file)) return existsSync(resolved.file);
+  return (process.env['PATH'] ?? '')
+    .split(delimiter)
+    .some((dir) => dir !== '' && existsSync(join(dir, resolved.file)));
+}
+
+/**
+ * The choices, in the order the settings picker offers them. All three are
+ * Windows programs (core resolves `powershell`/`cmd` under the Windows
+ * layout and `pwsh` on PATH as `pwsh.exe`), so which of them — if any — is
+ * spawnable is a property of the machine, not of the test.
+ */
+const CHOICES = ['powershell', 'pwsh', 'cmd'] as const;
+
+/** The chosen shell, when this machine has one. Undefined on POSIX runners. */
+const chosenShell = CHOICES.find(choiceSpawnable);
+
+/** Each choice's first paint, unmistakable and never printed by bash. */
+const FIRST_PAINT_OF: Record<(typeof CHOICES)[number], string> = {
+  powershell: 'PS ',
+  pwsh: 'PS ',
+  cmd: 'Microsoft Windows [',
+};
 
 describe('execLocal', () => {
   it.skipIf(!localBash())('runs a POSIX command and carries stdout and the exit code', async () => {
@@ -128,42 +165,59 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
-  it('opens the chosen shell for a bare terminal, and keeps joins on bash', async () => {
+  it.skipIf(!chosenShell)(
+    'opens the chosen shell for a bare terminal when this machine has it',
+    async () => {
+      const ssh = new SshService();
+      const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+      const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+      // A bare shell with the choice set lands in the CHOSEN program: its
+      // first paint (the `PS ...>` prompt for the PowerShell flavors, the
+      // version banner for cmd) is unmistakable, and bash never prints it.
+      // The choice under test is whatever this machine actually has — on a
+      // runner without any of the Windows shells the refusal test below is
+      // the behavior this machine can show instead.
+      const marker = FIRST_PAINT_OF[chosenShell!];
+      const sawChosen = await new Promise<boolean>((resolve, reject) => {
+        let output = '';
+        let exit = -1;
+        const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
+        const settle = () => {
+          if (output.includes(marker) && exit >= 0) {
+            clearTimeout(timer);
+            resolve(true);
+          }
+        };
+        void ssh
+          .openTrackedShell(connectionId, {
+            shell: chosenShell,
+            command: 'exit',
+            commandMode: 'typed',
+            onData: (data) => {
+              output += data.toString('utf8');
+              settle();
+            },
+            onExit: (code) => {
+              exit = code;
+              settle();
+            },
+          })
+          .catch(reject);
+      });
+      expect(sawChosen).toBe(true);
+      ssh.close(connectionId);
+    },
+  );
+
+  it('runs a session join under bash even with a shell choice set', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    // A bare shell with the choice set lands in PowerShell: its prompt line
-    // ("PS ...>") is unmistakable and bash never prints it.
-    const sawPs = await new Promise<boolean>((resolve, reject) => {
-      let output = '';
-      let exit = -1;
-      const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
-      const settle = () => {
-        if (output.includes('PS ') && exit >= 0) {
-          clearTimeout(timer);
-          resolve(true);
-        }
-      };
-      void ssh
-        .openTrackedShell(connectionId, {
-          shell: 'powershell',
-          command: 'exit',
-          commandMode: 'typed',
-          onData: (data) => {
-            output += data.toString('utf8');
-            settle();
-          },
-          onExit: (code) => {
-            exit = code;
-            settle();
-          },
-        })
-        .catch(reject);
-    });
-    expect(sawPs).toBe(true);
-
     // A session join carries its POSIX script and must reach bash even with
-    // the choice set: the join output is the bash-echoed sentinel.
+    // the choice set: the join output is the bash-echoed sentinel. The choice
+    // here is deliberately spelled as one this machine may not even have —
+    // exec mode ignores it (the command IS the channel), and that ignorance
+    // is the point.
     const sawBash = await new Promise<boolean>((resolve, reject) => {
       let output = '';
       let exit = -1;
@@ -194,16 +248,30 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
-  it('refuses an unresolvable shell choice instead of falling back to bash', async () => {
+  it('refuses a shell choice whose binary is missing instead of falling back to bash', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    await expect(
-      ssh.openTrackedShell(connectionId, {
-        shell: 'pwsh',
-        onData: () => undefined,
-      }),
-    ).rejects.toThrow(/Could not open the pwsh shell/);
+    // `pwsh` must be genuinely absent for the duration of the open. On POSIX
+    // runners it already is — the resolver spells the choice `pwsh.exe`,
+    // which no PATH there carries — so the bare name finds nothing; on
+    // Windows, where pwsh may well be installed, the PATH goes away for the
+    // one open. The main process's availability check is PATH-scoped for a
+    // bare name, so this is "not installed" without uninstalling anything,
+    // and no spawn happens on this path, so nothing inherits the stripped
+    // environment.
+    const realPath = process.env['PATH'];
+    process.env['PATH'] = '';
+    try {
+      await expect(
+        ssh.openTrackedShell(connectionId, {
+          shell: 'pwsh',
+          onData: () => undefined,
+        }),
+      ).rejects.toThrow(/Could not open the pwsh shell/);
+    } finally {
+      process.env['PATH'] = realPath;
+    }
     ssh.close(connectionId);
   });
 

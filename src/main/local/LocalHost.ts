@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, isAbsolute, join } from 'node:path';
 import type { ExecResult, HostEntry, HostPlatform } from '@pocketshell/core';
 import type { ExecOptions } from '../ssh/SshService.js';
 import { EXEC_DEFAULT_TIMEOUT_MS } from '../ssh/SshService.js';
@@ -231,6 +231,25 @@ function pty(): NodePty | null {
 }
 
 /**
+ * Whether [file] names a program this machine can exec — an absolute path
+ * must exist, a bare name must resolve on PATH the way a spawn would search
+ * it. The check exists because a PTY open is the one spawn here whose
+ * miss is silent: node-pty on POSIX reports a missing executable as a CHILD
+ * EXIT, not as a throw from spawn, so a chosen shell this machine does not
+ * have used to open a channel that died before its first byte — the caller
+ * saw an open that resolved and immediately closed, never the error the
+ * contract promises. Asked only about the resolved choice, never about bash:
+ * bash's existence is what `localBash` already answers.
+ */
+function executableFound(file: string): boolean {
+  if (isAbsolute(file)) return existsSync(file);
+  for (const dir of (process.env['PATH'] ?? '').split(delimiter)) {
+    if (dir !== '' && existsSync(join(dir, file))) return true;
+  }
+  return false;
+}
+
+/**
  * A node-pty process dressed as the channel shape {@link ShellTracker} holds
  * (the ssh2 `ClientChannel` surface): EventEmitter-style `on('data'/'close')`,
  * `write`, ssh2-ordered `setWindow(rows, cols)`, and idempotent `end`/`close`.
@@ -337,6 +356,12 @@ export function openLocalShell(opts: {
         file: bash,
         args: ['--login', '-i'],
       };
+  if (!opts.command && !executableFound(chosen.file)) {
+    throw new Error(
+      `Could not open the ${opts.shell || 'default'} shell (${chosen.file}): ` +
+        'the executable is not on this machine.',
+    );
+  }
   try {
     return ptyApi.spawn(chosen.file, chosen.args, {
       name: opts.term ?? 'xterm-256color',
