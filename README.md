@@ -95,6 +95,8 @@ A quota view reads what is left for each AI provider, and when it resets, from t
 
 Hosts come from `~/.ssh/config`, with a manual add when a host is not listed. Host keys are checked against `known_hosts`: an unknown key asks, a mismatch stops. On connect the app reports when the helper is missing. A dropped network reconnects and brings sessions and forwards back.
 
+The picker's first row is **self** — this computer, no SSH. Its sessions are the aplexer sessions of your own machine, reached by running the same commands locally, so the panel, the joins and the Files tab behave exactly as they do over the wire. Install [aplexer](https://github.com/PocketShell-io/aplexer) locally and it is just another host in the list.
+
 </td>
 </tr>
 </table>
