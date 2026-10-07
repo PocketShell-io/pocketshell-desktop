@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ARROW_DOWN_KEY,
   BP_END,
   BP_START,
   PASTE_GAP_MS,
+  SCROLL_EXIT_GAP_MS,
   SUBMIT_KEY,
   deliverPayload,
   frameForPaste,
   needsBracketedPaste,
   composerAgentKind,
+  scrollExitKeys,
   sendRoute,
   withTimeout,
 } from '@pocketshell/core';
@@ -134,6 +137,69 @@ describe('deliverPayload — the wire sequence', () => {
     // Exactly one carriage return crosses the wire, and it is the last write.
     expect(r.writes.filter((w) => w.includes('\r'))).toEqual(['\r']);
     expect(r.writes.at(-1)).toBe('\r');
+  });
+});
+
+describe('deliverPayload with probeScroll — leaving aplexer\u2019s pager first', () => {
+  // The user's report, in one line: submit while the pane is scrolled and the
+  // message never lands, because aplexer's pager eats every byte it holds the
+  // keyboard over. The send asks the pane (which reads the pager's own status
+  // bar) and walks the pager down before the paste. The deep contract lives in
+  // pocketshell-core; these pin the desktop-facing shape of it.
+
+  it('walks the pager down before the prompt, then gaps past the read boundary', async () => {
+    const r = recorder();
+    const slept: number[] = [];
+    let reads = 0;
+    const ok = await deliverPayload('ship it', {
+      write: r.write,
+      submitDelayMs: 0,
+      sleep: async (ms) => {
+        slept.push(ms);
+      },
+      probeScroll: () =>
+        ++reads === 1
+          ? { paged: true, offsetLines: 7, rows: 41 }
+          : { paged: false, offsetLines: null, rows: 41 },
+    });
+
+    expect(ok).toBe(true);
+    expect(r.writes[0]).toBe(ARROW_DOWN_KEY.repeat(8));
+    expect(r.writes[1]).toBe('ship it');
+    expect(r.writes.at(-1)).toBe(SUBMIT_KEY);
+    expect(slept).toEqual([SCROLL_EXIT_GAP_MS]);
+  });
+
+  it('sends nothing extra when no probe is wired or the pane answers live', async () => {
+    const r = recorder();
+    await deliverPayload('ship it', { write: r.write, submitDelayMs: 0, sleep: noSleep });
+    expect(r.writes).toEqual(['ship it', '\r']);
+
+    const probed = recorder();
+    await deliverPayload('ship it', {
+      write: probed.write,
+      submitDelayMs: 0,
+      sleep: noSleep,
+      probeScroll: () => ({ paged: false, offsetLines: null, rows: 41 }),
+    });
+    expect(probed.writes).toEqual(['ship it', '\r']);
+  });
+
+  it('refuses to send when the exit walk itself fails to land', async () => {
+    const r = recorder(false);
+    const ok = await deliverPayload('ship it', {
+      write: r.write,
+      submitDelayMs: 0,
+      sleep: noSleep,
+      probeScroll: () => ({ paged: true, offsetLines: 0, rows: 41 }),
+    });
+    expect(ok).toBe(false);
+    expect(r.writes).toEqual([ARROW_DOWN_KEY]);
+  });
+
+  it('sizes the walk from the bar position and exits one press past the bottom', () => {
+    expect(scrollExitKeys(0, 41)).toBe(ARROW_DOWN_KEY);
+    expect(scrollExitKeys(85, 41)).toBe('\x1b[6~'.repeat(2) + ARROW_DOWN_KEY.repeat(6));
   });
 });
 
