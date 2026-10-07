@@ -76,10 +76,21 @@ export function registerSyncIpc(ctx: IpcContext): void {
   ipcMain.handle(ipc.sync.accountHosts, (): HostEntry[] | null => decryptedAccountHosts);
 
   ipcMain.handle(ipc.sync.applyHosts, (_evt, hosts: unknown) => {
-    const entries = coerceHostEntries(hosts);
+    const coerced = coerceHostEntries(hosts);
+    // Fail closed before any file is touched (#3059): a gateway entry must
+    // never be appended to ~/.ssh/config as an ordinary Host block — the
+    // config writer cannot represent the gateway transport, so writing one
+    // would downgrade the host to a plain SSH address. The whole batch is
+    // refused, and the throw is what the shared sync store surfaces.
+    if (coerced.kind === 'gateway-unsupported') {
+      const label = coerced.name ?? `entry ${coerced.index}`;
+      throw new Error(
+        `“${label}” dials through the PocketShell gateway, which this app does not support — nothing was added to ~/.ssh/config.`,
+      );
+    }
     // "Not an array / nothing usable" means nothing to add — not an error.
-    if (entries === null || entries.length === 0) return { added: [] };
-    return applyHostsToConfig(undefined, entries);
+    if (coerced.kind === 'invalid' || coerced.hosts.length === 0) return { added: [] };
+    return applyHostsToConfig(undefined, coerced.hosts);
   });
 }
 

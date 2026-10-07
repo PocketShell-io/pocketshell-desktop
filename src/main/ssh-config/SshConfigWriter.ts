@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSyn
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import type { ForwardSpec, HostEntry } from '@pocketshell/core';
+import { hasGatewayMarker } from '@pocketshell/core';
 
 /**
  * The write-back side of settings sync: hosts pulled from the account are
@@ -63,10 +64,27 @@ function stripComment(line: string): string {
 }
 
 /**
+ * Refuse hosts this writer must never render (#3059): an entry carrying a
+ * present gateway marker — valid, null, or malformed, presence alone decides
+ * — dials through the gateway transport, which an OpenSSH config block cannot
+ * represent. Rendering one would downgrade it to a plain `HostName` address.
+ * The conflict case (a `link` marker on the same entry) refuses too.
+ */
+function assertWritableHosts(hosts: readonly HostEntry[]): void {
+  for (const host of hosts) {
+    if (!hasGatewayMarker(host)) continue;
+    throw new Error(
+      `Refusing to write “${host.name}” to the SSH config: it dials through the PocketShell gateway, which this app does not support.`,
+    );
+  }
+}
+
+/**
  * Merge missing hosts into [configText] in memory. Pure — the file write
  * lives in {@link applyHostsToConfig} so tests can work on strings.
  */
 export function mergeSshConfigText(configText: string, hosts: readonly HostEntry[]): { text: string; added: string[] } {
+  assertWritableHosts(hosts);
   const existing = existingHostNames(configText);
   const blocks: string[] = [];
   const added: string[] = [];
@@ -90,6 +108,10 @@ export function mergeSshConfigText(configText: string, hosts: readonly HostEntry
  * which would take down ssh itself.
  */
 export function applyHostsToConfig(configPath: string | undefined, hosts: readonly HostEntry[]): AppliedHosts {
+  // The refusal runs before the config is even read: an unsupported entry
+  // must never reach a write, and there is nothing on disk worth learning
+  // once the input is known to be unwritable (#3059).
+  assertWritableHosts(hosts);
   // Same default the parser reads (kept in step by convention; the parser's
   // own helper is module-private).
   const path = configPath ?? resolve(homedir(), '.ssh', 'config');

@@ -26,6 +26,15 @@ const PTY_TERM = 'xterm-256color';
 const PTY_DEFAULT_COLS = 80;
 const PTY_DEFAULT_ROWS = 24;
 
+/**
+ * The one refusal a present gateway marker produces, word for word, on every
+ * unsupported-platform dial (issue #3059). Stable copy: tests and the UI pin
+ * it, and a user must see the same sentence no matter which path reached the
+ * guard.
+ */
+export const GATEWAY_UNSUPPORTED_ERROR =
+  'This host dials through the PocketShell gateway, which this app does not support.';
+
 export interface ConnectOptions {
   host: string;
   port?: number;
@@ -47,6 +56,17 @@ export interface ConnectOptions {
   knownHosts?: KnownHosts | null;
   /** TOFU decision: 'accept-always' appends to known_hosts; 'accept-once' proceeds without saving. */
   tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
+  /**
+   * A PRESENT gateway transport marker on the host entry this dial came
+   * from (`HostEntry.gateway`, carried verbatim by the shared connect
+   * payload — the value here is data, not a shape this process parses).
+   * This service dials plain SSH only, so presence of the marker — null, a
+   * malformed value, or a target it does not know, all included — is
+   * refused before the private key is read or any socket is opened (issue
+   * #3059). An entry that carries BOTH `link` and `gateway` refuses the
+   * same way: the conflict is never resolved by falling back.
+   */
+  gateway?: unknown;
 }
 
 export interface ExecOptions {
@@ -124,6 +144,13 @@ export class SshService {
 
   /** Attempt a connection. Resolves a {@link ConnectResult}; never rejects. */
   connect(opts: ConnectOptions): Promise<ConnectResult> {
+    // The unsupported-gateway guard is the first thing a dial hits — before
+    // the client, the timer, and above all before `loadKey` reads anything
+    // from disk (#3059). Presence alone decides; the marker's value is never
+    // inspected, so a malformed or future-shaped marker cannot slip through.
+    if (Object.prototype.hasOwnProperty.call(opts, 'gateway')) {
+      return Promise.resolve({ ok: false, error: GATEWAY_UNSUPPORTED_ERROR });
+    }
     return new Promise((resolve) => {
       const client = newClient();
       const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;

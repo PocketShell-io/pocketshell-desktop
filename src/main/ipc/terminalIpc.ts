@@ -28,6 +28,15 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         privateKey?: string;
         passphrase?: string;
         tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
+        /**
+         * The shared connect payload's transport markers, forwarded as
+         * received (#3059): the renderer preserves them verbatim, and the
+         * SshService dial site refuses a present `gateway` before any key
+         * read or socket. `link` is ignored here exactly as before — plain
+         * SSH is this process's only transport.
+         */
+        link?: unknown;
+        gateway?: unknown;
       },
     ) => {
       const knownHosts = new KnownHosts();
@@ -41,6 +50,11 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         passphrase: payload.passphrase,
         knownHosts,
         tofuDecision: payload.tofuDecision,
+        // Forward PRESENCE, not a rewritten field: spreading an unconditional
+        // `gateway: undefined` would fabricate the very marker that refuses.
+        ...(Object.prototype.hasOwnProperty.call(payload, 'gateway')
+          ? { gateway: payload.gateway }
+          : {}),
       });
     },
   );
