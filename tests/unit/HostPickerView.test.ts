@@ -268,6 +268,35 @@ describe('HostPickerView — cancel is always visible while dialling', () => {
     expect(sshClose).not.toHaveBeenCalled();
   });
 
+  describe('the self (local) host', () => {
+    /** A `HostEntry.local` row — the desktop's own machine, no SSH. */
+    function localHost(): HostEntry {
+      return { ...host('self'), id: 'self', hostname: 'self', user: 'alexey', local: true };
+    }
+
+    it('reads as this computer, not as user@host:port', async () => {
+      const wrapper = await openPicker([localHost(), host('hetzner')]);
+      const details = wrapper.findAll('.host-detail').map((item) => item.text());
+      expect(details[0]).toContain('This computer');
+      expect(details[0]).not.toContain('@');
+      // The dial-up hosts keep their spelling.
+      expect(details[1]).toBe('me@hetzner.example:22');
+    });
+
+    it('dials with the local flag, and no key', async () => {
+      const wrapper = await openPicker([localHost()]);
+      const dial = pendingConnect();
+      await wrapper.get('.host-row').trigger('click');
+      dial.resolve({ ok: true, connectionId: 'c-self' });
+      await flush(wrapper);
+      expect(sshConnect).toHaveBeenCalledWith(
+        expect.objectContaining({ host: 'self', user: 'alexey', local: true }),
+      );
+      const payload = sshConnect.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(payload['privateKeyPath']).toBeUndefined();
+    });
+  });
+
   it('the auto dial keeps its wording, and its cancel still hangs up a late success', async () => {
     useSettingsStore().set('defaultHost', 'hetzner');
     // Armed before the mount: the auto dial starts from onMounted.
