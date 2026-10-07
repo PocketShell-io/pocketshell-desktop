@@ -43,6 +43,7 @@ class FakeChannel extends Duplex {
 function registryWithChannel(channel: FakeChannel): ConnectionRegistry {
   return {
     get: () => ({
+      kind: 'ssh',
       client: {
         forwardOut: (
           _sh: string,
@@ -139,7 +140,7 @@ describe('remote (-R) channel dispatch', () => {
 
   it('registers ONE tcp listener per client no matter how many -R forwards', async () => {
     const { client, tcpListeners } = fakeClient();
-    const registry = { get: () => ({ client }) } as unknown as ConnectionRegistry;
+    const registry = { get: () => ({ kind: 'ssh', client }) } as unknown as ConnectionRegistry;
 
     const specs = [9001, 9002, 9003].map((port) => ({
       kind: 'remote' as const,
@@ -159,7 +160,7 @@ describe('remote (-R) channel dispatch', () => {
 
   it('routes each inbound channel to exactly the forward that bound it', async () => {
     const { client, tcpListeners } = fakeClient();
-    const registry = { get: () => ({ client }) } as unknown as ConnectionRegistry;
+    const registry = { get: () => ({ kind: 'ssh', client }) } as unknown as ConnectionRegistry;
 
     const forwards = await Promise.all(
       [9011, 9012].map(async (port) => {

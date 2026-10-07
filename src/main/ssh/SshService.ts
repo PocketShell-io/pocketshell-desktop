@@ -1,19 +1,27 @@
 import { readFileSync } from 'node:fs';
 import type { ClientChannel, PseudoTtyOptions } from 'ssh2';
 import type { ConnectResult, ExecResult, HostPlatform, ShellId } from '@pocketshell/core';
-import { newClient, ConnectionRegistry, type ConnectionRecord } from './ConnectionRegistry.js';
+import {
+  newClient,
+  ConnectionRegistry,
+  isSshRecord,
+  type SshConnectionRecord,
+  type LocalConnectionRecord,
+} from './ConnectionRegistry.js';
 import { ShellTracker } from './ShellTracker.js';
 import { HostPlatformTracker } from './hostPlatform.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { decodePublicKeyBlob } from '@pocketshell/core';
+import { execLocal, execLocalBackground, localHostPlatform } from '../local/LocalHost.js';
 import { log } from '../log.js';
 
 /**
- * SSH connection service wrapping `ssh2`. Mirrors the contract of the
- * Android `RealSshSession`: connect with publickey auth + 15s keepalive +
- * 30s timeout; exec returns `{stdout, stderr, exitCode}` and **never
- * throws on non-zero exit** (exit codes are semantic, e.g. `command -v`);
- * tail spawns `tail -F`; shell opens a PTY (`xterm-256color`, 80×24).
+ * Connection service wrapping `ssh2` — or, for a `local` dial, the platform's
+ * own machine (`local/LocalHost`). Mirrors the contract of the Android
+ * `RealSshSession`: connect with publickey auth + 15s keepalive + 30s timeout;
+ * exec returns `{stdout, stderr, exitCode}` and **never throws on non-zero
+ * exit** (exit codes are semantic, e.g. `command -v`); tail spawns `tail -F`;
+ * shell opens a PTY (`xterm-256color`, 80×24).
  *
  * All methods return result objects rather than throwing for expected
  * failures (auth refused, host unreachable, transport drop). Hard
@@ -30,6 +38,12 @@ export interface ConnectOptions {
   host: string;
   port?: number;
   user: string;
+  /**
+   * Dial the platform's own machine: no ssh2 client, no keys, no network.
+   * Execs and shells run locally (see `local/LocalHost`); `host`, `user` and
+   * every key/known-hosts option are identity only.
+   */
+  local?: boolean;
   /**
    * The `~/.ssh/config` `Host` alias this connection came from
    * (`HostEntry.name`). Optional — a manually-entered host has none, and
@@ -111,9 +125,22 @@ export class SshService {
    * The far end's OS family ('posix' | 'windows'), probed once per connection
    * (one `uname -s` exec, `cmd /c ver` beneath it) and shared. A probe against
    * an unknown connection throws — callers degrade rather than guess.
+   *
+   * A local connection needs no probe: the process knows what it runs on.
    */
   hostPlatform(connectionId: string): Promise<HostPlatform> {
+    if (this.isLocal(connectionId)) return Promise.resolve(localHostPlatform());
     return this.platforms.platformOf(this, connectionId);
+  }
+
+  /**
+   * True when [connectionId] is the platform's own machine — the callers that
+   * shape HOST commands for Windows OpenSSH's argv quirks (the aplexer join
+   * spelling) must not apply those to a local spawn, which passes argv
+   * through verbatim.
+   */
+  isLocal(connectionId: string): boolean {
+    return this.registry.get(connectionId)?.kind === 'local';
   }
 
   /** Subscribe to connection-close events (for evicting cached per-conn state). */
@@ -124,6 +151,22 @@ export class SshService {
 
   /** Attempt a connection. Resolves a {@link ConnectResult}; never rejects. */
   connect(opts: ConnectOptions): Promise<ConnectResult> {
+    if (opts.local) {
+      // A local dial cannot fail to connect — there is no transport to
+      // refuse it. (Whether anything ANSWERS — bash present, `a` installed —
+      // surfaces per-call, the way a missing binary would on any host.)
+      const rec: Omit<LocalConnectionRecord, 'id'> = {
+        kind: 'local',
+        label: `self (${opts.user || process.platform})`,
+        host: opts.host,
+        port: opts.port ?? 0,
+        user: opts.user,
+        ...(opts.hostAlias?.trim() ? { hostAlias: opts.hostAlias.trim() } : {}),
+        knownHosts: opts.knownHosts ?? null,
+        connectedAt: Date.now(),
+      };
+      return Promise.resolve({ ok: true, connectionId: this.registry.register(rec) });
+    }
     return new Promise((resolve) => {
       const client = newClient();
       const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -143,9 +186,10 @@ export class SshService {
 
       client.once('ready', () => {
         clearTimeout(timer);
-        const id = this.registry.register({
-          client,
-          label: `${opts.user}@${opts.host}:${opts.port ?? 22}`,
+      const id = this.registry.register({
+        kind: 'ssh',
+        client,
+        label: `${opts.user}@${opts.host}:${opts.port ?? 22}`,
           host: opts.host,
           port: opts.port ?? 22,
           user: opts.user,
@@ -229,7 +273,9 @@ export class SshService {
   async exec(connectionId: string, command: string, opts: ExecOptions = {}): Promise<ExecResult> {
     const rec = this.registry.require(connectionId);
     const startedAt = Date.now();
-    const res = await execOnClient(rec, command, opts);
+    const res = isSshRecord(rec)
+      ? await execOnClient(rec, command, opts)
+      : await execLocal(command, opts);
     log('exec', 'ran', {
       connectionId,
       ms: Date.now() - startedAt,
@@ -247,6 +293,10 @@ export class SshService {
    */
   execBackground(connectionId: string, command: string): void {
     const rec = this.registry.require(connectionId);
+    if (!isSshRecord(rec)) {
+      execLocalBackground(command);
+      return;
+    }
     rec.client.exec(command, () => {
       /* intentionally ignored — the bg job owns its own lifetime */
     });
@@ -285,6 +335,12 @@ export class SshService {
     },
   ): Promise<ShellId> {
     const rec = this.registry.require(connectionId);
+    if (!isSshRecord(rec)) {
+      // Local PTY shells arrive with the node-pty work; until then the
+      // session panel on a local connection answers honestly rather than
+      // crashing on a record with no client.
+      throw new Error('PTY shells are not available on a local connection yet.');
+    }
     const pty = {
       term: opts.term ?? PTY_TERM,
       cols: opts.cols ?? PTY_DEFAULT_COLS,
@@ -399,6 +455,7 @@ export class SshService {
         // a listener failure must not break teardown
       }
     }
+    if (!isSshRecord(rec)) return; // nothing local to hang up
     try {
       rec.client.end();
     } catch {
@@ -440,7 +497,7 @@ export function execLogPreview(command: string, limit = 120): string {
 export const EXEC_DEFAULT_TIMEOUT_MS = 300_000;
 
 export function execOnClient(
-  rec: ConnectionRecord,
+  rec: SshConnectionRecord,
   command: string,
   opts: ExecOptions = {},
 ): Promise<ExecResult> {
@@ -522,7 +579,7 @@ export function execOnClient(
 const OPEN_SHELL_TIMEOUT_MS = DEFAULT_TIMEOUT_MS;
 
 function openShell(
-  rec: ConnectionRecord,
+  rec: SshConnectionRecord,
   pty: { term: string; cols: number; rows: number },
 ): Promise<ClientChannel> {
   return new Promise((resolve, reject) => {
@@ -562,7 +619,7 @@ function openShell(
  * commands already do (`USER_BIN_PATH`).
  */
 function openExecWithPty(
-  rec: ConnectionRecord,
+  rec: SshConnectionRecord,
   command: string,
   pty: { term: string; cols: number; rows: number },
 ): Promise<ClientChannel> {

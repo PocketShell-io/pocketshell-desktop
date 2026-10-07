@@ -286,7 +286,12 @@ export class Forwarder {
 
   // --- shared helpers -----------------------------------------------------
   private client(): Client | undefined {
-    return this.registry.get(this.connectionId)?.client;
+    const rec = this.registry.get(this.connectionId);
+    // A local connection has no transport to carry a tunnel: forwarding is
+    // meaningless there (the services are already on this machine), so it
+    // behaves like a connection whose link never came up — no channel, and
+    // the forwarder reports rather than crashes.
+    return rec && rec.kind === 'ssh' ? rec.client : undefined;
   }
 
   /**

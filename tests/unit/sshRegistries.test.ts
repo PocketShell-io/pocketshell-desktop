@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ConnectionRegistry, UnknownConnectionError, type ConnectionRecord } from '../../src/main/ssh/ConnectionRegistry';
+import { ConnectionRegistry, UnknownConnectionError, type SshConnectionRecord } from '../../src/main/ssh/ConnectionRegistry';
 import { ShellTracker } from '../../src/main/ssh/ShellTracker';
 
 /**
@@ -17,8 +17,9 @@ function fakeChannel() {
 }
 
 /** The fields register() requires besides the id it mints. */
-const record = (over: Record<string, unknown> = {}): Omit<ConnectionRecord, 'id'> =>
+const record = (over: Record<string, unknown> = {}): Omit<SshConnectionRecord, 'id'> =>
   ({
+    kind: 'ssh',
     client: { end: vi.fn() },
     label: 'me@host:22',
     host: 'host',
@@ -27,7 +28,7 @@ const record = (over: Record<string, unknown> = {}): Omit<ConnectionRecord, 'id'
     knownHosts: null,
     connectedAt: 1,
     ...over,
-  }) as unknown as Omit<ConnectionRecord, 'id'>;
+  }) as unknown as Omit<SshConnectionRecord, 'id'>;
 
 describe('ConnectionRegistry', () => {
   it('mints a distinct id per registration and hands the record back', () => {

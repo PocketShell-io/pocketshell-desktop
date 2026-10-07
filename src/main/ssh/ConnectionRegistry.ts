@@ -2,16 +2,22 @@ import { Client } from 'ssh2';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
 
 /**
- * In-memory registry of live SSH connections, keyed by an opaque id.
+ * In-memory registry of live connections, keyed by an opaque id.
  *
  * The renderer only ever sees {@link ConnectionId}s; it never touches a
  * `Client`. The main process owns the lifecycle (connect / reconnect /
  * close) and resolves ids back to clients here.
+ *
+ * A record is an SSH dial (`kind: 'ssh'`, an ssh2 client) or the platform's
+ * own machine (`kind: 'local'`, no client — exec and shells run in-process;
+ * see `local/LocalHost`). Everything downstream keys off `kind` where the
+ * transport itself matters and reads the shared identity fields otherwise.
  */
 
-export interface ConnectionRecord {
-  id: string;
-  client: Client;
+/** Which transport a connection rides. */
+export type ConnectionKind = 'ssh' | 'local';
+
+interface ConnectionIdentity {
   /** Display label for logs/UI, e.g. "testuser@host:2222". */
   label: string;
   host: string;
@@ -31,14 +37,33 @@ export interface ConnectionRecord {
   connectedAt: number;
 }
 
+export interface SshConnectionRecord extends ConnectionIdentity {
+  kind: 'ssh';
+  client: Client;
+}
+
+export interface LocalConnectionRecord extends ConnectionIdentity {
+  kind: 'local';
+}
+
+export type ConnectionRecord = SshConnectionRecord | LocalConnectionRecord;
+
+/** True when [rec] rides the ssh2 transport; narrows for `.client` access. */
+export function isSshRecord(rec: ConnectionRecord): rec is SshConnectionRecord {
+  return rec.kind === 'ssh';
+}
+
 let counter = 0;
+
+/** `Omit` distributes here: a fresh record literal matches its own variant. */
+type NewRecord<T> = T extends unknown ? Omit<T, 'id'> : never;
 
 export class ConnectionRegistry {
   private readonly map = new Map<string, ConnectionRecord>();
 
-  register(rec: Omit<ConnectionRecord, 'id'>): string {
+  register(rec: NewRecord<ConnectionRecord>): string {
     const id = `conn-${Date.now().toString(36)}-${(counter++).toString(36)}`;
-    this.map.set(id, { ...rec, id });
+    this.map.set(id, { ...rec, id } as unknown as ConnectionRecord);
     return id;
   }
 
@@ -61,10 +86,12 @@ export class ConnectionRegistry {
 
   clear(): void {
     for (const rec of this.map.values()) {
-      try {
-        rec.client.end();
-      } catch {
-        // ignore
+      if (isSshRecord(rec)) {
+        try {
+          rec.client.end();
+        } catch {
+          // ignore
+        }
       }
     }
     this.map.clear();

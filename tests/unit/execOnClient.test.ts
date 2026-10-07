@@ -5,7 +5,7 @@ import {
   execOnClient,
   EXEC_DEFAULT_TIMEOUT_MS,
 } from '../../src/main/ssh/SshService';
-import type { ConnectionRecord } from '../../src/main/ssh/ConnectionRegistry';
+import type { SshConnectionRecord } from '../../src/main/ssh/ConnectionRegistry';
 
 /**
  * The exec round trip's failure modes.
@@ -61,8 +61,8 @@ function fakeClient() {
   };
 }
 
-function rec(client: unknown): ConnectionRecord {
-  return { client } as unknown as ConnectionRecord;
+function rec(client: unknown): SshConnectionRecord {
+  return { kind: 'ssh', client } as unknown as SshConnectionRecord;
 }
 
 beforeEach(() => {

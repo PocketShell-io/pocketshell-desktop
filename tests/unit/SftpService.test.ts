@@ -103,6 +103,7 @@ function harnessFor(
 
   const registry = new ConnectionRegistry();
   const connectionId = registry.register({
+    kind: 'ssh',
     client: client as unknown as Client,
     label: 'testuser@fake:22',
     host: 'fake',

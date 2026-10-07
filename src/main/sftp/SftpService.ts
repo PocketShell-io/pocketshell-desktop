@@ -280,6 +280,11 @@ export class SftpService {
 // ---------------------------------------------------------------------------
 
 function openSftp(rec: ConnectionRecord): Promise<SFTPWrapper> {
+  // The local (self) connection gets its own backing; until that lands, a
+  // Files tab on it says so instead of crashing on a record with no client.
+  if (rec.kind !== 'ssh') {
+    return Promise.reject(new Error('The file browser is not available on a local connection yet.'));
+  }
   return new Promise((resolve, reject) => {
     rec.client.sftp((err, sftp) => (err ? reject(err) : resolve(sftp)));
   });
