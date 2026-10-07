@@ -795,3 +795,38 @@ describe('syncIpc — the session account-host cache', () => {
     expect(mockOf(syncAuth, 'logout')).toHaveBeenCalled();
   });
 });
+
+describe('syncIpc — applyHosts adopts the coercion outcome', () => {
+  it('appends usable hosts, and refuses a gateway batch whole', async () => {
+    const { applyHostsToConfig } = await import('../../src/main/ssh-config/SshConfigWriter');
+    const handler = handlers.get(ipc.sync.applyHosts)!;
+    const call = handler as unknown as (e: unknown, hosts: unknown) => Promise<unknown>;
+
+    // An ordinary account host lands in the config write-back.
+    await call({}, [
+      { name: 'hetzner', hostname: 'hetzner.example', port: 22, user: 'me', fromConfig: true },
+    ]);
+    expect(vi.mocked(applyHostsToConfig).mock.calls.at(-1)?.[1]).toMatchObject([
+      { name: 'hetzner' },
+    ]);
+
+    // A gateway marker refuses the WHOLE batch — appended as a plain Host
+    // block it would downgrade the dial — with the renderer's error path
+    // carrying the refusal.
+    await expect(
+      call({}, [
+        { name: 'ok-host', hostname: 'ok.example', fromConfig: true },
+        { name: 'gate', hostname: 'gate.example', fromConfig: true, gateway: { via: 'x' } },
+      ]),
+    ).rejects.toThrow(/gate.*gateway/);
+    const lastCall = vi.mocked(applyHostsToConfig).mock.calls.at(-1)?.[1] as unknown[];
+    expect(lastCall).toMatchObject([{ name: 'hetzner' }]); // nothing new written
+  });
+
+  it('a non-array payload means nothing to add, not an error', async () => {
+    const handler = handlers.get(ipc.sync.applyHosts)!;
+    await expect(
+      (handler as unknown as (e: unknown, hosts: unknown) => Promise<unknown>)({}, 'not-an-array'),
+    ).resolves.toEqual({ added: [] });
+  });
+});

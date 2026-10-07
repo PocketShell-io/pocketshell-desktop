@@ -75,11 +75,22 @@ export function registerSyncIpc(ctx: IpcContext): void {
 
   ipcMain.handle(ipc.sync.accountHosts, (): HostEntry[] | null => decryptedAccountHosts);
 
-  ipcMain.handle(ipc.sync.applyHosts, (_evt, hosts: unknown) => {
-    const entries = coerceHostEntries(hosts);
+  ipcMain.handle(ipc.sync.applyHosts, async (_evt, hosts: unknown) => {
+    const outcome = coerceHostEntries(hosts);
     // "Not an array / nothing usable" means nothing to add — not an error.
-    if (entries === null || entries.length === 0) return { added: [] };
-    return applyHostsToConfig(undefined, entries);
+    if (outcome.kind === 'invalid') return { added: [] };
+    if (outcome.kind === 'gateway-unsupported') {
+      // The batch is refused WHOLE: a gateway host appended as an ordinary
+      // `Host` block would silently downgrade its dial to a plain address.
+      // The rejection is what the renderer's error path displays.
+      throw new Error(
+        outcome.name
+          ? `Refused: "${outcome.name}" dials through the gateway, which this app does not support.`
+          : 'Refused: an account host dials through the gateway, which this app does not support.',
+      );
+    }
+    if (outcome.hosts.length === 0) return { added: [] };
+    return applyHostsToConfig(undefined, outcome.hosts);
   });
 }
 
