@@ -46,6 +46,7 @@ const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
 const ALLOWED: Record<string, string> = {
   ssh2: 'Native/CJS transport for every SSH connection; main-process only, and left external because it carries a native binding and a helper .exe that Vite must not swallow.',
   '@lydell/node-pty': "Native ConPTY/pty bindings for the self connection's local PTY shells (session joins, the bare terminal); main-process only, required lazily from local/LocalHost. This fork ships prebuilt N-API binaries per platform, so no electron-rebuild step is needed for dev or for the packaged build.",
+  ws: 'The gateway byte transport underneath SSH (main/gateway): required lazily from main/gateway/GatewayTransport on a gateway dial. Electron 33 runs Node 20.18, which has no global WebSocket, and ssh2 needs a real bidirectional stream over the gateway tunnel — so the packaged app loads this pure-JS package (no native addons) from node_modules on every OS; TLS-verified wss stays the default.',
 };
 
 /**
