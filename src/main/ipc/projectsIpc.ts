@@ -130,6 +130,9 @@ export function registerProjectsIpc(ctx: IpcContext): void {
   ipcMain.handle(ipc.agent.kinds, async (_evt, connectionId: string) => {
     return helper.agentSubcommands(connectionId);
   });
+  ipcMain.handle(ipc.agent.binaries, async (_evt, connectionId: string) => {
+    return helper.agentBinaries(connectionId);
+  });
   ipcMain.handle(ipc.agent.profiles, async (_evt, connectionId: string) => {
     return helper.listProfiles(connectionId);
   });

@@ -19,15 +19,18 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 
 const profiles = vi.fn();
 const kinds = vi.fn();
+const binaries = vi.fn();
 
-// Only `agent.profiles` and `agent.kinds` have behaviour; the rest is here
-// because constructing the connection/projects stores subscribes to them.
+// Only `agent.profiles`, `agent.kinds` and `agent.binaries` have behaviour;
+// the rest is here because constructing the connection/projects stores
+// subscribes to them.
 vi.mock('@ui/app/ipc', () => ({
   api: {
     helper: { usage: vi.fn().mockResolvedValue([]) },
     agent: {
       profiles: (connectionId: string): unknown => profiles(connectionId),
       kinds: (connectionId: string): unknown => kinds(connectionId),
+      binaries: (connectionId: string): unknown => binaries(connectionId),
     },
     ssh: { onState: vi.fn(), listConfigHosts: vi.fn().mockResolvedValue([]) },
     projects: { onCloneProgress: vi.fn() },
@@ -43,6 +46,9 @@ const { useSettingsStore } = await import('@ui/app/stores/settings');
 const PINNED_KINDS = ['claude', 'codex', 'opencode'];
 /** The same host after the (still unreleased) grok subcommand lands. */
 const UPGRADED_KINDS = [...PINNED_KINDS, 'grok'];
+
+/** Everything on PATH: the helper and every engine the picker offers. */
+const ALL_BINARIES = ['pocketshell', ...UPGRADED_KINDS, 'antigravity'];
 
 /** The host's real 0.4.44 shape: a default profile plus a named sibling. */
 const HOST_PROFILES = [
@@ -86,6 +92,7 @@ beforeEach(() => {
   setActivePinia(createPinia());
   profiles.mockReset().mockResolvedValue(HOST_PROFILES);
   kinds.mockReset().mockResolvedValue(PINNED_KINDS);
+  binaries.mockReset().mockResolvedValue(ALL_BINARIES);
   useConnectionStore().connectionId = 'conn-1';
 });
 
@@ -195,6 +202,34 @@ describe('the Grok gate', () => {
     expect(button.attributes('disabled')).toBeDefined();
     await button.trigger('click');
     expect(wrapper.emitted('confirm')).toBeUndefined();
+  });
+
+  it('dims an engine the host has no CLI for, with the install remedy', async () => {
+    // The helper lists codex; the codex CLI is not installed. The launch
+    // would be typed into the session shell and die with the helper's own
+    // "not installed" sentence, so the picker refuses it here instead.
+    binaries.mockResolvedValue(['pocketshell', 'claude', 'opencode', 'grok']);
+    const wrapper = await open();
+    const codex = segment(wrapper, 'Codex');
+    expect(codex!.classes()).toContain('unavailable');
+    expect(codex!.attributes('title')).toMatch(/no `codex` on its PATH/);
+    expect(segment(wrapper, 'Claude Code')!.classes()).not.toContain('unavailable');
+    await click(wrapper, 'Codex');
+    expect(wrapper.text()).toMatch(/install the Codex CLI first/);
+    expect(createButton(wrapper).attributes('disabled')).toBeDefined();
+    await createButton(wrapper).trigger('click');
+    expect(wrapper.emitted('confirm')).toBeUndefined();
+  });
+
+  it('dims every engine when pocketshell itself is missing from PATH', async () => {
+    binaries.mockResolvedValue(['claude', 'codex']);
+    const wrapper = await open();
+    for (const label of ['Claude Code', 'Codex', 'Grok']) {
+      expect(segment(wrapper, label)!.classes()).toContain('unavailable');
+      expect(segment(wrapper, label)!.attributes('title')).toMatch(
+        /no `pocketshell` on its PATH/,
+      );
+    }
   });
 
   it('launches Grok once the host lists the subcommand', async () => {

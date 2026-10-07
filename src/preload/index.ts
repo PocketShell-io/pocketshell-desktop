@@ -714,6 +714,14 @@ const api = {
     kinds: (connectionId: string): Promise<string[] | null> =>
       ipcRenderer.invoke(ipc.agent.kinds, connectionId),
 
+    /**
+     * The launch binaries on the host's PATH (`pocketshell` + the engine
+     * CLIs), or **null** when the probe failed — the launch picker reads the
+     * difference the same way it reads `kinds`' null.
+     */
+    binaries: (connectionId: string): Promise<string[] | null> =>
+      ipcRenderer.invoke(ipc.agent.binaries, connectionId),
+
     /** Agent config-dir profiles. */
     profiles: (connectionId: string): Promise<unknown[]> =>
       ipcRenderer.invoke(ipc.agent.profiles, connectionId),

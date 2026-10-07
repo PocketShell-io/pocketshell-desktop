@@ -45,7 +45,7 @@ import {
   sessionDirCandidates,
 } from '../projects/sessionDirs.js';
 import { log } from '../log.js';
-import { shellQuote, shellQuoteRemotePath } from '@pocketshell/core';
+import { parseAgentBinaries, shellQuote, shellQuoteRemotePath } from '@pocketshell/core';
 import {
   createSessionCommand,
   fallbackCreateSessionCommand,
@@ -984,6 +984,29 @@ export class PocketshellClient {
   async agentSubcommands(connectionId: string): Promise<string[] | null> {
     const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell agent --help'));
     return parseAgentSubcommands(res.stdout, res.exitCode);
+  }
+
+  /**
+   * Which of the launch binaries exist on the host's PATH — `pocketshell`
+   * itself and the engine CLIs — or **null** when the probe failed. One exec:
+   * a shell loop that `command -v`s every name and echoes the ones that
+   * resolve. The loop's own exit status is meaningless (it is the last
+   * iteration's), so the answer is read from stdout and a transport failure
+   * (empty output) is the null, same contract as {@link agentSubcommands}.
+   *
+   * This is the check that keeps a doomed launch in the UI: `pocketshell
+   * agent` can list `codex` all it likes, but the launch is typed into a
+   * session shell, and on a host without the `codex` CLI that shell answers
+   * with the helper's own "not installed" sentence. Run on every open of the
+   * launch dialog, like the subcommands probe — installing an engine should
+   * not need a reconnect to be noticed.
+   */
+  async agentBinaries(connectionId: string): Promise<string[] | null> {
+    const names = ['pocketshell', 'claude', 'codex', 'opencode', 'grok', 'antigravity'];
+    const script = `for n in ${names.join(' ')}; do command -v "$n" >/dev/null 2>&1 && printf '%s\n' "$n"; done`;
+    const res = await this.ssh.exec(connectionId, pathAwareCommand(script));
+    if (res.exitCode < 0) return null; // transport-level failure, not an answer
+    return parseAgentBinaries(res.stdout);
   }
 
   /**
