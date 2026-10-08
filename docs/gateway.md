@@ -45,10 +45,13 @@ Win35). Invalid policies omit the entire registration rather than selecting a
 global executable.
 
 This opt-in selects the absolute executable for version/platform qualification,
-schema-3 session discovery, tree state and schema-1 workspace queries, and
+schema-3 session discovery, tree reads and schema-1 workspace queries, and
 session attach by immutable UUID. The adapter requires native CLI 0.5.8 and the
 advertised workspaces/tree/list/attach capabilities. It never retries through
 global `pocketshell`, raw `a`, cached Aplexer executors or tmux. Other hosts keep
 their existing selection behavior. Native create/rename/kill remain explicitly
 unavailable until their host contract is implemented; workspace queries do not
 yet replace Desktop's existing root preferences in the shared UI.
+Native tree writes also refuse explicitly: upsert requires a corresponding
+`expected_version`, which the existing Desktop caller does not retain. A
+version-aware client must implement conflict handling before these writes run.

@@ -147,6 +147,7 @@ export class PocketshellClient {
   private async treeCommand(connectionId: string, verb: string): Promise<string> {
     const native = this.ssh.nativeWindowsCli?.(connectionId);
     if (native) {
+      if (verb !== 'get') throw new Error('Native tree writes require a version-aware client and are not supported yet.');
       await native.ready();
       return `${native.binary} tree ${verb}`;
     }

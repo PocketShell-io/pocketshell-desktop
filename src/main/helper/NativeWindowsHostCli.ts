@@ -73,11 +73,6 @@ export class NativeWindowsHostCli {
     return this.core.listWorkspaces(host);
   }
 
-  async tree(verb: 'get' | 'upsert' | 'reconcile', payload: unknown): Promise<ExecResult> {
-    await this.ready();
-    return this.exec(`${this.binary} tree ${verb}`, { stdin: JSON.stringify(payload) });
-  }
-
   async attachCommand(id: string | null | undefined): Promise<string> {
     await this.ready();
     if (!id || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})?$/i.test(id)) {

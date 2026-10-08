@@ -106,6 +106,8 @@ describe('provisioned Windows gateway CLI', () => {
     expect((await projects.startSession('connection', { folder: 'C:/work' })).ok).toBe(false);
     expect((await projects.renameSession('connection', 'old', 'new')).ok).toBe(false);
     expect((await projects.killSession('connection', 'old')).ok).toBe(false);
+    await expect(helper.treeUpsert('connection', 'win35', [])).rejects.toThrow('version-aware');
+    await expect(helper.treeReconcile('connection', 'win35')).rejects.toThrow('version-aware');
     expect(exec).not.toHaveBeenCalled();
   });
 
