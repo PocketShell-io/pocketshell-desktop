@@ -18,7 +18,7 @@ local enrollments, not a synced source of host trust:
 [
   {
     "name": "win35-gateway",
-    "user": "User",
+    "user": "user",
     "identityFile": "C:/Users/alexey/.ssh/id_win35",
     "gateway": {
       "serverUrl": "wss://gateway.pocketshell.io",
@@ -49,9 +49,21 @@ schema-3 session discovery, tree reads and schema-1 workspace queries, and
 session attach by immutable UUID. The adapter requires native CLI 0.5.8 and the
 advertised workspaces/tree/list/attach capabilities. It never retries through
 global `pocketshell`, raw `a`, cached Aplexer executors or tmux. Other hosts keep
-their existing selection behavior. Native create/rename/kill remain explicitly
-unavailable until their host contract is implemented; workspace queries do not
-yet replace Desktop's existing root preferences in the shared UI.
-Native tree writes also refuse explicitly: upsert requires a corresponding
-`expected_version`, which the existing Desktop caller does not retain. A
-version-aware client must implement conflict handling before these writes run.
+their existing selection behavior. Create, rename and kill require the endpoint's
+corresponding `sessions.create`, `sessions.rename` and `sessions.kill` capabilities;
+missing capabilities refuse explicitly. Lifecycle and attach use the immutable
+session UUID. Full workspace paths keep identically named folders separate in the
+session UI. These operations do not automatically write display names into the
+host's cached session tree.
+
+Desktop selects host-managed registered roots per connection only after main
+qualifies `workspaces.add`, `workspaces.remove` and `tree.cas`. The canonical host
+identity is the enrolled gateway device ID, independent of the display alias.
+Other connections retain their existing Settings roots. Qualification failures
+remain visible and never switch a native host to local root preferences.
+
+Native tree writes require the immutable snapshot returned by their corresponding
+read, including its exact version. A write consumes that snapshot. Conflict JSON
+is a failure even when the CLI exits zero; the caller must read again and merge
+before retrying. Reconciliation invalidates previous snapshots. Legacy callers
+that do not retain a snapshot still refuse native tree writes.

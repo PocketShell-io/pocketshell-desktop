@@ -16,7 +16,7 @@ const platform = { schema: 1, platform: 'win32', os: 'nt', cli_version: '0.5.8',
 const result = (value: unknown) => ({ exitCode: 0, stdout: typeof value === 'string' ? value : JSON.stringify(value), stderr: '' });
 
 function fixture() {
-  const exec = vi.fn(async (command: string) => {
+  const exec = vi.fn(async (command: string, _options?: { stdin?: string; timeoutMs?: number }) => {
     if (command.endsWith('--version')) return result('pocketshell 0.5.8');
     if (command.endsWith('platform --json')) return result(platform);
     if (command.includes('sessions list')) return result({ schema: 3, sessions: [
@@ -95,7 +95,8 @@ describe('provisioned Windows gateway CLI', () => {
     expect(await aplexer.snapshotRecords('connection')).toEqual([]);
     expect(await helper.listSessions('connection')).toHaveLength(1);
     expect(await helper.treeGet('connection', 'win35')).toEqual([]);
-    expect(sshExec).toHaveBeenLastCalledWith('connection', `'${executable}' tree get`, { stdin: '{"host":"win35"}' });
+    expect(exec).toHaveBeenLastCalledWith(`'${executable}' tree get`, { stdin: '{"host":"win35"}' });
+    expect(sshExec).not.toHaveBeenCalled();
     expect(exec.mock.calls.some(([command]) => /\ba (attach|list|snapshot)|PATH=/.test(command))).toBe(false);
   });
 
@@ -107,8 +108,8 @@ describe('provisioned Windows gateway CLI', () => {
     expect((await projects.renameSession('connection', 'old', 'new')).ok).toBe(false);
     expect((await projects.killSession('connection', 'old')).ok).toBe(false);
     await expect(helper.treeUpsert('connection', 'win35', [])).rejects.toThrow('version-aware');
-    await expect(helper.treeReconcile('connection', 'win35')).rejects.toThrow('version-aware');
-    expect(exec).not.toHaveBeenCalled();
+    await expect(helper.treeReconcile('connection', 'win35')).rejects.toThrow('tree CAS');
+    expect(exec.mock.calls.map(([command]) => command)).toEqual([`'${executable}' --version`, `'${executable}' platform --json`]);
   });
 
   it('does not query global helper or raw warning commands for unadvertised optional features', async () => {

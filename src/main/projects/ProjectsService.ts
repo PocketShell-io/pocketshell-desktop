@@ -24,6 +24,7 @@ export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest
  */
 
 import type { SshService } from '../ssh/SshService.js';
+import { NativeCommandError, type NativeWindowsHostCli } from '../helper/NativeWindowsHostCli.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
@@ -63,6 +64,39 @@ import { mergeRepos } from './repos.js';
 
 
 export class ProjectsService {
+  private async nativeSessionId(native: NativeWindowsHostCli, name: string, ref?: AplexerSessionRef): Promise<string | null> {
+    if (ref?.aplexerId != null) return ref.aplexerId;
+    const rows = (await native.listSessions()).filter((row) => row.name === name
+      && (ref?.workspace == null || windowsWorkspaceForm(row.workspace ?? '') === windowsWorkspaceForm(ref.workspace)));
+    if (rows.length > 1) throw new Error('This session name is ambiguous. Select its immutable UUID.');
+    return rows[0]?.aplexerId ?? null;
+  }
+
+  private async startNativeSession(connectionId: string, native: NativeWindowsHostCli,
+    request: StartSessionRequest): Promise<StartSessionResult> {
+    const failed = (error: string, code: StartSessionFailure = 'create-failed'): StartSessionResult => ({
+      ok: false, sessionName: null, folder: null, reused: false, via: null, aplexerId: null, error, code,
+    });
+    try {
+      await native.requireCapability('sessions.create');
+      const canonical = await this.canonicalise(connectionId, request.folder.trim());
+      if (!canonical) return failed('The start folder does not exist on the host.', 'folder-missing');
+      const folder = windowsWorkspaceForm(canonical);
+      let name = resolveAplexerTag(request.customName);
+      if (request.namePolicy === 'unique') {
+        const tags = new Set((await native.listSessions()).filter((row) =>
+          windowsWorkspaceForm(row.workspace ?? '') === folder).map((row) => row.tag ?? row.name));
+        const base = name;
+        let suffix = 2;
+        while (tags.has(name) && suffix <= FREE_SESSION_NAME_MAX_SUFFIX) name = `${base}-${suffix++}`;
+        if (tags.has(name)) return failed('No free native session name is available.', 'name-unavailable');
+      }
+      const created = await native.createSession(name, folder);
+      if (request.namePolicy === 'unique' && !created.created) return failed('Another session acquired this name. Retry with a new name.', 'name-unavailable');
+      return { ok: true, sessionName: created.name, folder, reused: !created.created,
+        via: 'aplexer', aplexerId: created.id, error: null, code: null };
+    } catch (error) { return failed((error as Error).message); }
+  }
   /**
    * Remote `$HOME` per connection. It cannot change for the life of a
    * connection, and it is read on every name derivation, so caching it keeps
@@ -133,6 +167,7 @@ export class ProjectsService {
     folder: string,
     customName?: string,
   ): Promise<string> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return resolveAplexerTag(customName);
     if (this.aplexer && (await this.aplexer.isAvailable(connectionId))) {
       return resolveAplexerTag(customName);
     }
@@ -306,10 +341,8 @@ export class ProjectsService {
     connectionId: string,
     request: StartSessionRequest,
   ): Promise<StartSessionResult> {
-    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
-      ok: false, sessionName: null, folder: null, reused: false, via: null, aplexerId: null,
-      code: 'create-failed', error: 'The provisioned native host does not support session creation yet.',
-    };
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) return this.startNativeSession(connectionId, native, request);
     const { home } = await this.home(connectionId);
     const folder = request.folder.trim();
 
@@ -692,10 +725,19 @@ export class ProjectsService {
     to: string,
     ref?: AplexerSessionRef,
   ): Promise<RenameSessionResult> {
-    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
-      ok: false, sessionName: null, code: 'rename-failed',
-      error: 'The provisioned native host does not support session rename yet.',
-    };
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) {
+      try {
+        await native.requireCapability('sessions.rename');
+        const tag = sanitiseName(to);
+        if (!/[A-Za-z0-9]/.test(tag)) return { ok: false, sessionName: null, code: 'illegal-name', error: 'Enter a valid session name.' };
+        const id = await this.nativeSessionId(native, from, ref);
+        if (!id) return { ok: false, sessionName: null, code: 'rename-failed', error: 'This native session is no longer running.' };
+        return { ok: true, sessionName: await native.renameSession(id, tag), error: null, code: null };
+      } catch (error) {
+        return { ok: false, sessionName: null, code: 'rename-failed', error: (error as Error).message };
+      }
+    }
     const target = sanitiseName(to);
     if (!/[A-Za-z0-9]/.test(target)) {
       return {
@@ -808,9 +850,18 @@ export class ProjectsService {
     name: string,
     ref?: AplexerSessionRef,
   ): Promise<KillSessionResult> {
-    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
-      ok: false, code: 'kill-failed', error: 'The provisioned native host does not support session kill yet.',
-    };
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) {
+      try {
+        await native.requireCapability('sessions.kill');
+        const id = await this.nativeSessionId(native, name, ref);
+        if (!id) return { ok: false, code: 'not-found', error: 'This native session is no longer running.' };
+        await native.killSession(id);
+        return { ok: true, error: null, code: null };
+      } catch (error) {
+        return { ok: false, code: error instanceof NativeCommandError && error.exitCode === 3 ? 'not-found' : 'kill-failed', error: (error as Error).message };
+      }
+    }
     // An aplexer-backed row is killed by id. The lookup below also covers a
     // caller that only has the workspace: one live tag-holder is unambiguous,
     // and anything else falls through to the tmux probe rather than guessing.

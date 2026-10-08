@@ -10,6 +10,7 @@ export type { CreateSessionVia } from '@pocketshell/core';
  */
 
 import type { SshService } from '../ssh/SshService.js';
+import type { NativeTreeSnapshot } from './NativeWindowsHostCli.js';
 import type { AplexerClient } from './AplexerClient.js';
 import {
   firstNonEmptyLine,
@@ -235,6 +236,8 @@ export class PocketshellClient {
    * connection is gone, which the callers treat as "no registry".
    */
   private hostKey(connectionId: string): string | null {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) return native.hostIdentity ?? null;
     try {
       const rec = this.ssh.registry_.require(connectionId);
       return rec.hostAlias ?? rec.host;
@@ -274,6 +277,8 @@ export class PocketshellClient {
    * tree answer.
    */
   async treeGet(connectionId: string, host: string): Promise<TreeNodeRecord[] | null> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) return parseTreeGet(JSON.stringify(await native.readTree(host)));
     const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'get'), {
       stdin: JSON.stringify({ host }),
     });
@@ -288,7 +293,14 @@ export class PocketshellClient {
     connectionId: string,
     host: string,
     nodes: readonly TreeNodeRecord[],
+    snapshot?: NativeTreeSnapshot,
   ): Promise<boolean> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) {
+      if (!snapshot) throw new Error('Native tree writes require the version-aware snapshot from their read.');
+      await native.upsertTree(snapshot, nodes);
+      return true;
+    }
     const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'upsert'), {
       stdin: treeUpsertPayload(host, nodes),
     });
@@ -304,6 +316,8 @@ export class PocketshellClient {
     connectionId: string,
     host: string,
   ): Promise<{ alive: string[]; gone: string[]; added: string[] } | null> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) return parseTreeReconcile((await native.reconcileTree(host)).stdout);
     const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'reconcile'), {
       stdin: JSON.stringify({ host }),
     });

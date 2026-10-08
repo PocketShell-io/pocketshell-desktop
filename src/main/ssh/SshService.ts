@@ -54,6 +54,8 @@ export interface ConnectOptions {
   gatewayHostKeyFingerprint?: string;
   /** Main-only policy bound to an independently pinned gateway stream. */
   nativeWindowsCli?: NativeWindowsHostCliPolicy;
+  /** Canonical enrolled deviceId from main's trusted gateway registration. */
+  nativeWindowsCliHostIdentity?: string;
   /**
    * Dial the platform's own machine: no ssh2 client, no keys, no network.
    * Execs and shells run locally (see `local/LocalHost`); `host`, `user` and
@@ -230,7 +232,7 @@ export class SshService {
 
         if (opts.sock && opts.nativeWindowsCli) {
           this.nativeClis.set(id, new NativeWindowsHostCli(opts.nativeWindowsCli,
-            (command, options) => this.exec(id, command, options)));
+            (command, options) => this.exec(id, command, options), opts.nativeWindowsCliHostIdentity));
         }
 
         // Post-ready transport lifecycle. Without this the registry keeps

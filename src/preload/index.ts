@@ -65,6 +65,16 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): Unsubscri
 }
 
 const api = {
+  workspaces: {
+    capability: (connectionId: string): Promise<{ hostIdentity: string } | null> =>
+      ipcRenderer.invoke(ipc.workspaces.capability, connectionId),
+    list: (connectionId: string, host: string): Promise<import('@pocketshell/core').WorkspacesListing> =>
+      ipcRenderer.invoke(ipc.workspaces.list, connectionId, host),
+    add: (connectionId: string, host: string, path: string): Promise<import('@pocketshell/core').WorkspacesListing> =>
+      ipcRenderer.invoke(ipc.workspaces.add, connectionId, host, path),
+    remove: (connectionId: string, host: string, path: string): Promise<import('@pocketshell/core').WorkspacesListing> =>
+      ipcRenderer.invoke(ipc.workspaces.remove, connectionId, host, path),
+  },
   win: {
     /**
      * Set the OS window title. Fire-and-forget on purpose — see the channel

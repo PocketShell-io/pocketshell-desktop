@@ -61,6 +61,7 @@ export function registerTerminalIpc(ctx: IpcContext): void {
             sock: await openGatewayStream(target, token),
             gatewayHostKeyFingerprint: registration.sshHostKeyFingerprint,
             nativeWindowsCli: registration.nativeWindowsCli,
+            nativeWindowsCliHostIdentity: target.deviceId,
           };
         } catch (error) {
           return { ok: false, error: `Gateway connection failed: ${(error as Error).message}` };
