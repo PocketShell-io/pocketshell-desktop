@@ -78,7 +78,8 @@ export class SyncService {
     if (this.baseUrl !== SYNC_API_URL.replace(/\/+$/, '')) {
       throw new Error('Gateway token exchange requires the trusted PocketShell broker.');
     }
-    const result = await this.request<{ token?: unknown; token_type?: unknown }>('POST', '/gateway/token');
+    const response = await this.requestRaw('POST', '/gateway/token', undefined, false, AbortSignal.timeout(30_000));
+    const result = await this.jsonBody<{ token?: unknown; token_type?: unknown }>(response);
     if (typeof result.token !== 'string' || result.token_type !== 'Bearer') {
       throw new Error('The gateway broker returned an invalid token response.');
     }
@@ -146,7 +147,7 @@ export class SyncService {
     return this.jsonBody<T>(res);
   }
 
-  private async requestRaw(method: string, path: string, body?: unknown, alreadyRefreshed = false): Promise<Response> {
+  private async requestRaw(method: string, path: string, body?: unknown, alreadyRefreshed = false, signal?: AbortSignal): Promise<Response> {
     const token = await this.auth.getIdToken(alreadyRefreshed).catch((err) => {
       if (err instanceof NotSignedInError) throw err;
       throw new SyncApiError(0, `could not obtain an ID token: ${(err as Error).message}`);
@@ -158,9 +159,10 @@ export class SyncService {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      ...(signal ? { signal } : {}),
     });
     if (res.status === 401 && !alreadyRefreshed) {
-      return this.requestRaw(method, path, body, true);
+      return this.requestRaw(method, path, body, true, signal);
     }
     return res;
   }
