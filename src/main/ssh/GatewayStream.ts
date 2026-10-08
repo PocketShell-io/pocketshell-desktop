@@ -31,11 +31,15 @@ export function openGatewayStream(
       final(done) { socket.close(); done(); },
       destroy(error, done) { socket.terminate(); done(error); },
     });
+    // Own errors continuously, including ready→ssh2's listener handoff. The
+    // consumer still sees the error and .errored; no EventEmitter gap may crash main.
+    stream.on('error', () => undefined);
     const fail = (error: Error): void => {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
         socket.terminate();
+        stream.destroy();
         reject(error);
       } else if (ready) stream.destroy(error);
     };
@@ -44,7 +48,7 @@ export function openGatewayStream(
     socket.on('open', () => socket.send(buildGatewayAuthFrame(token, target.deviceId)));
     socket.on('error', fail);
     socket.on('close', (code) => {
-      if (!ready) fail(new Error(classifyGatewayClose(code).userMessage));
+      if (!settled) fail(new Error(classifyGatewayClose(code).userMessage));
       else { stream.push(null); stream.destroy(); }
     });
     socket.on('message', (data, binary) => {
@@ -61,9 +65,14 @@ export function openGatewayStream(
           return;
         }
         ready = true;
-        settled = true;
-        clearTimeout(timer);
-        resolve(stream);
+        // Drain this receiver turn before handing ownership to ssh2: ready
+        // and another frame can be coalesced in the same TCP read.
+        setImmediate(() => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(stream);
+        });
         return;
       }
       if (!binary) { fail(new Error('Expected binary SSH bytes from the gateway.')); return; }

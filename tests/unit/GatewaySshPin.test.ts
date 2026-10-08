@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { connect } from 'node:net';
 import { once } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { Server, utils } from 'ssh2';
 import { SshService } from '../../src/main/ssh/SshService';
 
@@ -46,6 +47,13 @@ async function endpoint() {
 }
 
 describe('gateway SSH fingerprint verification', () => {
+  it('reports an errored stream handoff immediately before loading a user key', async () => {
+    const sock = new PassThrough();
+    sock.on('error', () => undefined);
+    sock.destroy(new Error('gateway closed during handoff'));
+    const result = await new SshService().connect({ host: 'private', user: 'User', sock });
+    expect(result).toEqual({ ok: false, error: 'gateway closed during handoff' });
+  });
   it('runs a real SSH exec when the independently provisioned fingerprint matches', async () => {
     const { sock } = await endpoint();
     const ssh = new SshService();

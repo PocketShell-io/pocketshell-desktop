@@ -164,6 +164,10 @@ export class SshService {
 
   /** Attempt a connection. Resolves a {@link ConnectResult}; never rejects. */
   connect(opts: ConnectOptions): Promise<ConnectResult> {
+    if (opts.sock?.destroyed) {
+      const error = opts.sock.errored;
+      return Promise.resolve({ ok: false, error: error instanceof Error ? error.message : 'The gateway stream closed before SSH could connect.' });
+    }
     if (opts.sock && verifyGatewayHostKeyPin(opts.gatewayHostKeyFingerprint ?? null, '') === 'unpinned') {
       opts.sock.destroy();
       return Promise.resolve({ ok: false, error: 'A trusted SSH host fingerprint is required for gateway connections.' });

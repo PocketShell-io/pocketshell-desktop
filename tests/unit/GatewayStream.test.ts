@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { once } from 'node:events';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
+import type { Socket } from 'node:net';
 import { openGatewayStream } from '../../src/main/ssh/GatewayStream';
 
 const servers: WebSocketServer[] = [];
@@ -22,6 +23,17 @@ async function gateway() {
 }
 
 describe('gateway stream', () => {
+  it('rejects coalesced ready and invalid text without an unowned stream error', async () => {
+    const { server, target } = await gateway();
+    server.on('connection', (peer) => peer.once('message', () => {
+      const transport = (peer as unknown as { _socket: Socket })._socket;
+      transport.cork();
+      peer.send(JSON.stringify({ type: 'ready', v: 1, device_id: 'win35', ssh_host_key: '' }));
+      peer.send('unexpected-text');
+      transport.uncork();
+    }));
+    await expect(openGatewayStream(target, 'test', { allowInsecureWs: true })).rejects.toThrow('Expected binary');
+  });
   it('admits through text auth then carries opaque SSH bytes in both directions', async () => {
     const { server, target } = await gateway();
     const connected = once(server, 'connection');
