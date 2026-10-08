@@ -20,7 +20,7 @@ vi.mock('@ui/app/ipc', () => ({
 }));
 
 const { Terminal } = await import('@xterm/headless');
-const { pathLinks, scanBufferLine } = await import('@ui/app/terminalLinks');
+const { pathLinks, scanBufferLine, urlLinks } = await import('@ui/app/terminalLinks');
 
 const SCREEN = readFileSync(
   fileURLToPath(new URL('./fixtures/aplexer-codex-screen.bin', import.meta.url)),
@@ -197,5 +197,45 @@ describe('the thirteenth report: a Codex attachment list that underlines its fil
     expect(pathLinks(term, y, () => ({ sessionName: 'zoomcamp-ops' })).map((l) => l.range)).toEqual([
       { start: { x: 3, y }, end: { x: whole.length, y } },
     ]);
+  });
+});
+
+describe('the fourteenth report: a schemeless address cut at its own slash', () => {
+  // The transcript wrapped three addresses at `/` opportunities with the
+  // scheme of the second and third stranded on the row ABOVE their rest:
+  //
+  //     https://github.com/DataTalksClub/dapier/
+  //     blob/4b51240…d5/src/web/app.css https://
+  //     github.com/DataTalksClub/dapier/
+  //     commit/4b51240…d5 https://dapier.dtcdev.click/
+  //     connections
+  //
+  // The middle row's tail is a URL-so-far with no scheme on its row: the
+  // gate refused it (continuesPath defers to the path detector, which
+  // refuses hostname first segments), the commit URL stayed torn, and the
+  // click opened the truncated repo address. The family shape — host with
+  // path evidence, cut at its own `/` — is what now vouches for the join.
+  it('joins all five rows and opens all three addresses whole', async () => {
+    const bytes = [
+      'https://github.com/DataTalksClub/dapier/',
+      'blob/4b51240cbe9b7443f119d59319fa249e1c11d3d5/src/web/app.css https://',
+      'github.com/DataTalksClub/dapier/',
+      'commit/4b51240cbe9b7443f119d59319fa249e1c11d3d5 https://dapier.dtcdev.click/',
+      'connections',
+      '',
+    ].join('\r\n');
+    const term = new Terminal({ cols: 80, rows: 12, allowProposedApi: true }) as unknown as XtermTerminal;
+    await new Promise<void>((resolve) => term.write(bytes, resolve));
+
+    const expected = [
+      'https://github.com/DataTalksClub/dapier/blob/4b51240cbe9b7443f119d59319fa249e1c11d3d5/src/web/app.css',
+      'https://github.com/DataTalksClub/dapier/commit/4b51240cbe9b7443f119d59319fa249e1c11d3d5',
+      'https://dapier.dtcdev.click/connections',
+    ];
+    for (const line of [1, 2, 3, 4, 5]) {
+      const opened: string[] = [];
+      urlLinks(term, line, (u) => opened.push(u)).forEach((l) => l.activate({} as never, l.text));
+      expect([...new Set(opened)]).toEqual(expected);
+    }
   });
 });
