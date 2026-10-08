@@ -1,5 +1,5 @@
 import { Readable, Writable } from 'node:stream';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Client } from 'ssh2';
@@ -339,7 +339,7 @@ describe('SftpService — the local (self) connection', () => {
     expect(readFileSync(p, 'utf8')).toBe('first');
     // Forward slashes: the local realPath matches the spelling $HOME and
     // the renderer's crumb splitting use (see LocalHost/SftpService).
-    expect(await h.sftp.realPath(h.id, p)).toBe(p.replace(/\\/g, '/'));
+    expect(await h.sftp.realPath(h.id, p)).toBe(realpathSync(p).replace(/\\/g, '/'));
     rmSync(h.root, { recursive: true, force: true });
   });
 

@@ -49,6 +49,7 @@ vi.mock('@ui/app/ipc', () => ({
     agent: {
       profiles: vi.fn().mockResolvedValue([]),
       kinds: vi.fn().mockResolvedValue(['claude', 'codex', 'opencode']),
+      binaries: vi.fn().mockResolvedValue(['pocketshell', 'claude', 'codex', 'opencode']),
     },
     ssh: { onState: vi.fn(), listConfigHosts: vi.fn().mockResolvedValue([]) },
     helper: { usage: vi.fn().mockResolvedValue([]) },
