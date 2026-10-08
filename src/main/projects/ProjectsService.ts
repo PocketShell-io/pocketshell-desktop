@@ -1,5 +1,5 @@
 import type { AplexerSessionRecord, AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionResult, RenameSessionResult, ReposListRequest, ReposListResult, ReposScopeResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
-import { bashPathForm, windowsWorkspaceForm } from '@pocketshell/core';
+import { bashPathForm, windowsWorkspaceForm, HostCliFailed } from '@pocketshell/core';
 export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
 /**
  * Project-folder-first session creation — the desktop half of the flow the
@@ -63,7 +63,32 @@ import { mergeRepos } from './repos.js';
 
 
 
+interface NativeCreateGuard {
+  phase: 'creating' | 'reading' | 'uncertain';
+  keys: Set<string>;
+}
+
 export class ProjectsService {
+  private readonly nativeCreates = new Map<string, NativeCreateGuard>();
+
+  private clearNativeCreate(guard: NativeCreateGuard): void {
+    for (const key of guard.keys) {
+      if (this.nativeCreates.get(key) === guard) this.nativeCreates.delete(key);
+    }
+  }
+
+  private async reconcileNativeCreate(guard: NativeCreateGuard, native: NativeWindowsHostCli): Promise<string> {
+    guard.phase = 'reading';
+    try {
+      // This proves what is listed now, never which worker created a guessed tag.
+      await native.listSessions();
+      this.clearNativeCreate(guard);
+      return 'Session creation may have succeeded. The host session list was refreshed; review it before creating another.';
+    } catch (error) {
+      guard.phase = 'uncertain';
+      return `Session creation may have succeeded. Could not refresh the host session list: ${(error as Error).message}. Check the list before creating another.`;
+    }
+  }
   private async nativeSessionId(native: NativeWindowsHostCli, name: string, ref?: AplexerSessionRef): Promise<string | null> {
     if (ref?.aplexerId != null) return ref.aplexerId;
     const rows = (await native.listSessions()).filter((row) => row.name === name
@@ -77,25 +102,57 @@ export class ProjectsService {
     const failed = (error: string, code: StartSessionFailure = 'create-failed'): StartSessionResult => ({
       ok: false, sessionName: null, folder: null, reused: false, via: null, aplexerId: null, error, code,
     });
+    let guard: NativeCreateGuard | null = null;
+    let attempted = false;
     try {
       await native.requireCapability('sessions.create');
       const canonical = await this.canonicalise(connectionId, request.folder.trim());
       if (!canonical) return failed('The start folder does not exist on the host.', 'folder-missing');
       const folder = windowsWorkspaceForm(canonical);
       let name = resolveAplexerTag(request.customName);
+      const key = `${connectionId}\0${folder}\0${name}`;
+      const pending = this.nativeCreates.get(key);
+      if (pending) {
+        return failed(pending.phase === 'uncertain' ? await this.reconcileNativeCreate(pending, native)
+          : 'Session creation may have succeeded. Wait for the current creation and host-list check before creating another.', 'create-uncertain');
+      }
+      guard = { phase: 'creating', keys: new Set([key]) };
+      this.nativeCreates.set(key, guard);
       if (request.namePolicy === 'unique') {
         const tags = new Set((await native.listSessions()).filter((row) =>
           windowsWorkspaceForm(row.workspace ?? '') === folder).map((row) => row.tag ?? row.name));
         const base = name;
         let suffix = 2;
         while (tags.has(name) && suffix <= FREE_SESSION_NAME_MAX_SUFFIX) name = `${base}-${suffix++}`;
-        if (tags.has(name)) return failed('No free native session name is available.', 'name-unavailable');
+        if (tags.has(name)) {
+          this.clearNativeCreate(guard);
+          return failed('No free native session name is available.', 'name-unavailable');
+        }
       }
+      // Guard the issued tag as well as the caller's base, so an explicit retry
+      // spelling the selected suffix cannot bypass pending reconciliation.
+      const issuedKey = `${connectionId}\0${folder}\0${name}`;
+      const issuedPending = this.nativeCreates.get(issuedKey);
+      if (issuedPending && issuedPending !== guard) {
+        this.clearNativeCreate(guard);
+        return failed(issuedPending.phase === 'uncertain' ? await this.reconcileNativeCreate(issuedPending, native)
+          : 'Session creation may have succeeded. Wait for the current creation and host-list check before creating another.', 'create-uncertain');
+      }
+      guard.keys.add(issuedKey);
+      this.nativeCreates.set(issuedKey, guard);
+      attempted = true;
       const created = await native.createSession(name, folder);
+      this.clearNativeCreate(guard);
       if (request.namePolicy === 'unique' && !created.created) return failed('Another session acquired this name. Retry with a new name.', 'name-unavailable');
       return { ok: true, sessionName: created.name, folder, reused: !created.created,
         via: 'aplexer', aplexerId: created.id, error: null, code: null };
-    } catch (error) { return failed((error as Error).message); }
+    } catch (error) {
+      const uncertain = attempted && (!(error instanceof HostCliFailed)
+        || error.exitCode === 124 || error.exitCode === null || error.exitCode < 0 || error.timedOut);
+      if (uncertain && guard) return failed(await this.reconcileNativeCreate(guard, native), 'create-uncertain');
+      if (guard) this.clearNativeCreate(guard);
+      return failed((error as Error).message);
+    }
   }
   /**
    * Remote `$HOME` per connection. It cannot change for the life of a
@@ -119,6 +176,9 @@ export class ProjectsService {
   /** Drop cached per-connection state. Call on disconnect. */
   evict(connectionId: string): void {
     this.homes.delete(connectionId);
+    for (const key of this.nativeCreates.keys()) {
+      if (key.startsWith(`${connectionId}\0`)) this.nativeCreates.delete(key);
+    }
   }
 
   /**

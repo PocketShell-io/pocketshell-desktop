@@ -56,6 +56,14 @@ session UUID. Full workspace paths keep identically named folders separate in th
 session UI. These operations do not automatically write display names into the
 host's cached session tree.
 
+An exit 124, lost transport or malformed create receipt may follow successful
+worker handoff. Desktop rereads the authoritative schema-3 listing, refreshes
+the visible list and reports that creation may have succeeded. It never adopts
+a guessed UUID or retries automatically. A failed or pending reread blocks
+another request for that connection, folder and base tag; a later check only
+reconciles the listing. After a successful check, the user may deliberately
+create another session. This does not provide an at-most-once operation contract.
+
 Desktop selects host-managed registered roots per connection only after main
 qualifies `workspaces.add`, `workspaces.remove` and `tree.cas`. The canonical host
 identity is the enrolled gateway device ID, independent of the display alias.
