@@ -313,15 +313,19 @@ describe('local port allocation', () => {
   });
 
   it('honours a user remap over the mirror', async () => {
+    // The running Desktop can already forward 8801; keep the real bind test
+    // while choosing an available remap instead of assuming a vacant machine.
+    const local = await makeForwarder(new ScriptedSsh()).findAvailableLocalPort(8801);
+    expect(local).not.toBeNull();
     const ssh = new ScriptedSsh().push([9840]);
     const fwd = new AutoForwarder(ssh.asService(), 'conn-1', registry, {
       config: DEFAULT_AUTO_CONFIG,
-      remappings: { 9840: 8801 },
+      remappings: { 9840: local! },
     });
     forwarders.push(fwd);
     await fwd.refresh();
     expect(fwd.snapshot()[0]).toMatchObject({
-      listenPort: 8801,
+      listenPort: local,
       destPort: 9840,
       remapped: true,
     });
