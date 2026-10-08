@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
  * the path detector's own (terminalPaths.ts), so `(url).` underlines without
  * the decoration and opens without it too.
  */
-const { findUrls } = await import('@ui/app/terminalUrls');
+const { findUrls, continuesSchemelessAddress } = await import('@ui/app/terminalUrls');
 
 /** The URLs of one line, as strings. */
 const urls = (line: string): string[] => findUrls(line).map((m) => m.url);
@@ -201,5 +201,32 @@ describe('findUrls — bare domain addresses', () => {
     expect(
       urls('page datatalks.club/blog/x.html mirrors http://127.0.0.1:8300 and 10.0.0.3'),
     ).toEqual(['http://datatalks.club/blog/x.html', 'http://127.0.0.1:8300', 'http://10.0.0.3']);
+  });
+});
+
+describe('continuesSchemelessAddress', () => {
+  // The join gate's admission for the fourteenth report: a row's tail that is
+  // the bare family SO FAR. The same anchor and family rules as the scan, minus
+  // what needs line context.
+  it('admits a hostname with path evidence, cut at its own slash', () => {
+    expect(continuesSchemelessAddress('github.com/DataTalksClub/dapier/')).toBe(true);
+    expect(continuesSchemelessAddress('github.com/DataT')).toBe(true);
+    expect(continuesSchemelessAddress('datatalks.club:8080')).toBe(true);
+    expect(continuesSchemelessAddress('127.0.0.1/x/')).toBe(true);
+  });
+
+  it('refuses a bare hostname, the mentioned-not-addressed shape', () => {
+    expect(continuesSchemelessAddress('github.com')).toBe(false);
+    expect(continuesSchemelessAddress('datatalks.club')).toBe(false);
+  });
+
+  it('keeps the .js prose carve-out', () => {
+    expect(continuesSchemelessAddress('Node.js/Python')).toBe(false);
+    expect(continuesSchemelessAddress('node.js/blog/')).toBe(true);
+  });
+
+  it('refuses path-shaped tokens outright', () => {
+    expect(continuesSchemelessAddress('assets/images/exam/')).toBe(false);
+    expect(continuesSchemelessAddress('')).toBe(false);
   });
 });

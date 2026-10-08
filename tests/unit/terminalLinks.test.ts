@@ -1947,3 +1947,50 @@ describe('linksPerRow — the fill a CLI underlined past its own text', () => {
     ]);
   });
 });
+
+describe('joinedRowSkip — a schemeless address cut at its own slash', () => {
+  // The fourteenth report: the transcript wrapped `https://` onto the first
+  // block row's last token and the address's rest onto the rows below, so the
+  // middle row's tail (`github.com/DataTalksClub/dapier/`) is a URL-so-far
+  // with NO scheme on its row. continuesPath defers to the path detector,
+  // which refuses hostname first segments, and the web branch needs `://` —
+  // the gate refused, the commit URL stayed torn, and the click on the
+  // middle row opened the truncated repo address.
+  const BLOB = 'https://github.com/DataTalksClub/dapier/';
+  const REST = 'blob/4b51240cbe9b7443f119d59319fa249e1c11d3d5/src/web/app.css https://';
+  const MID = 'github.com/DataTalksClub/dapier/';
+  const COMMIT = 'commit/4b51240cbe9b7443f119d59319fa249e1c11d3d5 https://dapier.dtcdev.click/';
+  const ROWS = [BLOB, REST, MID, COMMIT, 'connections'];
+  const term = (): Terminal => fakeScreen(ROWS, 80);
+
+  it('joins the middle row to the commit row, the family shape vouching', () => {
+    // The whole five-row block is one logical line from any of its rows.
+    expect(scanBufferLine(term(), 3).text.trimEnd()).toBe(
+      `${BLOB}${REST}${MID}${COMMIT}connections`,
+    );
+  });
+
+  it('opens all three whole addresses from any row of the block', () => {
+    const t = term();
+    for (const line of [1, 2, 3, 4, 5]) {
+      const opened: string[] = [];
+      urlLinks(t, line, (u) => opened.push(u)).forEach((l) => l.activate(CLICK, l.text));
+      expect([...new Set(opened)]).toEqual([
+        'https://github.com/DataTalksClub/dapier/blob/4b51240cbe9b7443f119d59319fa249e1c11d3d5/src/web/app.css',
+        'https://github.com/DataTalksClub/dapier/commit/4b51240cbe9b7443f119d59319fa249e1c11d3d5',
+        'https://dapier.dtcdev.click/connections',
+      ]);
+    }
+  });
+
+  it('keeps rule 1 shut for the schemeless cut: no glue without the `/` head refusal', () => {
+    // A full row ending at a bare address's slash is the strongest geometry
+    // meeting the weakest vouching; rule 1 refuses the family tail and rule
+    // 1b's `/`-headed refusal then keeps a cut-before-a-segment reading of it
+    // from gluing either. (`node.js/blog/` + `/pricing` is two rows.)
+    const rows = ['see node.js/blog/', '/pricing'];
+    const t = fakeScreen(rows, rows[0]!.length);
+    expect(scanBufferLine(t, 1).text.trimEnd()).toBe('see node.js/blog/');
+    expect(scanBufferLine(t, 2).text.trimEnd()).toBe('/pricing');
+  });
+});
