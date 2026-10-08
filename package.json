@@ -26,7 +26,8 @@
   "//dependencies": "WHAT SHIPS. electron-builder copies production `dependencies` into the installer's node_modules and leaves `devDependencies` behind, so this list means `require()`d from disk at runtime — NOT `import`ed anywhere. Everything the renderer imports is bundled into out/renderer by Vite and belongs below; putting it here duplicates megabytes of already-bundled source into every installer (that was CodeMirror, ~22 MB of package tree). tests/unit/packagedDependencies.test.ts fails if this list grows without a reason being written down. `ssh2` is the remote transport. `@lydell/node-pty` is the LOCAL one: the self connection's PTY shells (session joins, the bare terminal) spawn through ConPTY, which needs a native .node binary — this fork ships prebuilt N-API binaries for Node AND Electron per platform, so `npm run dev` and the packaged build load it without an electron-rebuild step (the upstream node-pty compiles per ABI). require()d lazily from local/LocalHost on the first local shell.",
   "dependencies": {
     "@lydell/node-pty": "1.2.0-beta.15",
-    "ssh2": "1.16.0"
+    "ssh2": "1.16.0",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@codemirror/commands": "6.11.0",
@@ -55,6 +56,7 @@
     "@playwright/test": "1.49.1",
     "@pocketshell/core": "file:../pocketshell-core",
     "@types/node": "22.10.5",
+    "@types/ws": "8.18.1",
     "@vitejs/plugin-vue": "5.2.1",
     "@vitest/coverage-v8": "^2.1.8",
     "@vue/test-utils": "2.4.11",

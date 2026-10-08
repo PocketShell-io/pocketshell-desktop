@@ -44,6 +44,7 @@ const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
  * `dependencies`, so this list and that plugin are two views of one decision.
  */
 const ALLOWED: Record<string, string> = {
+  ws: 'Main-process gateway WebSocket transport; loaded from disk by the packaged app for end-to-end SSH over WSS. Electron 33 has no native Node WebSocket client.',
   ssh2: 'Native/CJS transport for every SSH connection; main-process only, and left external because it carries a native binding and a helper .exe that Vite must not swallow.',
   '@lydell/node-pty': "Native ConPTY/pty bindings for the self connection's local PTY shells (session joins, the bare terminal); main-process only, required lazily from local/LocalHost. This fork ships prebuilt N-API binaries per platform, so no electron-rebuild step is needed for dev or for the packaged build.",
 };

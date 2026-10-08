@@ -17,6 +17,7 @@ import {
   SYNC_DATA_LIMIT_BYTES,
 } from '../../src/main/sync/SyncService';
 import type { GoogleAuth } from '../../src/main/sync/GoogleAuth';
+import { SYNC_API_URL } from '@pocketshell/core';
 
 interface Call {
   url: string;
@@ -70,6 +71,33 @@ function makeService(script: (call: Call, forceRefreshed: boolean) => Response, 
 }
 
 describe('SyncService', () => {
+  it('exchanges a Google ID token only at the trusted broker and returns the scoped credential', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { iss: SYNC_API_URL, aud: 'pocketshell-gateway', scope: 'pocketshell.gateway', iat: now, exp: now + 300 };
+    const brokerToken = `header.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.signature`;
+    const fetchFn = vi.fn(async () => jsonResponse(200, { token: brokerToken, token_type: 'Bearer' }));
+    const service = new SyncService({ baseUrl: SYNC_API_URL, auth: stubAuth(async () => 'google-id-token'), fetchFn });
+    await expect(service.gatewayToken()).resolves.toBe(brokerToken);
+    expect(fetchFn).toHaveBeenCalledWith(`${SYNC_API_URL}/gateway/token`, expect.objectContaining({
+      method: 'POST', headers: { Authorization: 'Bearer google-id-token' }, body: undefined,
+    }));
+  });
+
+  it.each(['https://accounts.google.com', 'untrusted-issuer'])('refuses a broker response carrying issuer %s', async (iss) => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { iss, aud: 'pocketshell-gateway', scope: 'pocketshell.gateway', iat: now, exp: now + 300 };
+    const token = `header.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.signature`;
+    const service = new SyncService({ baseUrl: SYNC_API_URL, auth: stubAuth(async () => 'google-id-token'),
+      fetchFn: async () => jsonResponse(200, { token, token_type: 'Bearer' }) });
+    await expect(service.gatewayToken()).rejects.toThrow('unscoped');
+  });
+
+  it('refuses a broker URL override before touching Google authentication', async () => {
+    const auth = vi.fn(async () => 'google-id-token');
+    const service = new SyncService({ baseUrl: 'https://gateway.example', auth: stubAuth(auth) });
+    await expect(service.gatewayToken()).rejects.toThrow('trusted PocketShell broker');
+    expect(auth).not.toHaveBeenCalled();
+  });
   it('sends the Bearer header and JSON body on push', async () => {
     const calls: Call[] = [];
     const { service } = makeService((call) => {

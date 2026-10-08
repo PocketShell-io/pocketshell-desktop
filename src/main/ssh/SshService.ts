@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import type { Duplex } from 'node:stream';
 import type { ClientChannel, PseudoTtyOptions } from 'ssh2';
 import type { ConnectResult, ExecResult, HostPlatform, ShellId } from '@pocketshell/core';
 import {
@@ -12,6 +14,7 @@ import { ShellTracker, type ShellChannel } from './ShellTracker.js';
 import { HostPlatformTracker } from './hostPlatform.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { decodePublicKeyBlob } from '@pocketshell/core';
+import { verifyGatewayHostKeyPin } from '@pocketshell/core';
 import {
   execLocal,
   execLocalBackground,
@@ -44,6 +47,10 @@ export interface ConnectOptions {
   host: string;
   port?: number;
   user: string;
+  /** An admitted gateway stream; SSH still verifies and authenticates end to end. */
+  sock?: Duplex;
+  /** Independently provisioned pin required whenever sock is used. */
+  gatewayHostKeyFingerprint?: string;
   /**
    * Dial the platform's own machine: no ssh2 client, no keys, no network.
    * Execs and shells run locally (see `local/LocalHost`); `host`, `user` and
@@ -157,6 +164,10 @@ export class SshService {
 
   /** Attempt a connection. Resolves a {@link ConnectResult}; never rejects. */
   connect(opts: ConnectOptions): Promise<ConnectResult> {
+    if (opts.sock && verifyGatewayHostKeyPin(opts.gatewayHostKeyFingerprint ?? null, '') === 'unpinned') {
+      opts.sock.destroy();
+      return Promise.resolve({ ok: false, error: 'A trusted SSH host fingerprint is required for gateway connections.' });
+    }
     if (opts.local) {
       // A local dial cannot fail to connect — there is no transport to
       // refuse it. (Whether anything ANSWERS — bash present, `a` installed —
@@ -180,6 +191,7 @@ export class SshService {
       const fail = (error: string) => {
         try {
           client.end();
+          opts.sock?.destroy();
         } catch {
           // ignore
         }
@@ -223,6 +235,7 @@ export class SshService {
       try {
         const privateKey = loadKey(opts);
         client.connect({
+          ...(opts.sock ? { sock: opts.sock } : {}),
           host: opts.host,
           port: opts.port ?? 22,
           username: opts.user,
@@ -235,6 +248,12 @@ export class SshService {
           // returning false aborts. We consult ~/.ssh/known_hosts here and
           // honour the caller's TOFU decision for unknown hosts.
           hostVerifier: (key: Buffer) => {
+            if (opts.sock) {
+              const fingerprint = `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
+              if (verifyGatewayHostKeyPin(opts.gatewayHostKeyFingerprint ?? null, fingerprint) === 'trusted') return true;
+              fail('Gateway SSH host key mismatch — connection refused.');
+              return false;
+            }
             if (!opts.knownHosts) return true; // caller opted out of verification
             const { keyType: type, keyB64: b64 } = decodePublicKeyBlob(key);
             const verdict = opts.knownHosts.verify(opts.host, type, b64, opts.port ?? 22);

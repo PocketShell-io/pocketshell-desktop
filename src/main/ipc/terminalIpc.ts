@@ -1,21 +1,26 @@
 import type { IpcContext } from './context.js';
-import { ipcMain } from 'electron';
+import { ipcMain, app } from 'electron';
+import { join } from 'node:path';
 import { ipc } from '../../shared/channels.js';
 import type { HostEntry } from '@pocketshell/core';
 import { readSshConfig } from '../ssh-config/SshConfigParser.js';
 import { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { withSelfEntry } from '../local/LocalHost.js';
+import { normalizeGatewayTarget } from '@pocketshell/core';
+import { readGatewayHosts } from '../ssh/GatewayHosts.js';
+import { openGatewayStream } from '../ssh/GatewayStream.js';
 
 
 export function registerTerminalIpc(ctx: IpcContext): void {
   const { ssh, broadcast, tmuxClients } = ctx;
+  const registrations = () => readGatewayHosts(join(app.getPath('userData'), 'gateway-hosts.json'));
   // --- ssh:listConfigHosts -------------------------------------------------
   // `self` leads the list: this machine, dialled locally (no SSH). It is not
   // a config host — `fromConfig: false` and an `id` keep it out of any
   // config-write path — but it rides the config group because that is the
   // group the picker renders by default.
   ipcMain.handle(ipc.ssh.listConfigHosts, async (): Promise<HostEntry[]> => {
-    return withSelfEntry(readSshConfig());
+    return withSelfEntry([...readSshConfig(), ...registrations().map((r) => r.host)]);
   });
 
   // --- ssh:connect ---------------------------------------------------------
@@ -35,10 +40,34 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
         /** True for the self host: main answers locally, no SSH. */
         local?: boolean;
+        gateway?: unknown;
+        link?: unknown;
       },
     ) => {
+      // Preserve transport intent: malformed or unsupported markers must never dial TCP.
+      if (Object.prototype.hasOwnProperty.call(payload, 'link')) {
+        return { ok: false, error: 'This Desktop build does not support link transport.' };
+      }
+      let transport = {};
+      if (Object.prototype.hasOwnProperty.call(payload, 'gateway')) {
+        const target = normalizeGatewayTarget(payload.gateway);
+        if (!target || payload.local) return { ok: false, error: 'Invalid gateway connection target.' };
+        const registration = registrations().find((r) => r.host.gateway?.deviceId === target.deviceId
+          && r.host.gateway.serverUrl === target.serverUrl);
+        if (!registration) return { ok: false, error: 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.' };
+        try {
+          const token = await ctx.sync.gatewayToken();
+          transport = {
+            sock: await openGatewayStream(target, token),
+            gatewayHostKeyFingerprint: registration.sshHostKeyFingerprint,
+          };
+        } catch (error) {
+          return { ok: false, error: `Gateway connection failed: ${(error as Error).message}` };
+        }
+      }
       const knownHosts = new KnownHosts();
       return ssh.connect({
+        ...transport,
         host: payload.host,
         port: payload.port,
         user: payload.user,

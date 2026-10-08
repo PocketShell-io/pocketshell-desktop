@@ -40,7 +40,7 @@ vi.mock('electron', () => ({
   },
   dialog: { showSaveDialog, showOpenDialog },
   shell: { openExternal },
-  app: { getVersion: () => '0.0.0-test' },
+  app: { getVersion: () => '0.0.0-test', getPath: () => '/nonexistent/pocketshell-test-profile' },
   BrowserWindow: { fromWebContents },
 }));
 
@@ -164,6 +164,21 @@ beforeEach(() => {
 });
 
 describe('terminalIpc — the composer session fence', () => {
+  it.each([null, {}, { deviceId: 'win35', serverUrl: 'wss://gateway.pocketshell.io' }])(
+    'refuses malformed or unenrolled gateway intent without a direct SSH fallback (%j)', async (gateway) => {
+      const result = await handlers.get(ipc.ssh.connect)!(null as never,
+        { host: '192.168.86.35', user: 'User', gateway } as never);
+      expect(result).toMatchObject({ ok: false });
+      expect(mockOf(ssh, 'connect')).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses unsupported link intent before SSH', async () => {
+    const result = await handlers.get(ipc.ssh.connect)!(null as never,
+      { host: 'private', user: 'User', link: null } as never);
+    expect(result).toMatchObject({ ok: false });
+    expect(mockOf(ssh, 'connect')).not.toHaveBeenCalled();
+  });
   it('refuses input for a shell that is not showing the session it names', async () => {
     mockOf(tmuxClients, 'isShowing').mockReturnValue(false);
     const handler = handlers.get(ipc.shell.input)!;

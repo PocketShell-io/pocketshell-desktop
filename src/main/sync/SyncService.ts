@@ -1,4 +1,5 @@
 import { NotSignedInError, type GoogleAuth } from './GoogleAuth.js';
+import { SYNC_API_URL } from '@pocketshell/core';
 
 /**
  * The sync API client — the app's side of the contract documented in the
@@ -70,6 +71,29 @@ export class SyncService {
   /** `GET /me` — who the server thinks we are. Also the connectivity check. */
   async me(): Promise<{ sub: string; email: string | null }> {
     return this.request('GET', '/me');
+  }
+
+  /** Exchange Google admission at the trusted broker; only this scoped JWT reaches WSS. */
+  async gatewayToken(): Promise<string> {
+    if (this.baseUrl !== SYNC_API_URL.replace(/\/+$/, '')) {
+      throw new Error('Gateway token exchange requires the trusted PocketShell broker.');
+    }
+    const result = await this.request<{ token?: unknown; token_type?: unknown }>('POST', '/gateway/token');
+    if (typeof result.token !== 'string' || result.token_type !== 'Bearer') {
+      throw new Error('The gateway broker returned an invalid token response.');
+    }
+    // Sanity-check the credential class before it can leave for a gateway.
+    // Signature verification remains the gateway's duty; broker HTTPS is trusted here.
+    let claims: Record<string, unknown>;
+    try { claims = JSON.parse(Buffer.from(result.token.split('.')[1] ?? '', 'base64url').toString()) as Record<string, unknown>; }
+    catch { throw new Error('The gateway broker returned a malformed JWT.'); }
+    const now = Math.floor(Date.now() / 1000);
+    if (!claims || claims.iss !== this.baseUrl || claims.aud !== 'pocketshell-gateway'
+      || claims.scope !== 'pocketshell.gateway' || typeof claims.iat !== 'number'
+      || typeof claims.exp !== 'number' || claims.exp <= now || claims.exp - claims.iat > 300) {
+      throw new Error('The gateway broker returned an unscoped or expired credential.');
+    }
+    return result.token;
   }
 
   /** `GET /settings` — the slots the account holds, no data. */
