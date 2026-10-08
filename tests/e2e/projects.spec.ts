@@ -235,12 +235,9 @@ test.describe('folder-first session creation + port panel controls', () => {
   });
 
   test('the port panel shows discovered ports with process and folder columns', async () => {
-    // Unrelated to the create flow, and repaired only so this spec can finish:
-    // the panel's foot row of labelled buttons is gone, and Ports has its own
-    // header icon (renderer/hostPanels.ts) whose accessible name is its
-    // `title` — one click, no kebab to open first.
+    // The header opens Ports as a Maintenance workspace tool pane.
     await page.getByRole('button', { name: 'Port forwarding' }).click();
-    await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toBeVisible();
+    await expect(page.locator('.tool-view-slot:visible .fwd-table')).toBeVisible();
 
     // Normalise the toggle. Auto-forward is PERSISTED per host (PortfwdStore),
     // so a previous suite run legitimately leaves it on and the assertions
@@ -308,7 +305,7 @@ test.describe('folder-first session creation + port panel controls', () => {
     await expect(page.getByRole('button', { name: 'Auto-forward: OFF' })).toBeVisible({
       timeout: 20_000,
     });
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toHaveCount(0);
+    await page.getByTitle('Close this tool', { exact: true }).click();
+    await expect(page.locator('.tool-view-slot:visible .fwd-table')).toHaveCount(0);
   });
 });
