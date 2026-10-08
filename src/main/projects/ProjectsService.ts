@@ -306,6 +306,10 @@ export class ProjectsService {
     connectionId: string,
     request: StartSessionRequest,
   ): Promise<StartSessionResult> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      ok: false, sessionName: null, folder: null, reused: false, via: null, aplexerId: null,
+      code: 'create-failed', error: 'The provisioned native host does not support session creation yet.',
+    };
     const { home } = await this.home(connectionId);
     const folder = request.folder.trim();
 
@@ -688,6 +692,10 @@ export class ProjectsService {
     to: string,
     ref?: AplexerSessionRef,
   ): Promise<RenameSessionResult> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      ok: false, sessionName: null, code: 'rename-failed',
+      error: 'The provisioned native host does not support session rename yet.',
+    };
     const target = sanitiseName(to);
     if (!/[A-Za-z0-9]/.test(target)) {
       return {
@@ -800,6 +808,9 @@ export class ProjectsService {
     name: string,
     ref?: AplexerSessionRef,
   ): Promise<KillSessionResult> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      ok: false, code: 'kill-failed', error: 'The provisioned native host does not support session kill yet.',
+    };
     // An aplexer-backed row is killed by id. The lookup below also covers a
     // caller that only has the workspace: one live tag-holder is unambiguous,
     // and anything else falls through to the tmux probe rather than guessing.

@@ -3,6 +3,7 @@ import { MAX_LIVE_CLIENTS, TmuxClientPool } from '../../src/main/ssh/TmuxClientP
 import type { SshService } from '../../src/main/ssh/SshService';
 import type { PocketshellClient } from '../../src/main/helper/PocketshellClient';
 import type { ExecResult, ShellId } from '@pocketshell/core';
+import { NativeWindowsHostCli } from '../../src/main/helper/NativeWindowsHostCli';
 
 /**
  * The pool's job is deciding, per attach, between two outcomes: hand back the
@@ -877,6 +878,23 @@ describe('TmuxClientPool — the aplexer join spelling on Windows', () => {
     // One double-quoted argv word, joined by cd+tag.
     expect(harness.calls[0]?.detail.startsWith('"( ')).toBe(true);
     expect(harness.calls[0]?.detail).toContain("cd 'C:");
+  });
+
+  it('a provisioned gateway host attaches through its native CLI without raw a or tmux', async () => {
+    const harness = makeWindowsSsh(false);
+    const native = new NativeWindowsHostCli({ executable: 'C:/Protected CLI/pocketshell.exe' }, async (command) => ({
+      exitCode: 0, stderr: '', stdout: command.endsWith('--version') ? '0.5.8' : JSON.stringify({
+        schema: 1, platform: 'win32', os: 'nt', cli_version: '0.5.8',
+        capabilities: ['workspaces', 'tree', 'sessions.list', 'sessions.attach'],
+      }),
+    }));
+    (harness.ssh as unknown as Record<string, unknown>).nativeWindowsCli = () => native;
+    const pool = new TmuxClientPool(harness.ssh);
+    const id = '01234567-89ab-cdef-0123-456789abcdef';
+    await pool.attach('c1', 'review', { ...sink, ...aplexerTarget, aplexerId: id });
+    expect(harness.calls[0]?.detail).toBe(`"exec 'C:/Protected CLI/pocketshell.exe' sessions attach -- '${id}'"`);
+    expect(harness.execCalls).toEqual([]);
+    expect(harness.openModes).toEqual(['exec']);
   });
 
   it('the local (self) Windows connection keeps the POSIX spelling', async () => {

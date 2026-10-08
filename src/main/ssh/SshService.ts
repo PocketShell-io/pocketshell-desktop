@@ -23,6 +23,7 @@ import {
   openLocalShell,
 } from '../local/LocalHost.js';
 import { log } from '../log.js';
+import { NativeWindowsHostCli, type NativeWindowsHostCliPolicy } from '../helper/NativeWindowsHostCli.js';
 
 /**
  * Connection service wrapping `ssh2` — or, for a `local` dial, the platform's
@@ -51,6 +52,8 @@ export interface ConnectOptions {
   sock?: Duplex;
   /** Independently provisioned pin required whenever sock is used. */
   gatewayHostKeyFingerprint?: string;
+  /** Main-only policy bound to an independently pinned gateway stream. */
+  nativeWindowsCli?: NativeWindowsHostCliPolicy;
   /**
    * Dial the platform's own machine: no ssh2 client, no keys, no network.
    * Execs and shells run locally (see `local/LocalHost`); `host`, `user` and
@@ -107,6 +110,11 @@ export interface ExecOptions {
 export type CloseReason = 'user' | 'lost';
 
 export class SshService {
+  private readonly nativeClis = new Map<string, NativeWindowsHostCli>();
+
+  nativeWindowsCli(connectionId: string): NativeWindowsHostCli | undefined {
+    return this.nativeClis.get(connectionId);
+  }
   private readonly shells: ShellTracker;
   /**
    * The far end's OS family, probed once per connection and shared by every
@@ -219,6 +227,11 @@ export class SshService {
           knownHosts: opts.knownHosts ?? null,
           connectedAt: Date.now(),
         });
+
+        if (opts.sock && opts.nativeWindowsCli) {
+          this.nativeClis.set(id, new NativeWindowsHostCli(opts.nativeWindowsCli,
+            (command, options) => this.exec(id, command, options)));
+        }
 
         // Post-ready transport lifecycle. Without this the registry keeps
         // reporting `connected` after the link has gone away: the renderer
@@ -486,6 +499,7 @@ export class SshService {
    * what makes the paired 'error'/'close' events safe to wire.
    */
   close(connectionId: string, reason: CloseReason = 'user'): void {
+    this.nativeClis.delete(connectionId);
     this.shells.closeAllForConnection(connectionId);
     this.platforms.forget(connectionId);
     const rec = this.registry.remove(connectionId);

@@ -35,3 +35,20 @@ Invalid registrations are omitted; absent or mismatched pins refuse connections
 before user authentication. Entries appear in Desktop's host picker after a
 refresh or restart. The client requires WSS; plaintext WS is only available to
 transport tests with explicit development opt-in.
+
+For a Windows endpoint provisioned with the reviewed native CLI, main's local
+registration may additionally contain `nativeWindowsCli: { "executable":
+"C:/Users/User/PROVISIONED_RUNTIME/Scripts/pocketshell.exe" }`. Provisioning must
+provide the actual protected installation path; this example is not a deployed
+path. Use forward slashes and the endpoint's allowed SSH username (`user` for
+Win35). Invalid policies omit the entire registration rather than selecting a
+global executable.
+
+This opt-in selects the absolute executable for version/platform qualification,
+schema-3 session discovery, tree state and schema-1 workspace queries, and
+session attach by immutable UUID. The adapter requires native CLI 0.5.8 and the
+advertised workspaces/tree/list/attach capabilities. It never retries through
+global `pocketshell`, raw `a`, cached Aplexer executors or tmux. Other hosts keep
+their existing selection behavior. Native create/rename/kill remain explicitly
+unavailable until their host contract is implemented; workspace queries do not
+yet replace Desktop's existing root preferences in the shared UI.

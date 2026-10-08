@@ -144,6 +144,20 @@ function clip(value: string, limit = 4000): string {
  * SshService + connectionId into each call.
  */
 export class PocketshellClient {
+  private async treeCommand(connectionId: string, verb: string): Promise<string> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) {
+      await native.ready();
+      return `${native.binary} tree ${verb}`;
+    }
+    return pathAwareCommand(`pocketshell tree ${verb}`);
+  }
+
+  async listNativeWorkspaces(connectionId: string, host: string) {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (!native) throw new Error('This host has no provisioned native CLI.');
+    return native.listWorkspaces(host);
+  }
   constructor(
     private readonly ssh: SshService,
     /**
@@ -245,7 +259,7 @@ export class PocketshellClient {
       this.treeRegistry.set(connectionId, null);
       return null;
     }
-    const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell tree get'), {
+    const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'get'), {
       stdin: JSON.stringify({ host }),
     });
     const nodes = res.exitCode === 0 ? parseTreeGet(res.stdout) : null;
@@ -259,7 +273,7 @@ export class PocketshellClient {
    * tree answer.
    */
   async treeGet(connectionId: string, host: string): Promise<TreeNodeRecord[] | null> {
-    const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell tree get'), {
+    const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'get'), {
       stdin: JSON.stringify({ host }),
     });
     return res.exitCode === 0 ? parseTreeGet(res.stdout) : null;
@@ -274,7 +288,7 @@ export class PocketshellClient {
     host: string,
     nodes: readonly TreeNodeRecord[],
   ): Promise<boolean> {
-    const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell tree upsert'), {
+    const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'upsert'), {
       stdin: treeUpsertPayload(host, nodes),
     });
     return res.exitCode === 0;
@@ -289,7 +303,7 @@ export class PocketshellClient {
     connectionId: string,
     host: string,
   ): Promise<{ alive: string[]; gone: string[]; added: string[] } | null> {
-    const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell tree reconcile'), {
+    const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'reconcile'), {
       stdin: JSON.stringify({ host }),
     });
     return res.exitCode === 0 ? parseTreeReconcile(res.stdout) : null;
@@ -310,7 +324,7 @@ export class PocketshellClient {
   ): Promise<void> {
     const host = this.hostKey(connectionId);
     if (host === null) return;
-    const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell tree get'), {
+    const res = await this.ssh.exec(connectionId, await this.treeCommand(connectionId, 'get'), {
       stdin: JSON.stringify({ host }),
     });
     const nodes = res.exitCode === 0 ? parseTreeGet(res.stdout) : null;
@@ -361,6 +375,8 @@ export class PocketshellClient {
    * are {@link byCreationOrder}. The renderer groups but does not re-sort.
    */
   async listSessions(connectionId: string, sortBy: 'activity' | 'created' = 'activity'): Promise<SessionSummary[]> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) return native.listSessions();
     if (this.aplexer) {
       const aplexerRows = await this.aplexer.listSessions(connectionId);
       if (aplexerRows !== null) {
@@ -830,6 +846,10 @@ export class PocketshellClient {
     connectionId: string,
     opts: { name: string; cwd: string },
   ): Promise<CreateSessionOutcome> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      ok: false, name: null, via: 'tmux-fallback',
+      error: 'The provisioned native host does not support session creation yet.',
+    };
     // No helper path on a Windows host: `pocketshell` and tmux both cannot
     // exist there, so running the create (and its tmux fallback) is two execs
     // spent re-confirming what the platform probe already settled, answered
@@ -893,6 +913,9 @@ export class PocketshellClient {
    * row list, because a host without the GitHub CLI is a normal host.
    */
   async reposList(connectionId: string, options: ReposListOptions): Promise<ReposScopeResult> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      state: 'failed', repos: [], error: 'The provisioned native host does not support repository discovery.',
+    };
     const res = await this.ssh.exec(connectionId, pathAwareCommand(reposListCommand(options)));
     if (res.exitCode === 0) {
       return { state: 'ok', repos: parseReposJson(res.stdout), error: null };
@@ -911,6 +934,9 @@ export class PocketshellClient {
    * folder-first flow can then just start a session in the existing clone.
    */
   async reposClone(connectionId: string, options: ReposCloneOptions): Promise<CloneOutcome> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      ok: false, path: null, alreadyExists: false, error: 'The provisioned native host does not support repository clone.',
+    };
     // `timeoutMs: 0` — a real clone is the one legitimately unbounded exec in
     // the app (a slow upstream, a big history); the default exec cap would
     // kill a healthy 6-minute clone at 5. A wedged channel here leaves a
@@ -953,6 +979,7 @@ export class PocketshellClient {
    * disturbing the rows already on screen.
    */
   async usage(connectionId: string): Promise<UsageRow[]> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return [];
     const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell usage --json'));
     if (res.exitCode === 0) return parseUsageNdjson(res.stdout);
     const output = `${res.stdout}\n${res.stderr}`;
@@ -982,6 +1009,7 @@ export class PocketshellClient {
    * without a reconnect.
    */
   async agentSubcommands(connectionId: string): Promise<string[] | null> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return null;
     const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell agent --help'));
     return parseAgentSubcommands(res.stdout, res.exitCode);
   }
@@ -1002,6 +1030,7 @@ export class PocketshellClient {
    * not need a reconnect to be noticed.
    */
   async agentBinaries(connectionId: string): Promise<string[] | null> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return null;
     const names = ['pocketshell', 'claude', 'codex', 'opencode', 'grok', 'antigravity'];
     const script = `for n in ${names.join(' ')}; do command -v "$n" >/dev/null 2>&1 && printf '%s\n' "$n"; done`;
     const res = await this.ssh.exec(connectionId, pathAwareCommand(script));
@@ -1019,6 +1048,7 @@ export class PocketshellClient {
    * noticing which branch ran.
    */
   async listProfiles(connectionId: string): Promise<unknown[]> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return [];
     const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell profiles list --json'));
     if (res.exitCode !== 0) return [];
     try {
@@ -1039,6 +1069,7 @@ export class PocketshellClient {
    * helper's write-only default, D24).
    */
   async envList(connectionId: string, dir: string): Promise<EnvVarRow[]> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return [];
     const res = await this.ssh.exec(
       connectionId,
       pathAwareCommand(`pocketshell env list --dir ${shellQuoteRemotePath(dir)} --json`),
@@ -1081,6 +1112,7 @@ export class PocketshellClient {
     file?: string,
   ): Promise<void> {
     if (Object.keys(values).length === 0) return;
+    if (this.ssh.nativeWindowsCli?.(connectionId)) throw new Error('The provisioned native host does not support environment writes.');
     const fileArg = file ? ` --file ${shellQuote(file)}` : '';
     const res = await this.ssh.exec(
       connectionId,
@@ -1112,6 +1144,7 @@ export class PocketshellClient {
     dir: string,
     keys?: readonly string[],
   ): Promise<Record<string, string>> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {};
     const wanted = keys?.length ? [...keys] : await this.envKeyNames(connectionId, dir);
     if (wanted.length === 0) return {};
     const keyArgs = wanted.map((key) => `--key ${shellQuote(key)}`).join(' ');

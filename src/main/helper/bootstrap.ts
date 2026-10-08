@@ -31,6 +31,8 @@ export async function runBootstrap(
   ssh: SshService,
   connectionId: string,
 ): Promise<BootstrapResult> {
+  const native = ssh.nativeWindowsCli?.(connectionId);
+  if (native) return native.bootstrap();
   return runHostBootstrap((command) => ssh.exec(connectionId, command), {
     platform: await ssh.hostPlatform(connectionId),
   });
