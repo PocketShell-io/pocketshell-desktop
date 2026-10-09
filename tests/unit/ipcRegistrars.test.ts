@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HostEntry } from '@pocketshell/core';
+import { transportRefusalMessage, type HostEntry } from '@pocketshell/core';
 import { log } from '../../src/main/log';
 import { checkForUpdate } from '../../src/main/update/ReleaseChecker';
 import { runBootstrap } from '../../src/main/helper/bootstrap';
@@ -818,7 +818,7 @@ describe('syncIpc — applyHosts adopts the coercion outcome', () => {
         { name: 'ok-host', hostname: 'ok.example', fromConfig: true },
         { name: 'gate', hostname: 'gate.example', fromConfig: true, gateway: { via: 'x' } },
       ]),
-    ).rejects.toThrow(/gate.*gateway/);
+    ).rejects.toThrow(new Error(transportRefusalMessage('gateway-unsupported', 'gate')));
     const lastCall = vi.mocked(applyHostsToConfig).mock.calls.at(-1)?.[1] as unknown[];
     expect(lastCall).toMatchObject([{ name: 'hetzner' }]); // nothing new written
   });
