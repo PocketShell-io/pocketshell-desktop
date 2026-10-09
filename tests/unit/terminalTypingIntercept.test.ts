@@ -577,3 +577,111 @@ describe('intentional native detach versus unexpected client exit', () => {
   });
 
 });
+
+async function deliveredDetachChord(): Promise<void> {
+  prefix(); terminalData!('\u0002');
+  expect(customKeyHandler!(keydown('d'))).toBe(true);
+  terminalData!('d');
+  await flushPromises();
+}
+
+describe('detach load-bearing network cancellation and generation controls', () => {
+  it('leaves a real lost-link exit to reconnect ownership and attaches on the new connection', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const { wrapper, connection, shells, key } = await nativePane();
+    connection.$patch({ state: 'lost' });
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(shells.shellIdFor(key)).toBeNull();
+    vi.mocked(api.shell.attachSession).mockResolvedValueOnce({ shellId: 'shell-2', switched: false });
+    connection.$patch({ state: 'connected', connectionId: 'conn-2' });
+    await wrapper.setProps({ connectionId: 'conn-2' });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+    expect(api.shell.attachSession).toHaveBeenLastCalledWith(expect.objectContaining({ connectionId: 'conn-2' }));
+    expect(shells.shellIdFor(key)).toBe('shell-2');
+    expect(wrapper.emitted('typed')).toBeUndefined();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-2', exitCode: 0 });
+    await flushPromises();
+    expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-2');
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['focusout', 'paste', 'double Ctrl-b', 'named suffix', 'local shortcut', 'connection loss'])(
+    '%s cancels prefix intent and a subsequent genuine client exit still recovers', async (cancel) => {
+      const { api } = await import('@ui/app/ipc');
+      const { wrapper, connection } = await nativePane();
+      prefix(); terminalData!('\u0002');
+      if (cancel === 'focusout' || cancel === 'paste') terminalElement(wrapper).dispatchEvent(new Event(cancel));
+      else if (cancel === 'double Ctrl-b') { prefix(); terminalData!('\u0002'); }
+      else if (cancel === 'named suffix') {
+        expect(customKeyHandler!(keydown('ArrowUp'))).toBe(true); terminalData!('\u001b[A');
+      } else if (cancel === 'local shortcut') {
+        const tab = keydown('[', { ctrlKey: true });
+        expect(customKeyHandler!(tab)).toBe(false); expect(tab.defaultPrevented).toBe(true);
+      } else {
+        connection.$patch({ state: 'lost' }); connection.$patch({ state: 'connected' });
+      }
+      composerKey('d');
+      expect(wrapper.emitted('typed')).toEqual([['d']]);
+      expect(api.shell.input).not.toHaveBeenCalledWith('shell-1', 'd');
+      vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+      await flushPromises();
+      expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-1');
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(['session', 'connection', 'workspace'])(
+    'a %s switch cannot transfer prefix intent or recover an old pane generation', async (switchKind) => {
+      const { api } = await import('@ui/app/ipc');
+      const { wrapper, connection } = await nativePane();
+      const staleExit = vi.mocked(api.shell.onExited).mock.calls.at(-1)![0];
+      prefix(); terminalData!('\u0002');
+      vi.mocked(api.shell.attachSession).mockResolvedValueOnce({ shellId: 'shell-2', switched: false });
+      if (switchKind === 'connection') {
+        connection.$patch({ connectionId: 'conn-2' });
+        await wrapper.setProps({ connectionId: 'conn-2' });
+      } else if (switchKind === 'session') {
+        await wrapper.setProps({ sessionKey: 'next', sessionName: 'next', aplexerId: '22222222-2222-4222-8222-222222222222' });
+      } else {
+        await wrapper.setProps({ sessionKey: 'other-workspace', workspace: 'C:/other' });
+      }
+      await flushPromises();
+      composerKey('d');
+      expect(wrapper.emitted('typed')).toEqual([['d']]);
+      staleExit({ shellId: 'shell-1', exitCode: 0 });
+      await flushPromises();
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+      expect(api.helper.sessionsList).not.toHaveBeenCalled();
+      expect(api.shell.close).not.toHaveBeenCalled();
+      expect(api.shell.input).not.toHaveBeenCalledWith('shell-2', 'd');
+    },
+  );
+
+  it('reconnect after intentional detach explicitly attaches and restores genuine drop recovery', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const { wrapper, connection, shells, key, settings } = await nativePane();
+    await deliveredDetachChord();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+    connection.$patch({ state: 'lost' });
+    vi.mocked(api.shell.attachSession).mockResolvedValueOnce({ shellId: 'shell-2', switched: false });
+    connection.$patch({ state: 'connected', connectionId: 'conn-2' });
+    await wrapper.setProps({ connectionId: 'conn-2' });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+    expect(shells.shellIdFor(key)).toBe('shell-2');
+    expect(settings.typingOpensComposer).toBe(true);
+    composerKey('a');
+    expect(wrapper.emitted('typed')).toEqual([['a']]);
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-2', exitCode: 0 });
+    await flushPromises();
+    expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-2');
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(3);
+  });
+});
