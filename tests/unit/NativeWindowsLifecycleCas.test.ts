@@ -18,6 +18,7 @@ function fixture() {
   let lifecycleExit = 0;
   const result = (value: unknown) => ({ exitCode: 0, stderr: '', stdout: typeof value === 'string' ? value : JSON.stringify(value) });
   const exec = vi.fn(async (command: string, options?: { stdin?: string; timeoutMs?: number }) => {
+    if (command === `:; cd -- 'C:/Projects/Unicode space ☃' && pwd -P`) return result(folder);
     if (command.endsWith('--version')) return result('0.5.8');
     if (command.endsWith('platform --json')) return result({ schema: 1, platform: 'win32', os: 'nt', cli_version: '0.5.8', capabilities });
     if (command.includes('sessions list')) return result({ schema: 3, sessions: [{ name: 'Project:main', tag: 'main', workspace: folder, id, attached: false }] });
@@ -38,7 +39,7 @@ function fixture() {
     throw new Error(`Unexpected native command ${command}`);
   });
   const native = new NativeWindowsHostCli({ executable }, exec, 'enrolled-device');
-  const directoryExec = vi.fn(async () => result(folder));
+  const directoryExec = vi.fn(async () => { throw new Error('Native folder scripts must not use raw SSH'); });
   const ssh = { nativeWindowsCli: () => native, exec: directoryExec } as unknown as SshService;
   return { native, exec, directoryExec, ssh, advanceVersion: () => ++version,
     failLifecycle: (exit: number) => { lifecycleExit = exit; }, nodes: () => nodes };
@@ -57,6 +58,7 @@ describe('qualified native lifecycle and workspace authority', () => {
     const f = fixture();
     const projects = new ProjectsService(f.ssh, new PocketshellClient(f.ssh), new AplexerClient(f.ssh));
     const created = await projects.startSession('native', { folder, namePolicy: 'unique' });
+    expect(f.directoryExec).not.toHaveBeenCalled();
     expect(created).toMatchObject({ ok: true, sessionName: 'Project:main-2', aplexerId: id, via: 'aplexer', reused: false, folder });
     expect(f.exec.mock.calls.some(([command]) => command.includes("--cwd 'C:/Projects/Unicode space ☃' -- 'main-2'"))).toBe(true);
     expect((await projects.renameSession('native', 'Project:main', 'new', { aplexerId: id })).sessionName).toBe('Project:new');

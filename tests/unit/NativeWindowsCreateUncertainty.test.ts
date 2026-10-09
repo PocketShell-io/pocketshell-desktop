@@ -14,6 +14,7 @@ function fixture(outcome: '124' | '-1' | 'transport' | 'malformed' | '127' = '12
   let creates = 0;
   const result = (value: unknown) => ({ exitCode: 0, stderr: '', stdout: typeof value === 'string' ? value : JSON.stringify(value) });
   const exec = vi.fn(async (command: string) => {
+    if (command === `:; cd -- 'C:/Projects/same' && pwd -P`) return result(folder);
     if (command.endsWith('--version')) return result('0.5.8');
     if (command.endsWith('platform --json')) return result({ schema: 1, platform: 'win32', os: 'nt', cli_version: '0.5.8',
       capabilities: ['workspaces', 'tree', 'sessions.list', 'sessions.attach', 'sessions.create'] });
@@ -36,7 +37,7 @@ function fixture(outcome: '124' | '-1' | 'transport' | 'malformed' | '127' = '12
     throw new Error('Unexpected native invocation');
   });
   const native = new NativeWindowsHostCli({ executable: 'C:/Protected/Scripts/pocketshell.exe' }, exec, 'device-id');
-  const ssh = { nativeWindowsCli: () => native, exec: vi.fn(async () => result(folder)) } as unknown as SshService;
+  const ssh = { nativeWindowsCli: () => native, exec: vi.fn(async () => { throw new Error('Native canonicalisation must not use raw SSH'); }) } as unknown as SshService;
   const projects = new ProjectsService(ssh, new PocketshellClient(ssh));
   return { projects, exec, creates: () => creates, failRead: (value: boolean) => { failedRead = value; },
     holdRead: (value: Promise<void>) => { heldRead = value; } };

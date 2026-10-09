@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import { NativeWindowsHostCli, normalizeNativeWindowsHostCli } from '../../src/main/helper/NativeWindowsHostCli.js';
 import { PocketshellClient } from '../../src/main/helper/PocketshellClient.js';
@@ -260,5 +261,51 @@ describe('explicit enrolled CMD Desktop native policy', () => {
     await expect(native.listWorkspaces('bad\0host')).rejects.toThrow('NUL');
     await expect(native.listWorkspaces('x'.repeat(2000))).rejects.toThrow('8000');
     expect(exec).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('qualified native generic script boundary', () => {
+  it('executes compound and pipeline semantics with fixed builtin prefix and preserves options', async () => {
+    const options = { stdin: 'literal input', timeoutMs: 1234 };
+    const capture = vi.fn(async (command: string, supplied?: { stdin?: string; timeoutMs?: number }) => {
+      if (command.endsWith('--version')) return result('0.5.8');
+      if (command.endsWith('platform --json')) return result(platform);
+      expect(command).toBe(":; printf '%s' 'nonce'; printf '%s' 'tail' | cat; cat; exit 0");
+      expect(supplied).toBe(options);
+      return result(execFileSync('/bin/bash', ['--noprofile', '--norc', '-c', command],
+        { input: supplied?.stdin, encoding: 'utf8' }));
+    });
+    const native = new NativeWindowsHostCli({ executable }, capture);
+    expect(await native.runScript("printf '%s' 'nonce'; printf '%s' 'tail' | cat; cat; exit 0", options))
+      .toEqual(result('noncetailliteral input'));
+    expect(capture.mock.calls.slice(0, 2).every(([command]) => command.startsWith('exec '))).toBe(true);
+  });
+  it('preserves script timeout results and thrown transport refusal without fallback', async () => {
+    const f = fixture();
+    await f.native.ready();
+    f.exec.mockResolvedValueOnce({ stdout: '', stderr: 'timeout', exitCode: 124 });
+    expect(await f.native.runScript('pwd -P', { timeoutMs: 7 })).toEqual({ stdout: '', stderr: 'timeout', exitCode: 124 });
+    expect(f.exec).toHaveBeenLastCalledWith(':; pwd -P', { timeoutMs: 7 });
+    f.exec.mockRejectedValueOnce(new Error('transport refused'));
+    await expect(f.native.runScript('pwd -P')).rejects.toThrow('transport refused');
+  });
+  it('rejects CMD generic scripts outside the qualified bound before qualification', async () => {
+    const capture = vi.fn();
+    const native = new NativeWindowsHostCli({ executable, transport: 'openssh-cmd-git-bash',
+      deviceId: 'host-fixture', trustedBashExecutable: 'C:/Program Files/Git/bin/bash.exe',
+      trustedBashSha256: 'a'.repeat(64) }, capture, 'host-fixture');
+    await expect(native.runScript('x'.repeat(2100))).rejects.toThrow('8000');
+    await expect(native.runScript('pwd\0')).rejects.toThrow('NUL');
+    expect(capture).not.toHaveBeenCalled();
+  });
+  it('never dispatches generic scripts after failed qualification or malformed input', async () => {
+    const capture = vi.fn(async () => ({ stdout: '', stderr: 'untrusted', exitCode: 1 }));
+    const native = new NativeWindowsHostCli({ executable }, capture);
+    await expect(native.runScript('pwd -P')).rejects.toThrow('version');
+    await expect(native.runScript('pwd -P')).rejects.toThrow('version');
+    expect(capture).toHaveBeenCalledTimes(1);
+    await expect(native.runScript('pwd\0')).rejects.toThrow('NUL');
+    expect(capture).toHaveBeenCalledTimes(1);
   });
 });

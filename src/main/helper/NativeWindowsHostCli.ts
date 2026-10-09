@@ -54,6 +54,7 @@ export class NativeWindowsHostCli {
   private treeSnapshots = new WeakSet<NativeTreeSnapshot>();
 
   private readonly exec: Exec;
+  private readonly rawExec: Exec;
 
   constructor(readonly policy: NativeWindowsHostCliPolicy, exec: Exec,
     readonly hostIdentity?: string) {
@@ -65,6 +66,7 @@ export class NativeWindowsHostCli {
       this.policy = Object.freeze(qualified);
     }
     this.binary = shellQuote(this.policy.executable);
+    this.rawExec = exec;
     // Win32 OpenSSH groups Bash -c arguments only when the script starts with
     // an unquoted word. Keep every non-PTY native invocation in that form.
     this.exec = (command, options) => exec(this.command(`exec ${command}`), options);
@@ -81,6 +83,14 @@ export class NativeWindowsHostCli {
     const command = pty ? 'call ' + invocation : invocation;
     if (command.length > 8000) throw new Error('Native CMD command exceeds the qualified 8000 character bound.');
     return command;
+  }
+
+  /** Generic scripts retain compound/pipeline semantics; internal CLI calls use exec. */
+  async runScript(script: string, options?: { stdin?: string; timeoutMs?: number }): Promise<ExecResult> {
+    if (script.includes('\0')) throw new Error('Native scripts cannot contain NUL bytes.');
+    const command = this.command(`:; ${script}`);
+    await this.ready();
+    return this.rawExec(command, options);
   }
 
   ready(): Promise<string> {

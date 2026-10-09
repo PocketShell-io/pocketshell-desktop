@@ -264,10 +264,16 @@ export class ProjectsService {
     const target = childPath(request.parent, safeName);
     // `mkdir` runs in a shell: the SFTP spelling of the parent (`/C:/...`) is
     // the one form bash refuses, so the request is folded first.
-    const made = await this.ssh.exec(
-      connectionId,
-      pathAwareCommand(mkdirCommand(bashPathForm(target))),
-    );
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    let made;
+    try {
+      made = native
+        ? await native.runScript(mkdirCommand(bashPathForm(target)))
+        : await this.ssh.exec(connectionId, pathAwareCommand(mkdirCommand(bashPathForm(target))));
+    } catch (error) {
+      if (!native) throw error;
+      return { ok: false, path: null, error: error instanceof Error ? error.message : String(error) };
+    }
     if (made.exitCode !== 0) {
       return {
         ok: false,
@@ -276,8 +282,18 @@ export class ProjectsService {
       };
     }
     // The folder was created one exec ago; if `pwd -P` still cannot resolve
-    // it, the path we asked for is the honest answer to report.
-    return { ok: true, path: (await this.canonicalise(connectionId, target)) ?? target, error: null };
+    // it, legacy callers retain their requested path; native callers refuse.
+    let canonical: string | null;
+    try {
+      canonical = await this.canonicalise(connectionId, target);
+    } catch (error) {
+      if (!native) throw error;
+      return { ok: false, path: null, error: error instanceof Error ? error.message : String(error) };
+    }
+    if (native && canonical === null) {
+      return { ok: false, path: null, error: 'The native host could not resolve the created folder.' };
+    }
+    return { ok: true, path: canonical ?? target, error: null };
   }
 
   /**
@@ -1111,10 +1127,11 @@ export class ProjectsService {
    * to the drive form afterwards.
    */
   private async canonicalise(connectionId: string, path: string): Promise<string | null> {
-    const res = await this.ssh.exec(
-      connectionId,
-      pathAwareCommand(resolveDirectoryCommand(bashPathForm(path))),
-    );
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    const script = resolveDirectoryCommand(bashPathForm(path));
+    const res = native
+      ? await native.runScript(script)
+      : await this.ssh.exec(connectionId, pathAwareCommand(script));
     if (res.exitCode !== 0) return null;
     return firstNonEmptyLine(res.stdout) ?? null;
   }

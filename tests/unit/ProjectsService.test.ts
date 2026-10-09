@@ -1,3 +1,4 @@
+import { NativeWindowsHostCli } from '../../src/main/helper/NativeWindowsHostCli';
 import { describe, expect, it, vi } from 'vitest';
 import os from 'node:os';
 import { readFileSync } from 'node:fs';
@@ -1034,5 +1035,73 @@ describe('ProjectsService Windows SFTP home', () => {
     const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
     expect(await projects.home(CONN)).toEqual({ ok: false, home: null, error: 'SFTP returned an empty home path' });
     expect(commands).toEqual([]);
+  });
+});
+
+
+describe('qualified native folder scripts', () => {
+  const folder = 'C:/Projects/%TEMP%! & snow ☃';
+  const id = '11111111-1111-4111-8111-111111111111';
+  function fixture(resolveExit = 0, mkdirExit = 0, empty = false) {
+    const scripts: string[] = [];
+    const capture = vi.fn(async (command: string) => {
+      const prefix = '"C:\\Program Files\\Git\\bin\\bash.exe" --noprofile --norc -c "eval $\'';
+      expect(command.startsWith(prefix)).toBe(true);
+      expect(command.endsWith('\'"')).toBe(true);
+      const hex = command.slice(prefix.length, -2);
+      expect(hex).toMatch(/^(?:\\x[0-9a-f]{2})*$/);
+      const script = Buffer.from(hex.split('\\x').join(''), 'hex').toString('utf8');
+      scripts.push(script);
+      if (script.endsWith('--version')) return { stdout: '0.5.8', stderr: '', exitCode: 0 };
+      if (script.endsWith('platform --json')) return { stdout: JSON.stringify({ schema: 1,
+        platform: 'win32', os: 'nt', cli_version: '0.5.8',
+        capabilities: ['workspaces', 'tree', 'sessions.list', 'sessions.attach', 'sessions.create'] }), stderr: '', exitCode: 0 };
+      if (script.startsWith(':; ') && script.includes('pwd -P')) return { stdout: empty ? '' : folder, stderr: 'resolve refused', exitCode: resolveExit };
+      if (script.startsWith(':; mkdir ')) return { stdout: '', stderr: 'mkdir refused', exitCode: mkdirExit };
+      if (script.includes('sessions list')) return { stdout: '{"schema":3,"sessions":[]}', stderr: '', exitCode: 0 };
+      if (script.includes('sessions create')) return { stdout: JSON.stringify({ schema: 3, name: 'snow:main', id, created: true }), stderr: '', exitCode: 0 };
+      throw new Error('Unexpected native script ' + script);
+    });
+    const native = new NativeWindowsHostCli({ executable: 'C:/Protected/pocketshell.exe',
+      transport: 'openssh-cmd-git-bash', deviceId: 'host-fixture',
+      trustedBashExecutable: 'C:/Program Files/Git/bin/bash.exe', trustedBashSha256: 'a'.repeat(64) }, capture, 'host-fixture');
+    const raw = vi.fn(async () => ({ stdout: '', stderr: 'The system cannot find the path specified.', exitCode: 1 }));
+    const ssh = { nativeWindowsCli: () => native, exec: raw } as unknown as SshService;
+    return { projects: new ProjectsService(ssh, new PocketshellClient(ssh)), scripts, raw };
+  }
+  it('starts through qualified literal canonicalisation without raw POSIX SSH', async () => {
+    const f = fixture();
+    expect(await f.projects.startSession('native', { folder, namePolicy: 'unique' })).toMatchObject({ ok: true, aplexerId: id });
+    expect(f.raw).not.toHaveBeenCalled();
+    expect(f.scripts.find((script) => script.startsWith(':; '))).toContain('%TEMP%! & snow ☃');
+    expect(f.scripts.filter((script) => script.includes('pocketshell.exe'))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^exec /)]));
+  });
+  it('creates and resolves through qualified scripts without raw POSIX SSH', async () => {
+    const f = fixture();
+    expect(await f.projects.createFolder('native', { parent: 'C:/Projects', name: '%TEMP%! & snow ☃' }))
+      .toEqual({ ok: true, path: folder, error: null });
+    expect(f.raw).not.toHaveBeenCalled();
+    expect(f.scripts.filter((script) => script.startsWith(':; '))).toHaveLength(2);
+  });
+  it.each([1, 124, -1])('refuses canonicalisation exit %s before allocating a UUID', async (code) => {
+    const f = fixture(code);
+    expect(await f.projects.startSession('native', { folder, namePolicy: 'unique' }))
+      .toMatchObject({ ok: false, aplexerId: null });
+    expect(f.scripts.some((script) => script.includes('sessions create'))).toBe(false);
+    expect(f.raw).not.toHaveBeenCalled();
+  });
+  it('does not report mkdir success when native canonicalisation returns no path', async () => {
+    const f = fixture(0, 0, true);
+    expect(await f.projects.createFolder('native', { parent: 'C:/Projects', name: 'child' }))
+      .toMatchObject({ ok: false, path: null });
+    expect(f.raw).not.toHaveBeenCalled();
+  });
+  it.each([1, 124, -1])('refuses mkdir exit %s without resolving or falling back', async (code) => {
+    const f = fixture(0, code);
+    expect(await f.projects.createFolder('native', { parent: 'C:/Projects', name: 'child' }))
+      .toMatchObject({ ok: false, path: null, error: 'mkdir refused' });
+    expect(f.scripts.some((script) => script.includes('pwd -P'))).toBe(false);
+    expect(f.raw).not.toHaveBeenCalled();
   });
 });
