@@ -30,6 +30,7 @@ import { createPinia, setActivePinia } from 'pinia';
  */
 
 /** Captures the handler TerminalView hands to xterm, so a test can drive it. */
+let terminalWrites: string[] = [];
 let selected = false;
 let terminalData: ((data: string) => void) | null = null;
 let customKeyHandler: ((e: KeyboardEvent) => boolean) | null = null;
@@ -42,7 +43,7 @@ vi.mock('@xterm/xterm', () => ({
     open(): void {}
     focus(): void {}
     reset(): void {}
-    write(): void {}
+    write(data: string): void { terminalWrites.push(data); }
     paste(): void {}
     input(data: string): void { terminalData?.(data); }
     dispose(): void {}
@@ -123,6 +124,7 @@ beforeEach(() => {
   customKeyHandler = null;
   terminalData = null;
   selected = false;
+  terminalWrites = [];
 });
 
 describe('typing intercept — delivery', () => {
@@ -683,5 +685,172 @@ describe('detach load-bearing network cancellation and generation controls', () 
     await flushPromises();
     expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-2');
     expect(api.shell.attachSession).toHaveBeenCalledTimes(3);
+  });
+});
+
+
+describe('deferred suffix acknowledgement versus client exit ordering', () => {
+  it.each(['false', 'rejection', 'true'])(
+    'exit before suffix ACK %s decides detach only after acknowledgement', async (result) => {
+      const { api } = await import('@ui/app/ipc');
+      await nativePane();
+      prefix(); terminalData!('\u0002'); await flushPromises();
+      let accept: ((value: boolean) => void) | undefined;
+      let refuse: ((error: Error) => void) | undefined;
+      vi.mocked(api.shell.input).mockImplementationOnce(() => new Promise<boolean>((resolve, reject) => {
+        accept = resolve; refuse = reject;
+      }));
+      expect(customKeyHandler!(keydown('d'))).toBe(true); terminalData!('d');
+      vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+      await flushPromises();
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+      expect(api.helper.sessionsList).not.toHaveBeenCalled();
+      const reportedDetachBeforeAck = terminalWrites.join('').includes('[detached]');
+      if (result === 'rejection') refuse!(new Error('input refused'));
+      else accept!(result === 'true');
+      await flushPromises();
+      if (result === 'true') {
+        expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+        expect(api.helper.sessionsList).not.toHaveBeenCalled();
+        expect(terminalWrites.join('')).toContain('[detached]');
+      } else {
+        expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-1');
+        expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+        expect(terminalWrites.join('')).not.toContain('[detached]');
+      }
+      expect(reportedDetachBeforeAck).toBe(false);
+    },
+  );
+});
+
+async function pendingSuffixAck() {
+  const { api } = await import('@ui/app/ipc');
+  prefix(); terminalData!('\u0002'); await flushPromises();
+  let resolveAck: ((value: boolean) => void) | undefined;
+  vi.mocked(api.shell.input).mockImplementationOnce(() => new Promise<boolean>(resolve => { resolveAck = resolve; }));
+  expect(customKeyHandler!(keydown('d'))).toBe(true); terminalData!('d');
+  return { api, resolveAck: (value: boolean): void => { resolveAck!(value); } };
+}
+
+describe('deferred detach acknowledgement lifetime and network guards', () => {
+  it.each(['false', 'rejection', 'true'])(
+    'a deferred prefix ACK %s also participates in the exit verdict', async (result) => {
+      const { api } = await import('@ui/app/ipc');
+      await nativePane();
+      let accept: ((value: boolean) => void) | undefined;
+      let refuse: ((error: Error) => void) | undefined;
+      vi.mocked(api.shell.input).mockImplementationOnce(() => new Promise<boolean>((resolve, reject) => {
+        accept = resolve; refuse = reject;
+      }));
+      prefix(); terminalData!('\u0002');
+      expect(customKeyHandler!(keydown('d'))).toBe(true); terminalData!('d');
+      vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+      await flushPromises();
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+      expect(terminalWrites.join('')).not.toContain('[detached]');
+      if (result === 'rejection') refuse!(new Error('prefix write refused'));
+      else accept!(result === 'true');
+      await flushPromises();
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(result === 'true' ? 1 : 2);
+      expect(terminalWrites.join('').includes('[detached]')).toBe(result === 'true');
+    },
+  );
+
+  it('bounds an unresolved ACK, recovers once on duplicate exits, and ignores late success', async () => {
+    const { wrapper } = await nativePane();
+    const { api, resolveAck } = await pendingSuffixAck();
+    vi.useFakeTimers();
+    try {
+      const exit = vi.mocked(api.shell.onExited).mock.calls.at(-1)![0];
+      exit({ shellId: 'shell-1', exitCode: 0 }); exit({ shellId: 'shell-1', exitCode: 0 });
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1); await flushPromises();
+      expect(api.helper.sessionsList).toHaveBeenCalledTimes(1);
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+      resolveAck(true); await flushPromises();
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+      expect(terminalWrites.join('')).not.toContain('[detached]');
+      wrapper.unmount(); expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('new connection generation cancels the old wait and rejects its late successful ACK', async () => {
+    const { wrapper, connection } = await nativePane();
+    const { api, resolveAck } = await pendingSuffixAck();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    vi.mocked(api.shell.attachSession).mockResolvedValueOnce({ shellId: 'shell-2', switched: false });
+    connection.$patch({ connectionId: 'conn-2' });
+    await wrapper.setProps({ connectionId: 'conn-2' }); await flushPromises();
+    resolveAck(true); await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+    expect(terminalWrites.join('')).not.toContain('[detached]');
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-2', exitCode: 0 });
+    await flushPromises();
+    expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-2');
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(3);
+  });
+
+  it('unmount cancels the owned ACK timer and a late reply cannot recover or print', async () => {
+    const { wrapper } = await nativePane();
+    const { api, resolveAck } = await pendingSuffixAck();
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+      wrapper.unmount(); expect(vi.getTimerCount()).toBe(0);
+      resolveAck(false); await flushPromises();
+      expect(api.helper.sessionsList).not.toHaveBeenCalled();
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+      expect(terminalWrites.join('')).not.toContain('[detached]');
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('loss of the link while waiting cannot turn a successful ACK into a detach verdict', async () => {
+    const { connection } = await nativePane();
+    const { api, resolveAck } = await pendingSuffixAck();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    connection.$patch({ state: 'lost' }); resolveAck(true); await flushPromises();
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(terminalWrites.join('')).not.toContain('[detached]');
+    expect(terminalWrites.join('')).toContain('[process exited]');
+  });
+
+  it('a repeated confirmed exit keeps the already detached pane detached', async () => {
+    const { api } = await import('@ui/app/ipc');
+    await nativePane(); await deliveredDetachChord();
+    const exit = vi.mocked(api.shell.onExited).mock.calls.at(-1)![0];
+    exit({ shellId: 'shell-1', exitCode: 0 }); await flushPromises();
+    exit({ shellId: 'shell-1', exitCode: 0 }); await flushPromises();
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('deferred detach acknowledgement container visibility', () => {
+  it('does not bypass a pending suffix ACK when the pane is hidden and shown', async () => {
+    const observers: ResizeObserverCallback[] = [];
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { observers.push(callback); }
+      observe(): void {} disconnect(): void {}
+    });
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length; });
+    const { FitAddon } = await import('@xterm/addon-fit');
+    vi.spyOn(FitAddon.prototype, 'proposeDimensions').mockReturnValue({ cols: 80, rows: 24 });
+    const { wrapper } = await nativePane();
+    const { api, resolveAck } = await pendingSuffixAck();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    visible(terminalElement(wrapper), 0, 0);
+    observers[0]!([], {} as ResizeObserver); frames.splice(0).forEach(fn => fn(0));
+    visible(terminalElement(wrapper));
+    observers[0]!([], {} as ResizeObserver); frames.splice(0).forEach(fn => fn(1));
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(terminalWrites.join('')).not.toContain('[detached]');
+    resolveAck(false); await flushPromises();
+    expect(api.helper.sessionsList).toHaveBeenCalledTimes(1);
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
   });
 });
