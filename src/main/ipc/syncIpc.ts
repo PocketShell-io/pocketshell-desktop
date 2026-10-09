@@ -79,15 +79,13 @@ export function registerSyncIpc(ctx: IpcContext): void {
     const outcome = coerceHostEntries(hosts);
     // "Not an array / nothing usable" means nothing to add — not an error.
     if (outcome.kind === 'invalid') return { added: [] };
-    if (outcome.kind === 'gateway-unsupported') {
-      // The batch is refused WHOLE: a gateway host appended as an ordinary
-      // `Host` block would silently downgrade its dial to a plain address.
-      // The rejection is what the renderer's error path displays.
-      throw new Error(
-        outcome.name
-          ? `Refused: "${outcome.name}" dials through the gateway, which this app does not support.`
-          : 'Refused: an account host dials through the gateway, which this app does not support.',
-      );
+    if (outcome.kind === 'transport-unsupported') {
+      // The batch is refused WHOLE: a gateway- or link-marked host appended
+      // as an ordinary `Host` block would silently downgrade its dial to a
+      // plain SSH address. The decision and its wording are core's
+      // (unsupportedTransport / transportRefusalMessage); the rejection is
+      // what the renderer's error path displays.
+      throw new Error(outcome.message);
     }
     if (outcome.hosts.length === 0) return { added: [] };
     return applyHostsToConfig(undefined, outcome.hosts);
