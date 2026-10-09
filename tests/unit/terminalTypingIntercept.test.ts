@@ -919,6 +919,33 @@ describe('mounted input adapter ownership and fences', () => {
     expect(api.helper.sessionsList).not.toHaveBeenCalled();
   });
 
+  it('keeps one mounted adapter with a current identity getter across session switches and detaches it once', async () => {
+    const adapter = contribute();
+    const { wrapper, key } = await nativePane();
+    const { api } = await import('@ui/app/ipc');
+    const { sessionIdentityKey } = await import('@ui/app/sessionIdentity');
+    const target = adapter.target();
+    expect(target.sessionKey).toBe(key);
+    prefix(); terminalData!('\u0002');
+    await wrapper.setProps({ sessionKey: 'workspace-next', sessionName: 'next',
+      aplexerId: '22222222-2222-4222-8222-222222222222' });
+    await flushPromises();
+    expect(adapter.targets).toHaveLength(1);
+    expect(adapter.target()).toBe(target);
+    expect(target.sessionKey).toBe(sessionIdentityKey('next', { backend: 'aplexer', workspace: 'C:/workspace' }));
+    expect(target.sessionKey).not.toBe(key);
+    composerKey('a');
+    expect(wrapper.emitted('typed')).toEqual([['a']]);
+    target.sendInput('paste Unicode ☃\r');
+    expect(api.shell.input).toHaveBeenLastCalledWith('shell-1', 'paste Unicode ☃\r');
+    expect(adapter.detach).not.toHaveBeenCalled();
+    wrapper.unmount();
+    expect(adapter.detach).toHaveBeenCalledOnce();
+    const before = vi.mocked(api.shell.input).mock.calls.length;
+    target.sendInput('after-unmount');
+    expect(api.shell.input).toHaveBeenCalledTimes(before);
+  });
+
   it.each(['success', 'false', 'reject'])(
     'adapter delivery cancels armed detach even when exit precedes its %s reply', async (reply) => {
       const adapter = contribute();
