@@ -151,6 +151,9 @@ const api = {
       tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
       /** True for the self host: main answers locally, no SSH. */
       local?: boolean;
+      /** Transport markers, verbatim; main refuses a dial carrying either (desktop#8). */
+      link?: unknown;
+      gateway?: unknown;
     }): Promise<ConnectResult> => ipcRenderer.invoke(ipc.ssh.connect, payload),
 
     /** Execute a command; no throw on non-zero exit. */

@@ -1,7 +1,7 @@
 import type { IpcContext } from './context.js';
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
-import type { HostEntry } from '@pocketshell/core';
+import { unsupportedTransport, type HostEntry } from '@pocketshell/core';
 import { readSshConfig } from '../ssh-config/SshConfigParser.js';
 import { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { withSelfEntry } from '../local/LocalHost.js';
@@ -35,8 +35,22 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
         /** True for the self host: main answers locally, no SSH. */
         local?: boolean;
+        /**
+         * The host entry's transport markers, verbatim from the shared store
+         * (any value, null and malformed included). Typed here so they can
+         * never be dropped silently again (desktop#8).
+         */
+        link?: unknown;
+        gateway?: unknown;
       },
     ) => {
+      // The dial boundary (desktop#8, core #3059): this desktop has neither
+      // the gateway nor the link transport, so a host carrying either marker
+      // is refused HERE, before any known_hosts read, key load or socket —
+      // never dialled as plain SSH to its display hostname. The decision and
+      // its wording are core's, shared with the web and Android clients.
+      const refusal = unsupportedTransport(payload, { gateway: false, link: false }, payload.hostAlias ?? null);
+      if (refusal.refused) return { ok: false as const, error: refusal.message };
       const knownHosts = new KnownHosts();
       return ssh.connect({
         host: payload.host,
