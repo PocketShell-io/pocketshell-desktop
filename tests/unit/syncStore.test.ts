@@ -20,23 +20,27 @@ const syncApi = vi.hoisted(() => ({
   applyHosts: vi.fn(async () => ({ added: [] })),
 }));
 
-vi.mock('@ui/app/ipc', () => ({
-  api: {
-    sync: syncApi,
-    ssh: {
-      onState: vi.fn(() => () => {}),
-      exec: vi.fn(),
-      listConfigHosts: vi.fn(async () => []),
-      close: vi.fn(async () => true),
-      connect: vi.fn(),
-    },
+const apiMock = vi.hoisted(() => ({
+  ssh: {
+    onState: vi.fn(() => () => {}),
+    exec: vi.fn(),
+    listConfigHosts: vi.fn(async (): Promise<unknown[]> => []),
+    close: vi.fn(async () => true),
+    connect: vi.fn(),
   },
+  win: { setTitle: vi.fn() },
 }));
 
+vi.mock('@ui/app/ipc', () => ({
+  api: { sync: syncApi, ...apiMock },
+}));
+
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { useConnectionStore } from '@ui/app/stores/connection';
 import { useSettingsStore } from '@ui/app/stores/settings';
 import { useSyncStore } from '@ui/app/stores/sync';
+import AccountView from '@ui/app/views/AccountView.vue';
 import { serializeSyncPayload } from '@pocketshell/core';
 import type { HostEntry } from '@pocketshell/core';
 
@@ -74,6 +78,8 @@ beforeEach(() => {
   localStorage.clear();
   setActivePinia(createPinia());
   vi.clearAllMocks();
+  apiMock.ssh.listConfigHosts.mockResolvedValue([]);
+  syncApi.accountHosts.mockResolvedValue(null);
   okPush(1);
   syncApi.pull.mockResolvedValue({ kind: 'absent' });
 });
@@ -159,11 +165,77 @@ describe('syncStore — the selection is the payload', () => {
     const sync = await readyStore([host('kept'), host('dropped')]);
     // Both auto-tick from the pull, so untick one explicitly: the user's
     // untick after a pull is exactly the removal path.
-    useSettingsStore().syncSelectedHosts = ['kept'];
+    await sync.loadAccount();
+    sync.setSelected('dropped', false);
     await sync.syncNow();
     expect(pushedPayload(0).hosts.map((h) => h.name)).toEqual(['kept']);
     // And the untick survived the pull's absorb pass.
     expect(useSettingsStore().syncSelectedHosts).toEqual(['kept']);
+  });
+
+  // pocketshell#3072, the reported desktop scenario: a host that is both in
+  // ~/.ssh/config and in the account showed "In account · remove on sync"
+  // after a pull, and pressing Sync now without touching anything deleted it
+  // from the account for every device.
+  describe('an untouched Sync now never removes an account host (#3072)', () => {
+    const account = [host('hetzner'), host('fixture', 'fixture.other.machine')];
+
+    function accountPull(): void {
+      syncApi.pull.mockResolvedValue({ kind: 'ok', version: 3, plaintext: serializeSyncPayload(account) });
+    }
+
+    it('keeps a host that is in both ~/.ssh/config and the account, after Check account', async () => {
+      accountPull();
+      const sync = await readyStore([host('hetzner'), host('other')]);
+      useSettingsStore().syncSelectedHosts = ['other'];
+
+      await sync.loadAccount();
+      await sync.syncNow();
+
+      expect(pushedPayload(0).hosts.map((h) => h.name)).toEqual(['other', 'hetzner', 'fixture']);
+      expect(sync.message?.kind).toBe('ok');
+    });
+
+    it('keeps it on a first Sync now that runs before any Check account', async () => {
+      accountPull();
+      const sync = await readyStore([host('hetzner'), host('other')]);
+      useSettingsStore().syncSelectedHosts = ['other'];
+
+      await sync.syncNow();
+
+      expect(pushedPayload(0).hosts.map((h) => h.name)).toEqual(['other', 'hetzner', 'fixture']);
+    });
+
+    it('still removes it after an explicit untick', async () => {
+      accountPull();
+      const sync = await readyStore([host('hetzner'), host('other')]);
+      useSettingsStore().syncSelectedHosts = ['other'];
+      await sync.loadAccount();
+
+      sync.setSelected('hetzner', false);
+      await sync.syncNow();
+
+      expect(pushedPayload(0).hosts.map((h) => h.name)).toEqual(['other', 'fixture']);
+    });
+
+    it('the Account window shows "In account", ticked, not "remove on sync"', async () => {
+      accountPull();
+      syncApi.accountHosts.mockResolvedValue(null);
+      apiMock.ssh.listConfigHosts.mockResolvedValue([host('hetzner'), host('other')]);
+      useSettingsStore().syncSelectedHosts = ['other'];
+      const wrapper = mount(AccountView);
+      await flushPromises();
+      useSyncStore().passphrase = 'pw';
+
+      await wrapper.findAll('button').find((b) => b.text() === 'Check account')!.trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain('remove on sync');
+      const row = wrapper.findAll('.account-host-row').find((li) => li.find('.host-alias').text() === 'hetzner')!;
+      expect(row.get('.status-chip').text()).toBe('In account');
+      expect((row.get('input[type=checkbox]').element as HTMLInputElement).checked).toBe(true);
+      wrapper.unmount();
+    });
   });
 
   it('re-bases on a 409, absorbing what the other device pushed', async () => {
