@@ -24,6 +24,7 @@ import type { ForwardState } from '../main/portfwd/Forwarder.js';
 import type { AutoForwarderStatus, DiscoveredPort } from '../main/portfwd/AutoForwarder.js';
 import type { PortIntent } from '../main/portfwd/PortfwdStore.js';
 import type { ForwardSpec } from '@pocketshell/core';
+import type { WorkspacesListing } from '@pocketshell/core';
 import type {
   AplexerSessionRef,
   CloneProgress,
@@ -783,6 +784,22 @@ const api = {
      */
     openVsCode: (req: { hostToken: string; path: string }): Promise<boolean> =>
       ipcRenderer.invoke(ipc.editors.openVsCode, req),
+  },
+  workspaces: {
+    /**
+     * Whether [connectionId]'s roots are host-registered, and under which
+     * host identity. The desktop answers null for every connection today
+     * (src/main/ipc/workspacesIpc.ts), which keeps the roots on the per-host
+     * Settings list; the verbs below refuse for an unqualified connection.
+     */
+    capability: (connectionId: string): Promise<{ hostIdentity: string } | null> =>
+      ipcRenderer.invoke(ipc.workspaces.capability, connectionId),
+    list: (connectionId: string, host: string): Promise<WorkspacesListing> =>
+      ipcRenderer.invoke(ipc.workspaces.list, connectionId, host),
+    add: (connectionId: string, host: string, path: string): Promise<WorkspacesListing> =>
+      ipcRenderer.invoke(ipc.workspaces.add, connectionId, host, path),
+    remove: (connectionId: string, host: string, path: string): Promise<WorkspacesListing> =>
+      ipcRenderer.invoke(ipc.workspaces.remove, connectionId, host, path),
   },
   sync: {
     /** Who is signed in (and keychain availability); no network, no tokens. */
