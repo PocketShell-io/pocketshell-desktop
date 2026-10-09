@@ -22,8 +22,8 @@ export function registerWorkspacesIpc({ ssh }: IpcContext): void {
   });
   for (const operation of ['add', 'remove'] as const) {
     ipcMain.handle(ipc.workspaces[operation], async (_event, connectionId: string, _host: string, path: string) => {
-      if (typeof path !== 'string' || !path.trim() || path.includes('\0')) throw new Error('Invalid workspace path.');
       const client = native(connectionId);
+      if (typeof path !== 'string' || !path.trim() || path.includes('\0')) throw new Error('Invalid workspace path.');
       return operation === 'add' ? client.addWorkspace(path) : client.removeWorkspace(path);
     });
   }

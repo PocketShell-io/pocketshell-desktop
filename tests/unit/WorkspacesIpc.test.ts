@@ -47,3 +47,17 @@ describe('workspace IPC authority', () => {
     expect(client.removeWorkspace).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('current main connection validation survives native workspace integration', () => {
+  it.each([42, '', null])('refuses invalid connection %s on every workspace channel before host operations', async (id) => {
+    const client = setup();
+    for (const channel of Object.values(ipc.workspaces)) {
+      await expect(invoke(channel, id, 'renderer-host', 'C:/Unit')).rejects.toThrow('Invalid workspace connection.');
+    }
+    expect(client.workspaceCapability).not.toHaveBeenCalled();
+    expect(client.listWorkspaces).not.toHaveBeenCalled();
+    expect(client.addWorkspace).not.toHaveBeenCalled();
+    expect(client.removeWorkspace).not.toHaveBeenCalled();
+  });
+});
