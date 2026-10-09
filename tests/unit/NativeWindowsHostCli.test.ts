@@ -60,7 +60,7 @@ describe('provisioned Windows gateway CLI', () => {
     expect(await native.listSessions()).toEqual([expect.objectContaining({ backend: 'aplexer', aplexerId: id, path: 'C:/work' })]);
     expect((await native.listWorkspaces('win35')).workspaces[0]?.path).toBe('C:/work');
     expect(exec.mock.calls.filter(([command]) => command.endsWith('--version'))).toHaveLength(1);
-    expect(exec.mock.calls.every(([command]) => command.startsWith(`'${executable}' `))).toBe(true);
+    expect(exec.mock.calls.every(([command]) => command.startsWith(`exec '${executable}' `))).toBe(true);
     expect(await native.bootstrap()).toMatchObject({ platform: 'windows', pocketshell: { installed: true, path: executable } });
   });
 
@@ -95,7 +95,7 @@ describe('provisioned Windows gateway CLI', () => {
     expect(await aplexer.snapshotRecords('connection')).toEqual([]);
     expect(await helper.listSessions('connection')).toHaveLength(1);
     expect(await helper.treeGet('connection', 'win35')).toEqual([]);
-    expect(exec).toHaveBeenLastCalledWith(`'${executable}' tree get`, { stdin: '{"host":"win35"}' });
+    expect(exec).toHaveBeenLastCalledWith(`exec '${executable}' tree get`, { stdin: '{"host":"win35"}' });
     expect(sshExec).not.toHaveBeenCalled();
     expect(exec.mock.calls.some(([command]) => /\ba (attach|list|snapshot)|PATH=/.test(command))).toBe(false);
   });
@@ -109,7 +109,7 @@ describe('provisioned Windows gateway CLI', () => {
     expect((await projects.killSession('connection', 'old')).ok).toBe(false);
     await expect(helper.treeUpsert('connection', 'win35', [])).rejects.toThrow('version-aware');
     await expect(helper.treeReconcile('connection', 'win35')).rejects.toThrow('tree CAS');
-    expect(exec.mock.calls.map(([command]) => command)).toEqual([`'${executable}' --version`, `'${executable}' platform --json`]);
+    expect(exec.mock.calls.map(([command]) => command)).toEqual([`exec '${executable}' --version`, `exec '${executable}' platform --json`]);
   });
 
   it('does not query global helper or raw warning commands for unadvertised optional features', async () => {
@@ -126,5 +126,61 @@ describe('provisioned Windows gateway CLI', () => {
     expect(await aplexer.listWarnings('connection')).toEqual([]);
     expect((await aplexer.ackWarnings('connection')).ok).toBe(false);
     expect(exec).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('Win32 OpenSSH non-PTY Bash argument grouping', () => {
+  it('preserves qualification, native arguments and tree stdin when a leading quoted executable would lose arguments', async () => {
+    const calls: { command: string; stdin?: string; timeoutMs?: number }[] = [];
+    const cwd = 'C:/Projects/%TEMP%! & snow ☃';
+    const capabilities = [...platform.capabilities, 'workspaces.add', 'workspaces.remove', 'tree.cas',
+      'sessions.create', 'sessions.rename', 'sessions.kill'];
+    const capture = vi.fn(async (command: string, options?: { stdin?: string; timeoutMs?: number }) => {
+      calls.push({ command, ...options });
+      // The verified Win32 argv rule leaves arguments outside Bash -c when p1
+      // begins with a quote. This models the actual native CLI usage response.
+      if (command.startsWith("'")) return { exitCode: 2, stdout: 'Usage: pocketshell [OPTIONS] COMMAND [ARGS]...', stderr: '' };
+      expect(command.startsWith("exec '" + executable + "' ")).toBe(true);
+      expect(command.startsWith('exec exec ')).toBe(false);
+      if (command.endsWith('--version')) return result('pocketshell 0.5.8');
+      if (command.endsWith('platform --json')) return result({ ...platform, capabilities });
+      if (command.includes('sessions list')) return result({ schema: 3, sessions: [{ id, name: 'snow:main', workspace: cwd, tag: 'main', attached: false }] });
+      if (command.includes('workspaces')) return result({ schema: 1, workspaces: [{ path: cwd }] });
+      if (command.includes('sessions create')) return result({ schema: 3, name: 'snow:main', id, created: true });
+      if (command.includes('sessions rename')) return result({ schema: 3, name: 'snow:new', id, tag: 'new', renamed: true });
+      if (command.includes('sessions kill')) return result({ schema: 3, name: 'snow:new', id, killed: true, reaped: true });
+      if (command.endsWith('tree get')) return result({ nodes: [], version: 7, cli_version: '0.5.8' });
+      if (command.endsWith('tree upsert')) return result({ status: 'ok', version: 8 });
+      if (command.endsWith('tree reconcile')) return result({ alive: [], gone: [], added: [], cli_version: '0.5.8' });
+      throw new Error('Unexpected command ' + command);
+    });
+    const native = new NativeWindowsHostCli({ executable }, capture, 'enrolled-device');
+    expect((await native.bootstrap()).pocketshell.path).toBe(executable);
+    expect((await native.listSessions())[0]?.aplexerId).toBe(id);
+    await native.listWorkspaces('enrolled-device');
+    await native.addWorkspace(cwd);
+    await native.removeWorkspace(cwd);
+    expect((await native.createSession('main', cwd)).id).toBe(id);
+    expect(await native.renameSession(id, 'new')).toBe('snow:new');
+    await native.killSession(id);
+    const snapshot = await native.readTree('display-alias');
+    await native.upsertTree(snapshot, []);
+    await native.reconcileTree('display-alias');
+    const prefix = "exec '" + executable + "' ";
+    expect(calls[0]?.command).toBe(prefix + '--version');
+    expect(calls[1]?.command).toBe(prefix + 'platform --json');
+    expect(calls.find(({ command }) => command.includes('sessions create'))).toEqual({
+      command: prefix + "sessions create --json --cwd '" + cwd + "' -- 'main'", timeoutMs: 60_000,
+    });
+    expect(calls.find(({ command }) => command.endsWith('tree get'))).toEqual({
+      command: prefix + 'tree get', stdin: '{"host":"enrolled-device"}',
+    });
+    expect(calls.find(({ command }) => command.endsWith('tree upsert'))).toEqual({
+      command: prefix + 'tree upsert', stdin: '{"host":"enrolled-device","nodes":[],"expected_version":7}',
+    });
+    const beforeAttach = calls.length;
+    expect(await native.attachCommand(id)).toBe('"' + prefix + "sessions attach -- '" + id + "'\"");
+    expect(calls).toHaveLength(beforeAttach);
   });
 });

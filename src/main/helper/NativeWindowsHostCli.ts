@@ -38,10 +38,15 @@ export class NativeWindowsHostCli {
   private capabilities = new Set<string>();
   private treeSnapshots = new WeakSet<NativeTreeSnapshot>();
 
-  constructor(readonly policy: NativeWindowsHostCliPolicy, private readonly exec: Exec,
+  private readonly exec: Exec;
+
+  constructor(readonly policy: NativeWindowsHostCliPolicy, exec: Exec,
     readonly hostIdentity?: string) {
     this.binary = shellQuote(policy.executable);
-    this.core = new HostCliCore({ exec: (command, timeoutMs) => exec(command, { timeoutMs }) }, this.binary);
+    // Win32 OpenSSH groups Bash -c arguments only when the script starts with
+    // an unquoted word. Keep every non-PTY native invocation in that form.
+    this.exec = (command, options) => exec(`exec ${command}`, options);
+    this.core = new HostCliCore({ exec: (command, timeoutMs) => this.exec(command, { timeoutMs }) }, this.binary);
   }
 
   ready(): Promise<string> {
