@@ -999,3 +999,40 @@ describe('ProjectsService.renameSession — aimed like the kill', () => {
     expect(innered.some((c) => c.includes(`-S '${SOCKET}' has-session`))).toBe(false);
   });
 });
+
+describe('ProjectsService Windows SFTP home', () => {
+  it('uses the server login directory when the Windows host refuses a POSIX home probe', async () => {
+    const { ssh, commands } = fakeSsh([() => fail(1, 'The system cannot find the path specified.')], 'windows');
+    Object.assign(ssh, { nativeWindowsCli: () => ({}) });
+    const realPath = vi.fn().mockResolvedValue('/C:/Users/alexey');
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
+    expect(await projects.home(CONN)).toEqual({ ok: true, home: '/C:/Users/alexey', error: null });
+    expect(await projects.home(CONN)).toEqual({ ok: true, home: '/C:/Users/alexey', error: null });
+    expect(realPath).toHaveBeenCalledTimes(1);
+    expect(realPath).toHaveBeenCalledWith(CONN, '.');
+    expect(commands).toEqual([]);
+    projects.evict(CONN);
+    await projects.home(CONN);
+    expect(realPath).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache an SFTP failure or fall back to a literal tilde', async () => {
+    const { ssh, commands } = fakeSsh([() => ok('~')], 'windows');
+    Object.assign(ssh, { nativeWindowsCli: () => ({}) });
+    const realPath = vi.fn().mockRejectedValueOnce(new Error('SFTP unavailable'))
+      .mockResolvedValue('/C:/Users/alexey');
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
+    expect(await projects.home(CONN)).toEqual({ ok: false, home: null, error: 'SFTP unavailable' });
+    expect(await projects.home(CONN)).toEqual({ ok: true, home: '/C:/Users/alexey', error: null });
+    expect(commands).toEqual([]);
+  });
+
+  it('refuses an empty SFTP home instead of caching an unusable path', async () => {
+    const { ssh, commands } = fakeSsh([() => ok('~')], 'windows');
+    Object.assign(ssh, { nativeWindowsCli: () => ({}) });
+    const realPath = vi.fn().mockResolvedValue('');
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
+    expect(await projects.home(CONN)).toEqual({ ok: false, home: null, error: 'SFTP returned an empty home path' });
+    expect(commands).toEqual([]);
+  });
+});

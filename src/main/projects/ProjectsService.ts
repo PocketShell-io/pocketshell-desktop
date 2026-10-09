@@ -24,6 +24,7 @@ export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest
  */
 
 import type { SshService } from '../ssh/SshService.js';
+import type { SftpService } from '../sftp/SftpService.js';
 import { NativeCommandError, type NativeWindowsHostCli } from '../helper/NativeWindowsHostCli.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { AplexerClient } from '../helper/AplexerClient.js';
@@ -171,6 +172,7 @@ export class ProjectsService {
      * compiling.
      */
     private readonly aplexer?: AplexerClient,
+    private readonly sftp?: Pick<SftpService, 'realPath'>,
   ) {}
 
   /** Drop cached per-connection state. Call on disconnect. */
@@ -198,6 +200,17 @@ export class ProjectsService {
       const home = homedir().replace(/\\/g, '/');
       this.homes.set(connectionId, home);
       return { ok: true, home, error: null };
+    }
+    if (this.ssh.nativeWindowsCli?.(connectionId)) {
+      try {
+        if (!this.sftp) throw new Error('SFTP home resolution is unavailable');
+        const home = await this.sftp.realPath(connectionId, '.');
+        if (!home) throw new Error('SFTP returned an empty home path');
+        this.homes.set(connectionId, home);
+        return { ok: true, home, error: null };
+      } catch (error) {
+        return { ok: false, home: null, error: (error as Error).message };
+      }
     }
     const res = await this.ssh.exec(connectionId, pathAwareCommand(HOME_COMMAND));
     const home = res.stdout.trim();

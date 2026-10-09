@@ -32,7 +32,7 @@ const aplexer = new AplexerClient(ssh);
 const helper = new PocketshellClient(ssh, aplexer);
 const sftp = new SftpService(registry);
 const forwards = new ForwardService(ssh, registry);
-const projects = new ProjectsService(ssh, helper, aplexer);
+const projects = new ProjectsService(ssh, helper, aplexer, sftp);
 const preview = new HtmlPreviewService(sftp);
 // Settings sync: sign-in state lives behind the OS keychain in userData; the
 // renderer only ever sees the signed-in email. Constructed eagerly but inert
