@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { provideExtensions, type TerminalInputTarget } from '@ui/app/extensions';
 
 /**
  * The typing intercept's DELIVERY, as opposed to its predicate.
@@ -37,6 +38,7 @@ let customKeyHandler: ((e: KeyboardEvent) => boolean) | null = null;
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
+    textarea = document.createElement('textarea');
     cols = 80;
     rows = 24;
     loadAddon(): void {}
@@ -103,7 +105,7 @@ vi.mock('@ui/app/ipc', () => ({
 }));
 
 enableAutoUnmount(afterEach);
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { provideExtensions({}); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const TerminalView = (await import('@ui/app/components/TerminalView.vue')).default;
 
@@ -853,4 +855,91 @@ describe('deferred detach acknowledgement container visibility', () => {
     expect(api.helper.sessionsList).toHaveBeenCalledTimes(1);
     expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
   });
+});
+
+// These exercise the contributed adapter through the mounted component and
+// actual TerminalPane onData route, not a source-shape assertion or direct IPC.
+describe('mounted input adapter ownership and fences', () => {
+  function contribute() {
+    const targets: TerminalInputTarget[] = [];
+    const detach = vi.fn();
+    provideExtensions({ 'terminal.inputAdapter': [{ id: 'production-control',
+      attach: (target) => { targets.push(target); return detach; } }] });
+    return { target: () => targets[0]!, targets, detach };
+  }
+
+  it('cancels prefix ownership before adapter bytes and does not mistake them for an intentional detach', async () => {
+    const adapter = contribute();
+    const { wrapper } = await nativePane();
+    const { api } = await import('@ui/app/ipc');
+    expect(adapter.targets).toHaveLength(1);
+    expect(adapter.target().textarea).toBeInstanceOf(HTMLTextAreaElement);
+    expect(adapter.target().element).toBe(wrapper.element);
+    prefix(); terminalData!('\u0002');
+    adapter.target().sendInput('d');
+    composerKey('a');
+    await flushPromises();
+    expect(api.shell.input).toHaveBeenNthCalledWith(1, 'shell-1', '\u0002');
+    expect(api.shell.input).toHaveBeenNthCalledWith(2, 'shell-1', 'd');
+    expect(wrapper.emitted('typed')).toEqual([['a']]);
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+    expect(adapter.detach).toHaveBeenCalledOnce();
+  });
+
+  it('uses the existing no-shell input fence before attach, then delivers through the adopted shell', async () => {
+    const adapter = contribute();
+    const { api } = await import('@ui/app/ipc');
+    let finish: ((result: Awaited<ReturnType<typeof api.shell.attachSession>>) => void) | undefined;
+    vi.mocked(api.shell.attachSession).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await nativePane();
+    adapter.target().sendInput('before');
+    expect(api.shell.input).not.toHaveBeenCalled();
+    finish!({ shellId: 'shell-1', switched: false });
+    await flushPromises();
+    adapter.target().sendInput('Unicode ☃\r');
+    expect(api.shell.input).toHaveBeenCalledTimes(1);
+    expect(api.shell.input).toHaveBeenCalledWith('shell-1', 'Unicode ☃\r');
+  });
+
+  it('keeps adapter input fenced after confirmed intentional detach and does not rejoin', async () => {
+    const adapter = contribute();
+    const { shells, key } = await nativePane();
+    const { api } = await import('@ui/app/ipc');
+    await deliveredDetachChord();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(shells.shellIdFor(key)).toBeNull();
+    const before = vi.mocked(api.shell.input).mock.calls.length;
+    adapter.target().sendInput('after-detach');
+    expect(api.shell.input).toHaveBeenCalledTimes(before);
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+  });
+
+  it.each(['success', 'false', 'reject'])(
+    'adapter delivery cancels armed detach even when exit precedes its %s reply', async (reply) => {
+      const adapter = contribute();
+      await nativePane();
+      const { api } = await import('@ui/app/ipc');
+      prefix(); terminalData!('\u0002'); await flushPromises();
+      expect(customKeyHandler!(keydown('d'))).toBe(true);
+      let resolveAck: ((accepted: boolean) => void) | undefined;
+      let rejectAck: ((error: Error) => void) | undefined;
+      vi.mocked(api.shell.input).mockImplementationOnce(() => new Promise((resolve, reject) => {
+        resolveAck = resolve; rejectAck = reject;
+      }));
+      adapter.target().sendInput('d');
+      vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+      await flushPromises();
+      if (reply === 'reject') rejectAck!(new Error('refused'));
+      else resolveAck!(reply === 'success');
+      await flushPromises();
+      expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-1');
+      expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+      expect(terminalWrites.join('')).not.toContain('[detached]');
+    },
+  );
 });
