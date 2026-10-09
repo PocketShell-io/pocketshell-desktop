@@ -1279,11 +1279,16 @@ describe('SessionTree — dragging a folder row', () => {
  * folder arrangement and the sort instead of switching either, the pinned
  * `other` bucket can neither be carried nor be landed below, and the two
  * strips refuse each other's gestures — a root drag must not light up the
- * folder rows, or a folder drag the headers.
+ * folder rows, or a folder drag the headers. The drop TARGET is the whole
+ * section: the first cut bound `dragover` on the thin header row alone and
+ * every release over the folder rows refused — ten tries to one landing,
+ * straight from the seat — so these tests drive the section the way the
+ * pointer now does.
  *
  * The drag mechanics are the folder drag's (see that describe's header):
  * jsdom synthesises the events, and `clientY: -1` / `0` mean above / below
- * because every bounding box here is all zeros.
+ * because every bounding box here is all zeros — now the box of the SECTION,
+ * so its midpoint rule is the group's, not the header's.
  */
 describe('SessionTree — dragging a root header', () => {
   /** One folder under `git`, one under `tmp` — two real roots, no bucket. */
@@ -1292,7 +1297,16 @@ describe('SessionTree — dragging a root header', () => {
     session('tmp-d', `${HOME}/tmp/d`, 200),
   ];
 
-  /** Every root header, in rendered order, the pinned chrome section scoped out. */
+  /**
+   * The root sections, in rendered order, the pinned chrome section scoped
+   * out. These are the drop targets: `dragover` and `drop` bind on the
+   * section so the whole group accepts the drag.
+   */
+  function sections(wrapper: VueWrapper): DOMWrapper<Element>[] {
+    return wrapper.findAll('.folder:not(.maintenance-section)');
+  }
+
+  /** The headers, for the drag START (and the carried row's fade). */
   function headers(wrapper: VueWrapper): DOMWrapper<Element>[] {
     return wrapper.findAll('.folder:not(.maintenance-section) .folder-header');
   }
@@ -1314,17 +1328,17 @@ describe('SessionTree — dragging a root header', () => {
     return useSettingsStore().rootOrderFor('hetzner');
   }
 
-  /** Drag root header [from] onto header [to], landing above it or below it. */
+  /** Drag root [from] onto root [to]'s section, landing above it or below it. */
   async function dragRoot(
     wrapper: VueWrapper,
     from: number,
     to: number,
     where: 'above' | 'below' = 'above',
   ): Promise<void> {
-    const rows = headers(wrapper);
-    await rows[from]!.trigger('dragstart');
-    await rows[to]!.trigger('dragover', { clientY: where === 'above' ? -1 : 0 });
-    await rows[to]!.trigger('drop');
+    await headers(wrapper)[from]!.trigger('dragstart');
+    const target = sections(wrapper)[to]!;
+    await target.trigger('dragover', { clientY: where === 'above' ? -1 : 0 });
+    await target.trigger('drop');
     await wrapper.vm.$nextTick();
   }
 
@@ -1365,22 +1379,32 @@ describe('SessionTree — dragging a root header', () => {
     expect(rootLabels(wrapper)).toEqual(['tmp', 'git', 'work']);
   });
 
-  it('draws the landing place on the header it would land above', async () => {
+  it('draws the landing place on the SECTION it would land above', async () => {
     const wrapper = await open(TWO_ROOTS);
-    const rows = headers(wrapper);
-    await rows[1]!.trigger('dragstart');
-    await rows[0]!.trigger('dragover', { clientY: -1 });
-    expect(rows[0]!.classes()).toContain('drop-above');
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await sections(wrapper)[0]!.trigger('dragover', { clientY: -1 });
+    expect(sections(wrapper)[0]!.classes()).toContain('drop-above');
     // And the header being carried fades in place rather than leaving the flow.
-    expect(rows[1]!.classes()).toContain('dragging');
+    expect(headers(wrapper)[1]!.classes()).toContain('dragging');
+  });
+
+  it('draws "below" at the END of the group, not under its name', async () => {
+    // The measured failure that moved the handlers onto the section: on the
+    // header, the below-rule drew under `~/tmp` but ABOVE its folders —
+    // inside the very group it claimed to end. The section's bottom edge is
+    // where "after the group" actually is.
+    const wrapper = await open(TWO_ROOTS);
+    await headers(wrapper)[0]!.trigger('dragstart');
+    await sections(wrapper)[1]!.trigger('dragover', { clientY: 0 });
+    expect(sections(wrapper)[1]!.classes()).toContain('drop-below');
+    expect(headers(wrapper)[1]!.classes()).not.toContain('drop-below');
   });
 
   it('clears the indicator when a drag is abandoned', async () => {
     const wrapper = await open(TWO_ROOTS);
-    const rows = headers(wrapper);
-    await rows[1]!.trigger('dragstart');
-    await rows[0]!.trigger('dragover', { clientY: -1 });
-    // `dragend` is listened for on the LIST, which the headers live in too.
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await sections(wrapper)[0]!.trigger('dragover', { clientY: -1 });
+    // `dragend` is listened for on the LIST, which the sections live in too.
     await wrapper.get('.folder-list').trigger('dragend');
     expect(wrapper.findAll('.drop-above, .drop-below')).toHaveLength(0);
     expect(wrapper.findAll('.folder-header.dragging')).toHaveLength(0);
@@ -1412,32 +1436,44 @@ describe('SessionTree — dragging a root header', () => {
     // the one header that is not draggable and the one gap (below it) no root
     // may land in.
     const wrapper = await open([...TWO_ROOTS, session('stray-x', null, 300)]);
-    const rows = headers(wrapper);
     expect(rootLabels(wrapper)).toEqual(['git', 'tmp', 'other']);
-    expect(rows[2]!.attributes('draggable')).toBe('false');
+    expect(headers(wrapper)[2]!.attributes('draggable')).toBe('false');
 
-    await rows[2]!.trigger('dragstart');
-    await rows[0]!.trigger('dragover', { clientY: -1 });
+    await headers(wrapper)[2]!.trigger('dragstart');
+    await sections(wrapper)[0]!.trigger('dragover', { clientY: -1 });
     expect(wrapper.findAll('.drop-above, .drop-below')).toHaveLength(0);
-    await rows[0]!.trigger('drop');
+    await sections(wrapper)[0]!.trigger('drop');
     expect(storedRootOrder()).toEqual([]);
 
     // A REAL root cannot land below the bucket either: tmp over the bottom
-    // half of `other` is refused and draws nothing.
-    await rows[1]!.trigger('dragstart');
-    await rows[2]!.trigger('dragover', { clientY: 0 });
+    // half of `other`'s section is refused and draws nothing.
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await sections(wrapper)[2]!.trigger('dragover', { clientY: 0 });
     expect(wrapper.findAll('.drop-above, .drop-below')).toHaveLength(0);
-    await rows[2]!.trigger('drop');
+    await sections(wrapper)[2]!.trigger('drop');
     expect(storedRootOrder()).toEqual([]);
     expect(rootLabels(wrapper)).toEqual(['git', 'tmp', 'other']);
+  });
+
+  it('lands a root just ABOVE the bucket when its section is hovered top half', async () => {
+    // The boundary right before `other` is a real place — the one gap in the
+    // bucket's own section that accepts a drop. The written ranking is the
+    // whole draw order, bucket key included: `applyRootOrder` re-pins the
+    // bucket last whatever it ranked, so its rank is inert but present.
+    const wrapper = await open([...TWO_ROOTS, session('stray-x', null, 300)]);
+    await headers(wrapper)[0]!.trigger('dragstart');
+    await sections(wrapper)[2]!.trigger('dragover', { clientY: -1 });
+    expect(sections(wrapper)[2]!.classes()).toContain('drop-above');
+    await sections(wrapper)[2]!.trigger('drop');
+    expect(storedRootOrder()).toEqual(['~/tmp', '~/git', '::other::']);
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git', 'other']);
   });
 
   it('keeps the two strips apart: a root drag lights up no folder row', async () => {
     // Each strip carries its own payload type, so while a root is in flight
     // the folder rows' handler sees none of it — and vice versa.
     const wrapper = await open(TWO_ROOTS);
-    const rows = headers(wrapper);
-    await rows[1]!.trigger('dragstart');
+    await headers(wrapper)[1]!.trigger('dragstart');
     await wrapper.findAll('.dir-header')[0]!.trigger('dragover', { clientY: -1 });
     expect(wrapper.findAll('.dir-list li.drop-above, .dir-list li.drop-below')).toHaveLength(0);
     await wrapper.get('.folder-list').trigger('dragend');
