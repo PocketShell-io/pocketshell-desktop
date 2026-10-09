@@ -152,7 +152,7 @@ const api = {
       tofuDecision?: 'accept-always' | 'accept-once' | 'reject';
       /** True for the self host: main answers locally, no SSH. */
       local?: boolean;
-      /** Transport markers, verbatim; main refuses a dial carrying either (desktop#8). */
+      /** Transport markers, verbatim; main validates gateway enrollment and refuses unsupported/conflicting intent. */
       link?: unknown;
       gateway?: unknown;
     }): Promise<ConnectResult> => ipcRenderer.invoke(ipc.ssh.connect, payload),
@@ -788,9 +788,9 @@ const api = {
   workspaces: {
     /**
      * Whether [connectionId]'s roots are host-registered, and under which
-     * host identity. The desktop answers null for every connection today
-     * (src/main/ipc/workspacesIpc.ts), which keeps the roots on the per-host
-     * Settings list; the verbs below refuse for an unqualified connection.
+     * host identity. Main qualifies only provisioned native connections
+     * (src/main/ipc/workspacesIpc.ts). Other connections answer null and
+     * keep their Settings roots; host verbs refuse when unqualified.
      */
     capability: (connectionId: string): Promise<{ hostIdentity: string } | null> =>
       ipcRenderer.invoke(ipc.workspaces.capability, connectionId),

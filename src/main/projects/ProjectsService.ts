@@ -1,5 +1,5 @@
 import type { AplexerSessionRecord, AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionResult, RenameSessionResult, ReposListRequest, ReposListResult, ReposScopeResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
-import { bashPathForm, windowsWorkspaceForm } from '@pocketshell/core';
+import { bashPathForm, windowsWorkspaceForm, HostCliFailed } from '@pocketshell/core';
 export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest, CreateFolderResult, HomeResult, KillSessionFailure, KillSessionResult, RenameSessionFailure, RenameSessionResult, ReposListRequest, ReposListResult, SessionNamePolicy, StartSessionFailure, StartSessionRequest, StartSessionResult } from '@pocketshell/core';
 /**
  * Project-folder-first session creation — the desktop half of the flow the
@@ -24,6 +24,8 @@ export type { AplexerSessionRef, CloneProgress, CloneResult, CreateFolderRequest
  */
 
 import type { SshService } from '../ssh/SshService.js';
+import type { SftpService } from '../sftp/SftpService.js';
+import { NativeCommandError, type NativeWindowsHostCli } from '../helper/NativeWindowsHostCli.js';
 import type { PocketshellClient } from '../helper/PocketshellClient.js';
 import type { AplexerClient } from '../helper/AplexerClient.js';
 import type { CreateSessionVia } from '../helper/PocketshellClient.js';
@@ -62,7 +64,97 @@ import { mergeRepos } from './repos.js';
 
 
 
+interface NativeCreateGuard {
+  phase: 'creating' | 'reading' | 'uncertain';
+  keys: Set<string>;
+}
+
 export class ProjectsService {
+  private readonly nativeCreates = new Map<string, NativeCreateGuard>();
+
+  private clearNativeCreate(guard: NativeCreateGuard): void {
+    for (const key of guard.keys) {
+      if (this.nativeCreates.get(key) === guard) this.nativeCreates.delete(key);
+    }
+  }
+
+  private async reconcileNativeCreate(guard: NativeCreateGuard, native: NativeWindowsHostCli): Promise<string> {
+    guard.phase = 'reading';
+    try {
+      // This proves what is listed now, never which worker created a guessed tag.
+      await native.listSessions();
+      this.clearNativeCreate(guard);
+      return 'Session creation may have succeeded. The host session list was refreshed; review it before creating another.';
+    } catch (error) {
+      guard.phase = 'uncertain';
+      return `Session creation may have succeeded. Could not refresh the host session list: ${(error as Error).message}. Check the list before creating another.`;
+    }
+  }
+  private async nativeSessionId(native: NativeWindowsHostCli, name: string, ref?: AplexerSessionRef): Promise<string | null> {
+    if (ref?.aplexerId != null) return ref.aplexerId;
+    const rows = (await native.listSessions()).filter((row) => row.name === name
+      && (ref?.workspace == null || windowsWorkspaceForm(row.workspace ?? '') === windowsWorkspaceForm(ref.workspace)));
+    if (rows.length > 1) throw new Error('This session name is ambiguous. Select its immutable UUID.');
+    return rows[0]?.aplexerId ?? null;
+  }
+
+  private async startNativeSession(connectionId: string, native: NativeWindowsHostCli,
+    request: StartSessionRequest): Promise<StartSessionResult> {
+    const failed = (error: string, code: StartSessionFailure = 'create-failed'): StartSessionResult => ({
+      ok: false, sessionName: null, folder: null, reused: false, via: null, aplexerId: null, error, code,
+    });
+    let guard: NativeCreateGuard | null = null;
+    let attempted = false;
+    try {
+      await native.requireCapability('sessions.create');
+      const canonical = await this.canonicalise(connectionId, request.folder.trim());
+      if (!canonical) return failed('The start folder does not exist on the host.', 'folder-missing');
+      const folder = windowsWorkspaceForm(canonical);
+      let name = resolveAplexerTag(request.customName);
+      const key = `${connectionId}\0${folder}\0${name}`;
+      const pending = this.nativeCreates.get(key);
+      if (pending) {
+        return failed(pending.phase === 'uncertain' ? await this.reconcileNativeCreate(pending, native)
+          : 'Session creation may have succeeded. Wait for the current creation and host-list check before creating another.', 'create-uncertain');
+      }
+      guard = { phase: 'creating', keys: new Set([key]) };
+      this.nativeCreates.set(key, guard);
+      if (request.namePolicy === 'unique') {
+        const tags = new Set((await native.listSessions()).filter((row) =>
+          windowsWorkspaceForm(row.workspace ?? '') === folder).map((row) => row.tag ?? row.name));
+        const base = name;
+        let suffix = 2;
+        while (tags.has(name) && suffix <= FREE_SESSION_NAME_MAX_SUFFIX) name = `${base}-${suffix++}`;
+        if (tags.has(name)) {
+          this.clearNativeCreate(guard);
+          return failed('No free native session name is available.', 'name-unavailable');
+        }
+      }
+      // Guard the issued tag as well as the caller's base, so an explicit retry
+      // spelling the selected suffix cannot bypass pending reconciliation.
+      const issuedKey = `${connectionId}\0${folder}\0${name}`;
+      const issuedPending = this.nativeCreates.get(issuedKey);
+      if (issuedPending && issuedPending !== guard) {
+        this.clearNativeCreate(guard);
+        return failed(issuedPending.phase === 'uncertain' ? await this.reconcileNativeCreate(issuedPending, native)
+          : 'Session creation may have succeeded. Wait for the current creation and host-list check before creating another.', 'create-uncertain');
+      }
+      guard.keys.add(issuedKey);
+      this.nativeCreates.set(issuedKey, guard);
+      attempted = true;
+      const created = await native.createSession(name, folder);
+      this.clearNativeCreate(guard);
+      if (request.namePolicy === 'unique' && !created.created) return failed('Another session acquired this name. Retry with a new name.', 'name-unavailable');
+      return { ok: true, sessionName: created.name, folder, reused: !created.created,
+        via: 'aplexer', aplexerId: created.id, error: null, code: null };
+    } catch (error) {
+      const uncertain = attempted && (!(error instanceof HostCliFailed)
+        || error.exitCode === 124 || error.exitCode === null || error.exitCode < 0 || error.timedOut);
+      if (uncertain && guard) return failed(await this.reconcileNativeCreate(guard, native), 'create-uncertain');
+      if (guard) this.clearNativeCreate(guard);
+      return failed((error as Error).message);
+    }
+  }
   /**
    * Remote `$HOME` per connection. It cannot change for the life of a
    * connection, and it is read on every name derivation, so caching it keeps
@@ -80,11 +172,15 @@ export class ProjectsService {
      * compiling.
      */
     private readonly aplexer?: AplexerClient,
+    private readonly sftp?: Pick<SftpService, 'realPath'>,
   ) {}
 
   /** Drop cached per-connection state. Call on disconnect. */
   evict(connectionId: string): void {
     this.homes.delete(connectionId);
+    for (const key of this.nativeCreates.keys()) {
+      if (key.startsWith(`${connectionId}\0`)) this.nativeCreates.delete(key);
+    }
   }
 
   /**
@@ -104,6 +200,17 @@ export class ProjectsService {
       const home = homedir().replace(/\\/g, '/');
       this.homes.set(connectionId, home);
       return { ok: true, home, error: null };
+    }
+    if (this.ssh.nativeWindowsCli?.(connectionId)) {
+      try {
+        if (!this.sftp) throw new Error('SFTP home resolution is unavailable');
+        const home = await this.sftp.realPath(connectionId, '.');
+        if (!home) throw new Error('SFTP returned an empty home path');
+        this.homes.set(connectionId, home);
+        return { ok: true, home, error: null };
+      } catch (error) {
+        return { ok: false, home: null, error: (error as Error).message };
+      }
     }
     const res = await this.ssh.exec(connectionId, pathAwareCommand(HOME_COMMAND));
     const home = res.stdout.trim();
@@ -133,6 +240,7 @@ export class ProjectsService {
     folder: string,
     customName?: string,
   ): Promise<string> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return resolveAplexerTag(customName);
     if (this.aplexer && (await this.aplexer.isAvailable(connectionId))) {
       return resolveAplexerTag(customName);
     }
@@ -156,10 +264,16 @@ export class ProjectsService {
     const target = childPath(request.parent, safeName);
     // `mkdir` runs in a shell: the SFTP spelling of the parent (`/C:/...`) is
     // the one form bash refuses, so the request is folded first.
-    const made = await this.ssh.exec(
-      connectionId,
-      pathAwareCommand(mkdirCommand(bashPathForm(target))),
-    );
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    let made;
+    try {
+      made = native
+        ? await native.runScript(mkdirCommand(bashPathForm(target)))
+        : await this.ssh.exec(connectionId, pathAwareCommand(mkdirCommand(bashPathForm(target))));
+    } catch (error) {
+      if (!native) throw error;
+      return { ok: false, path: null, error: error instanceof Error ? error.message : String(error) };
+    }
     if (made.exitCode !== 0) {
       return {
         ok: false,
@@ -168,8 +282,18 @@ export class ProjectsService {
       };
     }
     // The folder was created one exec ago; if `pwd -P` still cannot resolve
-    // it, the path we asked for is the honest answer to report.
-    return { ok: true, path: (await this.canonicalise(connectionId, target)) ?? target, error: null };
+    // it, legacy callers retain their requested path; native callers refuse.
+    let canonical: string | null;
+    try {
+      canonical = await this.canonicalise(connectionId, target);
+    } catch (error) {
+      if (!native) throw error;
+      return { ok: false, path: null, error: error instanceof Error ? error.message : String(error) };
+    }
+    if (native && canonical === null) {
+      return { ok: false, path: null, error: 'The native host could not resolve the created folder.' };
+    }
+    return { ok: true, path: canonical ?? target, error: null };
   }
 
   /**
@@ -306,6 +430,8 @@ export class ProjectsService {
     connectionId: string,
     request: StartSessionRequest,
   ): Promise<StartSessionResult> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) return this.startNativeSession(connectionId, native, request);
     const { home } = await this.home(connectionId);
     const folder = request.folder.trim();
 
@@ -688,6 +814,19 @@ export class ProjectsService {
     to: string,
     ref?: AplexerSessionRef,
   ): Promise<RenameSessionResult> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) {
+      try {
+        await native.requireCapability('sessions.rename');
+        const tag = sanitiseName(to);
+        if (!/[A-Za-z0-9]/.test(tag)) return { ok: false, sessionName: null, code: 'illegal-name', error: 'Enter a valid session name.' };
+        const id = await this.nativeSessionId(native, from, ref);
+        if (!id) return { ok: false, sessionName: null, code: 'rename-failed', error: 'This native session is no longer running.' };
+        return { ok: true, sessionName: await native.renameSession(id, tag), error: null, code: null };
+      } catch (error) {
+        return { ok: false, sessionName: null, code: 'rename-failed', error: (error as Error).message };
+      }
+    }
     const target = sanitiseName(to);
     if (!/[A-Za-z0-9]/.test(target)) {
       return {
@@ -800,6 +939,18 @@ export class ProjectsService {
     name: string,
     ref?: AplexerSessionRef,
   ): Promise<KillSessionResult> {
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    if (native) {
+      try {
+        await native.requireCapability('sessions.kill');
+        const id = await this.nativeSessionId(native, name, ref);
+        if (!id) return { ok: false, code: 'not-found', error: 'This native session is no longer running.' };
+        await native.killSession(id);
+        return { ok: true, error: null, code: null };
+      } catch (error) {
+        return { ok: false, code: error instanceof NativeCommandError && error.exitCode === 3 ? 'not-found' : 'kill-failed', error: (error as Error).message };
+      }
+    }
     // An aplexer-backed row is killed by id. The lookup below also covers a
     // caller that only has the workspace: one live tag-holder is unambiguous,
     // and anything else falls through to the tmux probe rather than guessing.
@@ -976,10 +1127,11 @@ export class ProjectsService {
    * to the drive form afterwards.
    */
   private async canonicalise(connectionId: string, path: string): Promise<string | null> {
-    const res = await this.ssh.exec(
-      connectionId,
-      pathAwareCommand(resolveDirectoryCommand(bashPathForm(path))),
-    );
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    const script = resolveDirectoryCommand(bashPathForm(path));
+    const res = native
+      ? await native.runScript(script)
+      : await this.ssh.exec(connectionId, pathAwareCommand(script));
     if (res.exitCode !== 0) return null;
     return firstNonEmptyLine(res.stdout) ?? null;
   }

@@ -1,7 +1,8 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
 import { SshService } from '../../src/main/ssh/SshService';
 import {
   execLocal,
@@ -131,18 +132,30 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
-  // Windows PowerShell lives under the Windows directory, so only a Windows
-  // machine can open it: elsewhere the same choice is the refusal below.
-  it.skipIf(process.platform !== 'win32')('opens the chosen Windows PowerShell for a bare terminal', async () => {
+  it.skipIf(process.platform !== 'win32')('opens the chosen PowerShell for a bare terminal and accepts input at its prompt', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
     // A bare shell with the choice set lands in PowerShell: its prompt line
     // ("PS ...>") is unmistakable and bash never prints it.
+    // Keep the runner's custom profile/prompt outside the fixture. The real
+    // native PTY and chosen executable still run, with only profile loading disabled.
+    const nativePty = createRequire(import.meta.url)('@lydell/node-pty') as typeof import('@lydell/node-pty');
+    const originalSpawn = nativePty.spawn;
+    const spawn = vi.spyOn(nativePty, 'spawn').mockImplementationOnce((file, args, options) => {
+      // A parent pwsh runtime can inject its own PSReadLine module path into
+      // Windows PowerShell, provoking an unrelated publisher trust prompt.
+      const env = { ...options?.env };
+      env['PSModulePath'] = `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\Modules`;
+      return originalSpawn(file, [...(Array.isArray(args) ? args : []), '-NoProfile'], { ...options, env });
+    });
     const sawPs = await new Promise<boolean>((resolve, reject) => {
       let output = '';
       let exit = -1;
-      const timer = setTimeout(() => reject(new Error('shell never finished in 15s')), 15_000);
+      let shellId = '';
+      let sentExit = false;
+      let declinedModule = false;
+      const timer = setTimeout(() => reject(new Error('PowerShell never finished in 15s')), 15_000);
       const settle = () => {
         if (output.includes('PS ') && exit >= 0) {
           clearTimeout(timer);
@@ -152,10 +165,21 @@ describe('SshService — a local dial', () => {
       void ssh
         .openTrackedShell(connectionId, {
           shell: 'powershell',
-          command: 'exit',
-          commandMode: 'typed',
           onData: (data) => {
             output += data.toString('utf8');
+            // The optional line editor can inherit an untrusted module from
+            // the runner. Decline loading it; never grant publisher trust.
+            if (!declinedModule && shellId && output.includes('untrusted publisher')
+              && output.includes('(default is')) {
+              declinedModule = true;
+              ssh.shellInput(shellId, 'D\r');
+            }
+            // ConPTY input before PowerShell initializes its line editor can
+            // be discarded. This interactive test types when the prompt exists.
+            if (!sentExit && shellId && output.includes('PS ')) {
+              sentExit = true;
+              ssh.shellInput(shellId, 'exit\r');
+            }
             settle();
           },
           onExit: (code) => {
@@ -163,13 +187,14 @@ describe('SshService — a local dial', () => {
             settle();
           },
         })
+        .then((id) => { shellId = id; spawn.mockRestore(); })
         .catch(reject);
     });
     expect(sawPs).toBe(true);
     ssh.close(connectionId);
   });
 
-  it('keeps a session join on bash whatever the bare-shell choice', async () => {
+  it('keeps POSIX session joins on bash despite a different bare-shell choice', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';

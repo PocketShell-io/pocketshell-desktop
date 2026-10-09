@@ -233,6 +233,26 @@ beforeEach(() => {
 });
 
 describe('the folder workspace + menu creates a session', () => {
+  it('refreshes an uncertain create before surfacing its error, blocks a pending retry and never arms an agent', async () => {
+    startSession.mockResolvedValue({ ok: false, code: 'create-uncertain', sessionName: null,
+      aplexerId: null, folder: null, reused: false, via: null, error: 'Session creation may have succeeded.' });
+    const wrapper = await openWorkspace();
+    let finish!: () => void;
+    const refresh = vi.spyOn(useSessionsStore(), 'refresh').mockImplementation(() =>
+      new Promise<void>((resolve) => { finish = resolve; }));
+    await createVia(wrapper, 'agent');
+    expect(refresh).toHaveBeenCalledWith('conn-1');
+    expect(barError(wrapper)).toBeNull();
+    await createVia(wrapper, 'shell');
+    expect(startSession).toHaveBeenCalledTimes(1);
+    expect(shellInput).not.toHaveBeenCalled();
+    finish();
+    await flush(8);
+    expect(barError(wrapper)).toContain('may have succeeded');
+    expect(shellInput).not.toHaveBeenCalled();
+    expect(wrapper.find('nav.tabs button.active').text().trim()).toBe('git-x');
+    refresh.mockRestore();
+  });
   it('opens a tab for a genuinely new session', async () => {
     sessionsList.mockResolvedValue([row('git-x'), row('git-x-2', 2)]);
     startSession.mockResolvedValue(started('git-x-2'));

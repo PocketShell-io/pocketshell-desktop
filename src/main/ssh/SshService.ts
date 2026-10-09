@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import type { Duplex } from 'node:stream';
 import type { ClientChannel, PseudoTtyOptions } from 'ssh2';
 import type { ConnectResult, ExecResult, HostPlatform, ShellId } from '@pocketshell/core';
 import {
@@ -12,6 +14,7 @@ import { ShellTracker, type ShellChannel } from './ShellTracker.js';
 import { HostPlatformTracker } from './hostPlatform.js';
 import type { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { decodePublicKeyBlob } from '@pocketshell/core';
+import { verifyGatewayHostKeyPin } from '@pocketshell/core';
 import {
   execLocal,
   execLocalBackground,
@@ -20,6 +23,7 @@ import {
   openLocalShell,
 } from '../local/LocalHost.js';
 import { log } from '../log.js';
+import { NativeWindowsHostCli, type NativeWindowsHostCliPolicy } from '../helper/NativeWindowsHostCli.js';
 
 /**
  * Connection service wrapping `ssh2` — or, for a `local` dial, the platform's
@@ -44,6 +48,14 @@ export interface ConnectOptions {
   host: string;
   port?: number;
   user: string;
+  /** An admitted gateway stream; SSH still verifies and authenticates end to end. */
+  sock?: Duplex;
+  /** Independently provisioned pin required whenever sock is used. */
+  gatewayHostKeyFingerprint?: string;
+  /** Main-only policy bound to an independently pinned gateway stream. */
+  nativeWindowsCli?: NativeWindowsHostCliPolicy;
+  /** Canonical enrolled deviceId from main's trusted gateway registration. */
+  nativeWindowsCliHostIdentity?: string;
   /**
    * Dial the platform's own machine: no ssh2 client, no keys, no network.
    * Execs and shells run locally (see `local/LocalHost`); `host`, `user` and
@@ -100,6 +112,11 @@ export interface ExecOptions {
 export type CloseReason = 'user' | 'lost';
 
 export class SshService {
+  private readonly nativeClis = new Map<string, NativeWindowsHostCli>();
+
+  nativeWindowsCli(connectionId: string): NativeWindowsHostCli | undefined {
+    return this.nativeClis.get(connectionId);
+  }
   private readonly shells: ShellTracker;
   /**
    * The far end's OS family, probed once per connection and shared by every
@@ -157,6 +174,14 @@ export class SshService {
 
   /** Attempt a connection. Resolves a {@link ConnectResult}; never rejects. */
   connect(opts: ConnectOptions): Promise<ConnectResult> {
+    if (opts.sock?.destroyed) {
+      const error = opts.sock.errored;
+      return Promise.resolve({ ok: false, error: error instanceof Error ? error.message : 'The gateway stream closed before SSH could connect.' });
+    }
+    if (opts.sock && verifyGatewayHostKeyPin(opts.gatewayHostKeyFingerprint ?? null, '') === 'unpinned') {
+      opts.sock.destroy();
+      return Promise.resolve({ ok: false, error: 'A trusted SSH host fingerprint is required for gateway connections.' });
+    }
     if (opts.local) {
       // A local dial cannot fail to connect — there is no transport to
       // refuse it. (Whether anything ANSWERS — bash present, `a` installed —
@@ -186,6 +211,7 @@ export class SshService {
         settled = true;
         try {
           client.end();
+          opts.sock?.destroy();
         } catch {
           // ignore
         }
@@ -217,6 +243,11 @@ export class SshService {
           connectedAt: Date.now(),
         });
 
+        if (opts.sock && opts.nativeWindowsCli) {
+          this.nativeClis.set(id, new NativeWindowsHostCli(opts.nativeWindowsCli,
+            (command, options) => this.exec(id, command, options), opts.nativeWindowsCliHostIdentity));
+        }
+
         // Post-ready transport lifecycle. Without this the registry keeps
         // reporting `connected` after the link has gone away: the renderer
         // never learns the session died, and a send silently goes nowhere.
@@ -242,6 +273,7 @@ export class SshService {
       try {
         const privateKey = loadKey(opts);
         client.connect({
+          ...(opts.sock ? { sock: opts.sock } : {}),
           host: opts.host,
           port: opts.port ?? 22,
           username: opts.user,
@@ -254,6 +286,12 @@ export class SshService {
           // returning false aborts. We consult ~/.ssh/known_hosts here and
           // honour the caller's TOFU decision for unknown hosts.
           hostVerifier: (key: Buffer) => {
+            if (opts.sock) {
+              const fingerprint = `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
+              if (verifyGatewayHostKeyPin(opts.gatewayHostKeyFingerprint ?? null, fingerprint) === 'trusted') return true;
+              fail('Gateway SSH host key mismatch — connection refused.');
+              return false;
+            }
             if (!opts.knownHosts) return true; // caller opted out of verification
             const { keyType: type, keyB64: b64 } = decodePublicKeyBlob(key);
             const verdict = opts.knownHosts.verify(opts.host, type, b64, opts.port ?? 22);
@@ -481,6 +519,7 @@ export class SshService {
    * what makes the paired 'error'/'close' events safe to wire.
    */
   close(connectionId: string, reason: CloseReason = 'user'): void {
+    this.nativeClis.delete(connectionId);
     this.shells.closeAllForConnection(connectionId);
     this.platforms.forget(connectionId);
     const rec = this.registry.remove(connectionId);

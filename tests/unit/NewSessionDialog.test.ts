@@ -62,6 +62,7 @@ const NewSessionDialog = (await import('@ui/app/components/NewSessionDialog.vue'
   .default;
 const { useConnectionStore } = await import('@ui/app/stores/connection');
 const { useProjectsStore } = await import('@ui/app/stores/projects');
+const { useSessionsStore } = await import('@ui/app/stores/sessions');
 const { clearAgentLaunch, parkedAgentLaunch } = await import(
   '@ui/app/pendingAgentLaunch'
 );
@@ -317,6 +318,27 @@ describe('NewSessionDialog agent chain', () => {
  * the outcome panel is the answers that are not simply "yes".
  */
 describe('NewSessionDialog outcome', () => {
+  it('refreshes uncertain creation before showing failure and keeps another dispatch disabled while checking', async () => {
+    startSession.mockResolvedValue({ ok: false, code: 'create-uncertain', sessionName: null,
+      aplexerId: null, folder: null, reused: false, via: null, error: 'Session creation may have succeeded.' });
+    const wrapper = await open(`${HOME}/git`);
+    let finish!: () => void;
+    const refresh = vi.spyOn(useSessionsStore(), 'refresh').mockImplementation(() =>
+      new Promise<void>((resolve) => { finish = resolve; }));
+    await button(wrapper, 'Start shell')!.trigger('click');
+    await flush(wrapper);
+    expect(refresh).toHaveBeenCalledWith('conn-1');
+    expect(button(wrapper, 'Start shell')!.attributes('disabled')).toBeDefined();
+    expect(wrapper.emitted('started')).toBeUndefined();
+    expect(wrapper.text()).not.toContain('may have succeeded');
+    finish();
+    await flush(wrapper);
+    expect(wrapper.text()).toContain('may have succeeded');
+    expect(wrapper.emitted('started')).toBeUndefined();
+    expect(startSession).toHaveBeenCalledTimes(1);
+    refresh.mockRestore();
+    wrapper.unmount();
+  });
   it('opens the session immediately, with no banner in between', async () => {
     const wrapper = await open(`${HOME}/git`);
     await button(wrapper, 'Start shell')!.trigger('click');

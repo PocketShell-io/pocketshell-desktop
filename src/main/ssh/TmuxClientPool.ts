@@ -885,7 +885,8 @@ export class TmuxClientPool {
       isAplexer &&
       !this.ssh.isLocal(connectionId) &&
       (await this.ssh.hostPlatform(connectionId)) === 'windows';
-    const command = isAplexer
+    const native = this.ssh.nativeWindowsCli?.(connectionId);
+    const command = native ? await native.attachCommand(target.aplexerId) : isAplexer
       ? aplexerAttachCommand({
           id: target.aplexerId,
           workspace: target.workspace,

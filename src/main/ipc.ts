@@ -134,5 +134,5 @@ export function registerIpcHandlers(deps: {
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
   registerSyncIpc(ctx);
-  registerWorkspacesIpc();
+  registerWorkspacesIpc(ctx);
 }

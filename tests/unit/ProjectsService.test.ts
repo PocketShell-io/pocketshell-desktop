@@ -1,3 +1,4 @@
+import { NativeWindowsHostCli } from '../../src/main/helper/NativeWindowsHostCli';
 import { describe, expect, it, vi } from 'vitest';
 import os from 'node:os';
 import { readFileSync } from 'node:fs';
@@ -997,5 +998,121 @@ describe('ProjectsService.renameSession — aimed like the kill', () => {
     // (tabs, composer, enrichment map) is keyed by name across servers.
     expect(innered.filter((c) => c.includes('__ps_taken'))).toHaveLength(1);
     expect(innered.some((c) => c.includes(`-S '${SOCKET}' has-session`))).toBe(false);
+  });
+});
+
+describe('ProjectsService Windows SFTP home', () => {
+  it('uses the server login directory when the Windows host refuses a POSIX home probe', async () => {
+    const { ssh, commands } = fakeSsh([() => fail(1, 'The system cannot find the path specified.')], 'windows');
+    Object.assign(ssh, { nativeWindowsCli: () => ({}) });
+    const realPath = vi.fn().mockResolvedValue('/C:/Users/alexey');
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
+    expect(await projects.home(CONN)).toEqual({ ok: true, home: '/C:/Users/alexey', error: null });
+    expect(await projects.home(CONN)).toEqual({ ok: true, home: '/C:/Users/alexey', error: null });
+    expect(realPath).toHaveBeenCalledTimes(1);
+    expect(realPath).toHaveBeenCalledWith(CONN, '.');
+    expect(commands).toEqual([]);
+    projects.evict(CONN);
+    await projects.home(CONN);
+    expect(realPath).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache an SFTP failure or fall back to a literal tilde', async () => {
+    const { ssh, commands } = fakeSsh([() => ok('~')], 'windows');
+    Object.assign(ssh, { nativeWindowsCli: () => ({}) });
+    const realPath = vi.fn().mockRejectedValueOnce(new Error('SFTP unavailable'))
+      .mockResolvedValue('/C:/Users/alexey');
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
+    expect(await projects.home(CONN)).toEqual({ ok: false, home: null, error: 'SFTP unavailable' });
+    expect(await projects.home(CONN)).toEqual({ ok: true, home: '/C:/Users/alexey', error: null });
+    expect(commands).toEqual([]);
+  });
+
+  it('refuses an empty SFTP home instead of caching an unusable path', async () => {
+    const { ssh, commands } = fakeSsh([() => ok('~')], 'windows');
+    Object.assign(ssh, { nativeWindowsCli: () => ({}) });
+    const realPath = vi.fn().mockResolvedValue('');
+    const projects = new ProjectsService(ssh, new PocketshellClient(ssh), undefined, { realPath });
+    expect(await projects.home(CONN)).toEqual({ ok: false, home: null, error: 'SFTP returned an empty home path' });
+    expect(commands).toEqual([]);
+  });
+});
+
+
+describe('qualified native folder scripts', () => {
+  const selected = '/C:/Users/alexey/PocketShellFleet/20261009-6cbe21e/fixtures/desktop-gateway-ui-e0300fcbf9/workspace %TEMP%! & ☃';
+  const folder = selected.slice(1);
+  const id = '11111111-1111-4111-8111-111111111111';
+  function fixture(resolveExit = 0, mkdirExit = 0, empty = false) {
+    const scripts: string[] = [];
+    const capture = vi.fn(async (command: string) => {
+      const prefix = '"C:\\Program Files\\Git\\bin\\bash.exe" --noprofile --norc -c "eval $\'';
+      expect(command.startsWith(prefix)).toBe(true);
+      expect(command.endsWith('\'"')).toBe(true);
+      const hex = command.slice(prefix.length, -2);
+      expect(hex).toMatch(/^(?:\\x[0-9a-f]{2})*$/);
+      const script = Buffer.from(hex.split('\\x').join(''), 'hex').toString('utf8');
+      scripts.push(script);
+      if (script.endsWith('--version')) return { stdout: '0.5.8', stderr: '', exitCode: 0 };
+      if (script.endsWith('platform --json')) return { stdout: JSON.stringify({ schema: 1,
+        platform: 'win32', os: 'nt', cli_version: '0.5.8',
+        capabilities: ['workspaces', 'tree', 'sessions.list', 'sessions.attach', 'sessions.create'] }), stderr: '', exitCode: 0 };
+      if (script.startsWith(':; ') && script.includes('pwd -P')) return { stdout: empty ? '' : folder, stderr: 'resolve refused', exitCode: resolveExit };
+      if (script.startsWith(':; mkdir ')) return { stdout: '', stderr: 'mkdir refused', exitCode: mkdirExit };
+      if (script.includes('sessions list')) return { stdout: '{"schema":3,"sessions":[]}', stderr: '', exitCode: 0 };
+      if (script.includes('sessions create')) return { stdout: JSON.stringify({ schema: 3, name: 'snow:main', id, created: true }), stderr: '', exitCode: 0 };
+      throw new Error('Unexpected native script ' + script);
+    });
+    const native = new NativeWindowsHostCli({ executable: 'C:/Protected/pocketshell.exe',
+      transport: 'openssh-cmd-git-bash', deviceId: 'host-fixture',
+      trustedBashExecutable: 'C:/Program Files/Git/bin/bash.exe', trustedBashSha256: 'a'.repeat(64) }, capture, 'host-fixture');
+    const raw = vi.fn(async () => ({ stdout: '', stderr: 'The system cannot find the path specified.', exitCode: 1 }));
+    const ssh = { nativeWindowsCli: () => native, exec: raw } as unknown as SshService;
+    return { projects: new ProjectsService(ssh, new PocketshellClient(ssh)), scripts, raw };
+  }
+  it('starts through qualified literal canonicalisation without raw POSIX SSH', async () => {
+    const f = fixture();
+    expect(await f.projects.startSession('native', { folder: selected, namePolicy: 'unique' })).toMatchObject({ ok: true, aplexerId: id, folder });
+    expect(f.raw).not.toHaveBeenCalled();
+    expect(f.scripts.find((script) => script.startsWith(':; '))).toBe(`:; cd -- '${folder}' && pwd -P`);
+    expect(f.scripts.find((script) => script.includes('sessions create'))).toContain(`--cwd '${folder}'`);
+    expect(f.scripts.filter((script) => script.includes('pocketshell.exe'))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^exec /)]));
+  });
+  it('creates and resolves through qualified scripts without raw POSIX SSH', async () => {
+    const f = fixture();
+    expect(await f.projects.createFolder('native', { parent: selected.slice(0, selected.lastIndexOf('/')), name: 'workspace %TEMP%! & ☃' }))
+      .toEqual({ ok: true, path: folder, error: null });
+    expect(f.raw).not.toHaveBeenCalled();
+    expect(f.scripts.filter((script) => script.startsWith(':; '))).toEqual([
+      `:; mkdir -p -- '${folder}'`, `:; cd -- '${folder}' && pwd -P`,
+    ]);
+  });
+  it.each([1, 124, -1])('refuses canonicalisation exit %s even with nonempty stdout before allocating a UUID', async (code) => {
+    const f = fixture(code);
+    expect(await f.projects.startSession('native', { folder: selected, namePolicy: 'unique' }))
+      .toMatchObject({ ok: false, aplexerId: null });
+    expect(f.scripts.some((script) => script.includes('sessions create'))).toBe(false);
+    expect(f.raw).not.toHaveBeenCalled();
+  });
+  it.each([1, 124, -1])('rejects post-mkdir canonicalisation exit %s even with nonempty stdout', async (code) => {
+    const f = fixture(code);
+    expect(await f.projects.createFolder('native', {
+      parent: selected.slice(0, selected.lastIndexOf('/')), name: 'workspace %TEMP%! & ☃',
+    })).toMatchObject({ ok: false, path: null });
+    expect(f.raw).not.toHaveBeenCalled();
+  });
+  it('does not report mkdir success when native canonicalisation returns no path', async () => {
+    const f = fixture(0, 0, true);
+    expect(await f.projects.createFolder('native', { parent: 'C:/Projects', name: 'child' }))
+      .toMatchObject({ ok: false, path: null });
+    expect(f.raw).not.toHaveBeenCalled();
+  });
+  it.each([1, 124, -1])('refuses mkdir exit %s without resolving or falling back', async (code) => {
+    const f = fixture(0, code);
+    expect(await f.projects.createFolder('native', { parent: 'C:/Projects', name: 'child' }))
+      .toMatchObject({ ok: false, path: null, error: 'mkdir refused' });
+    expect(f.scripts.some((script) => script.includes('pwd -P'))).toBe(false);
+    expect(f.raw).not.toHaveBeenCalled();
   });
 });

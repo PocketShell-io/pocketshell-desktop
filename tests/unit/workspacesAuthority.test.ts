@@ -43,7 +43,7 @@ vi.mock('electron', () => ({
 }));
 
 const { registerWorkspacesIpc } = await import('../../src/main/ipc/workspacesIpc');
-registerWorkspacesIpc();
+registerWorkspacesIpc({ ssh: { nativeWindowsCli: () => undefined } } as never);
 (process as unknown as { contextIsolated: boolean }).contextIsolated = true;
 await import('../../src/preload/index');
 const bridged = (globalThis as Record<string, unknown>).__exposedApi as {

@@ -82,6 +82,7 @@ export class AplexerClient {
 
   /** Is `a` installed on this connection's host? Cached per connection. */
   async isAvailable(connectionId: string): Promise<boolean> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return false;
     return this.core(connectionId).isAvailable();
   }
 
@@ -90,6 +91,7 @@ export class AplexerClient {
     connectionId: string,
     sort: AplexerSortKey = APLEXER_LIST_SORT,
   ): Promise<SessionSummary[] | null> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return null;
     return this.core(connectionId).listSessions(sort);
   }
 
@@ -98,6 +100,7 @@ export class AplexerClient {
     connectionId: string,
     sort?: AplexerSortKey,
   ): Promise<AplexerSessionRecord[]> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return [];
     return this.core(connectionId).snapshotRecords(sort);
   }
 
@@ -139,16 +142,23 @@ export class AplexerClient {
 
   /** Every unacknowledged crash/OOM warning, newest first, or []. */
   async listWarnings(connectionId: string): Promise<AplexerWarning[]> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return [];
     return this.core(connectionId).listWarnings();
   }
 
   /** Acknowledge warnings: the whole list when [target] is null, else one. */
   async ackWarnings(connectionId: string, target?: string): Promise<AplexerAckOutcome> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return {
+      ok: false, notFound: false, error: 'The provisioned native host does not support warnings acknowledgement.',
+    };
     return this.core(connectionId).ackWarnings(target);
   }
 
   /** The connection's core, created on first use with the desktop transport. */
   private core(connectionId: string): AplexerCore {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) {
+      throw new Error('This provisioned native host does not permit legacy aplexer commands.');
+    }
     const existing = this.cores.get(connectionId);
     if (existing) return existing;
     const core = new AplexerCore(

@@ -1271,6 +1271,221 @@ describe('SessionTree — dragging a folder row', () => {
   });
 });
 
+/**
+ * Dragging a root header up and down — the folder drag, one level up.
+ *
+ * The properties worth pinning are the ones this level genuinely adds: the
+ * arrangement lands in its own setting (`rootOrder`), it composes with the
+ * folder arrangement and the sort instead of switching either, the pinned
+ * `other` bucket can neither be carried nor be landed below, and the two
+ * strips refuse each other's gestures — a root drag must not light up the
+ * folder rows, or a folder drag the headers. The drop TARGET is the whole
+ * section: the first cut bound `dragover` on the thin header row alone and
+ * every release over the folder rows refused — ten tries to one landing,
+ * straight from the seat — so these tests drive the section the way the
+ * pointer now does.
+ *
+ * The drag mechanics are the folder drag's (see that describe's header):
+ * jsdom synthesises the events, and `clientY: -1` / `0` mean above / below
+ * because every bounding box here is all zeros — now the box of the SECTION,
+ * so its midpoint rule is the group's, not the header's.
+ */
+describe('SessionTree — dragging a root header', () => {
+  /** One folder under `git`, one under `tmp` — two real roots, no bucket. */
+  const TWO_ROOTS = [
+    session('git-a', `${HOME}/git/a`, 100),
+    session('tmp-d', `${HOME}/tmp/d`, 200),
+  ];
+
+  /**
+   * The root sections, in rendered order, the pinned chrome section scoped
+   * out. These are the drop targets: `dragover` and `drop` bind on the
+   * section so the whole group accepts the drag.
+   */
+  function sections(wrapper: VueWrapper): DOMWrapper<Element>[] {
+    return wrapper.findAll('.folder:not(.maintenance-section)');
+  }
+
+  /** The headers, for the drag START (and the carried row's fade). */
+  function headers(wrapper: VueWrapper): DOMWrapper<Element>[] {
+    return wrapper.findAll('.folder:not(.maintenance-section) .folder-header');
+  }
+
+  /**
+   * Every root header's identifying word (`git`, `tmp`, `other`), in render
+   * order. The label renders the muted `~/` in a span of its own
+   * (`rootHeaderParts`), so the raw text is `~/git` — the prefix is stripped
+   * here rather than asserted around.
+   */
+  function rootLabels(wrapper: VueWrapper): string[] {
+    return wrapper
+      .findAll('.folder:not(.maintenance-section) .folder-label')
+      .map((l) => l.text().replace(/^~\//, ''));
+  }
+
+  /** What was written for this host, as a ranking. */
+  function storedRootOrder(): string[] {
+    return useSettingsStore().rootOrderFor('hetzner');
+  }
+
+  /** Drag root [from] onto root [to]'s section, landing above it or below it. */
+  async function dragRoot(
+    wrapper: VueWrapper,
+    from: number,
+    to: number,
+    where: 'above' | 'below' = 'above',
+  ): Promise<void> {
+    await headers(wrapper)[from]!.trigger('dragstart');
+    const target = sections(wrapper)[to]!;
+    await target.trigger('dragover', { clientY: where === 'above' ? -1 : 0 });
+    await target.trigger('drop');
+    await wrapper.vm.$nextTick();
+  }
+
+  it('renders the grouped order until a header is dragged', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    expect(rootLabels(wrapper)).toEqual(['git', 'tmp']);
+    expect(storedRootOrder()).toEqual([]);
+  });
+
+  it('moves a root above another and persists the WHOLE panel as a ranking', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    await dragRoot(wrapper, 1, 0);
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git']);
+    expect(storedRootOrder()).toEqual(['~/tmp', '~/git']);
+  });
+
+  it('moves a root down, past the header it was dropped on', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    await dragRoot(wrapper, 0, 1, 'below');
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git']);
+    expect(storedRootOrder()).toEqual(['~/tmp', '~/git']);
+  });
+
+  it('SURVIVES THE POLL, like the folder arrangement does', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    await dragRoot(wrapper, 1, 0);
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git']);
+
+    // A refresh that brings a NEW root: it has no rank, so it lands after the
+    // arranged ones — the grouped order is kept for what was never dragged.
+    sessionsList.mockResolvedValue([
+      session('tmp-d', `${HOME}/tmp/d`, 100),
+      session('git-a', `${HOME}/git/a`, 200),
+      session('work-e', `${HOME}/work/e`, 300),
+    ]);
+    await wrapper.get('[title="Refresh"]').trigger('click');
+    await flush(wrapper);
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git', 'work']);
+  });
+
+  it('draws the landing place on the SECTION it would land above', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await sections(wrapper)[0]!.trigger('dragover', { clientY: -1 });
+    expect(sections(wrapper)[0]!.classes()).toContain('drop-above');
+    // And the header being carried fades in place rather than leaving the flow.
+    expect(headers(wrapper)[1]!.classes()).toContain('dragging');
+  });
+
+  it('draws "below" at the END of the group, not under its name', async () => {
+    // The measured failure that moved the handlers onto the section: on the
+    // header, the below-rule drew under `~/tmp` but ABOVE its folders —
+    // inside the very group it claimed to end. The section's bottom edge is
+    // where "after the group" actually is.
+    const wrapper = await open(TWO_ROOTS);
+    await headers(wrapper)[0]!.trigger('dragstart');
+    await sections(wrapper)[1]!.trigger('dragover', { clientY: 0 });
+    expect(sections(wrapper)[1]!.classes()).toContain('drop-below');
+    expect(headers(wrapper)[1]!.classes()).not.toContain('drop-below');
+  });
+
+  it('clears the indicator when a drag is abandoned', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await sections(wrapper)[0]!.trigger('dragover', { clientY: -1 });
+    // `dragend` is listened for on the LIST, which the sections live in too.
+    await wrapper.get('.folder-list').trigger('dragend');
+    expect(wrapper.findAll('.drop-above, .drop-below')).toHaveLength(0);
+    expect(wrapper.findAll('.folder-header.dragging')).toHaveLength(0);
+  });
+
+  it('writes nothing for a drag that ended where it started', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    await dragRoot(wrapper, 0, 0, 'above');
+    expect(storedRootOrder()).toEqual([]);
+    expect(rootLabels(wrapper)).toEqual(['git', 'tmp']);
+  });
+
+  it('leaves the folder arrangement and the sort alone', async () => {
+    // The mirror of the folder drag's sort switch — and deliberately the
+    // opposite: a sort reorders the rows WITHIN a root and never the root
+    // sequence, so there is no kept sort to switch away from, and no folder
+    // ranking to disturb either.
+    const settings = useSettingsStore();
+    settings.setFolderOrder('hetzner', ['~/git/a']);
+    const wrapper = await open(TWO_ROOTS);
+    await dragRoot(wrapper, 1, 0);
+    expect(settings.sessionTreeSort).toBe('host');
+    expect(settings.folderOrderFor('hetzner')).toEqual(['~/git/a']);
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git']);
+  });
+
+  it('refuses to carry the `other` bucket, and nothing lands below it', async () => {
+    // The stray session makes the bucket; the bucket is pinned last, so it is
+    // the one header that is not draggable and the one gap (below it) no root
+    // may land in.
+    const wrapper = await open([...TWO_ROOTS, session('stray-x', null, 300)]);
+    expect(rootLabels(wrapper)).toEqual(['git', 'tmp', 'other']);
+    expect(headers(wrapper)[2]!.attributes('draggable')).toBe('false');
+
+    await headers(wrapper)[2]!.trigger('dragstart');
+    await sections(wrapper)[0]!.trigger('dragover', { clientY: -1 });
+    expect(wrapper.findAll('.drop-above, .drop-below')).toHaveLength(0);
+    await sections(wrapper)[0]!.trigger('drop');
+    expect(storedRootOrder()).toEqual([]);
+
+    // A REAL root cannot land below the bucket either: tmp over the bottom
+    // half of `other`'s section is refused and draws nothing.
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await sections(wrapper)[2]!.trigger('dragover', { clientY: 0 });
+    expect(wrapper.findAll('.drop-above, .drop-below')).toHaveLength(0);
+    await sections(wrapper)[2]!.trigger('drop');
+    expect(storedRootOrder()).toEqual([]);
+    expect(rootLabels(wrapper)).toEqual(['git', 'tmp', 'other']);
+  });
+
+  it('lands a root just ABOVE the bucket when its section is hovered top half', async () => {
+    // The boundary right before `other` is a real place — the one gap in the
+    // bucket's own section that accepts a drop. The written ranking is the
+    // whole draw order, bucket key included: `applyRootOrder` re-pins the
+    // bucket last whatever it ranked, so its rank is inert but present.
+    const wrapper = await open([...TWO_ROOTS, session('stray-x', null, 300)]);
+    await headers(wrapper)[0]!.trigger('dragstart');
+    await sections(wrapper)[2]!.trigger('dragover', { clientY: -1 });
+    expect(sections(wrapper)[2]!.classes()).toContain('drop-above');
+    await sections(wrapper)[2]!.trigger('drop');
+    expect(storedRootOrder()).toEqual(['~/tmp', '~/git', '::other::']);
+    expect(rootLabels(wrapper)).toEqual(['tmp', 'git', 'other']);
+  });
+
+  it('keeps the two strips apart: a root drag lights up no folder row', async () => {
+    // Each strip carries its own payload type, so while a root is in flight
+    // the folder rows' handler sees none of it — and vice versa.
+    const wrapper = await open(TWO_ROOTS);
+    await headers(wrapper)[1]!.trigger('dragstart');
+    await wrapper.findAll('.dir-header')[0]!.trigger('dragover', { clientY: -1 });
+    expect(wrapper.findAll('.dir-list li.drop-above, .dir-list li.drop-below')).toHaveLength(0);
+    await wrapper.get('.folder-list').trigger('dragend');
+    expect(storedRootOrder()).toEqual([]);
+  });
+
+  it('marks every real root header draggable, the bucket not', async () => {
+    const wrapper = await open(TWO_ROOTS);
+    expect(headers(wrapper).map((h) => h.attributes('draggable'))).toEqual(['true', 'true']);
+  });
+});
+
 describe('SessionTree — the Maintenance section', () => {
   it('is hidden while the host has no open tools', async () => {
     const wrapper = await open([session('git-a', `${HOME}/git/a`)]);

@@ -1,4 +1,5 @@
 import { NotSignedInError, type GoogleAuth } from './GoogleAuth.js';
+import { SYNC_API_URL } from '@pocketshell/core';
 
 /**
  * The sync API client — the app's side of the contract documented in the
@@ -72,6 +73,30 @@ export class SyncService {
     return this.request('GET', '/me');
   }
 
+  /** Exchange Google admission at the trusted broker; only this scoped JWT reaches WSS. */
+  async gatewayToken(): Promise<string> {
+    if (this.baseUrl !== SYNC_API_URL.replace(/\/+$/, '')) {
+      throw new Error('Gateway token exchange requires the trusted PocketShell broker.');
+    }
+    const response = await this.requestRaw('POST', '/gateway/token', undefined, false, AbortSignal.timeout(30_000));
+    const result = await this.jsonBody<{ token?: unknown; token_type?: unknown }>(response);
+    if (typeof result.token !== 'string' || result.token_type !== 'Bearer') {
+      throw new Error('The gateway broker returned an invalid token response.');
+    }
+    // Sanity-check the credential class before it can leave for a gateway.
+    // Signature verification remains the gateway's duty; broker HTTPS is trusted here.
+    let claims: Record<string, unknown>;
+    try { claims = JSON.parse(Buffer.from(result.token.split('.')[1] ?? '', 'base64url').toString()) as Record<string, unknown>; }
+    catch { throw new Error('The gateway broker returned a malformed JWT.'); }
+    const now = Math.floor(Date.now() / 1000);
+    if (!claims || claims.iss !== this.baseUrl || claims.aud !== 'pocketshell-gateway'
+      || claims.scope !== 'pocketshell.gateway' || typeof claims.iat !== 'number'
+      || typeof claims.exp !== 'number' || claims.exp <= now || claims.exp - claims.iat > 300) {
+      throw new Error('The gateway broker returned an unscoped or expired credential.');
+    }
+    return result.token;
+  }
+
   /** `GET /settings` — the slots the account holds, no data. */
   async list(): Promise<SlotMeta[]> {
     const rows = await this.request<SlotMeta[]>('GET', '/settings');
@@ -122,7 +147,7 @@ export class SyncService {
     return this.jsonBody<T>(res);
   }
 
-  private async requestRaw(method: string, path: string, body?: unknown, alreadyRefreshed = false): Promise<Response> {
+  private async requestRaw(method: string, path: string, body?: unknown, alreadyRefreshed = false, signal?: AbortSignal): Promise<Response> {
     const token = await this.auth.getIdToken(alreadyRefreshed).catch((err) => {
       if (err instanceof NotSignedInError) throw err;
       throw new SyncApiError(0, `could not obtain an ID token: ${(err as Error).message}`);
@@ -134,9 +159,10 @@ export class SyncService {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      ...(signal ? { signal } : {}),
     });
     if (res.status === 401 && !alreadyRefreshed) {
-      return this.requestRaw(method, path, body, true);
+      return this.requestRaw(method, path, body, true, signal);
     }
     return res;
   }

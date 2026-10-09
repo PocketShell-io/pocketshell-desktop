@@ -40,7 +40,7 @@ vi.mock('electron', () => ({
   },
   dialog: { showSaveDialog, showOpenDialog },
   shell: { openExternal },
-  app: { getVersion: () => '0.0.0-test' },
+  app: { getVersion: () => '0.0.0-test', getPath: () => '/nonexistent/pocketshell-test-profile' },
   BrowserWindow: { fromWebContents },
 }));
 
@@ -162,10 +162,25 @@ beforeEach(() => {
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
   registerSyncIpc(ctx);
-  registerWorkspacesIpc();
+  registerWorkspacesIpc(ctx);
 });
 
 describe('terminalIpc — the composer session fence', () => {
+  it.each([null, {}, { deviceId: 'win35', serverUrl: 'wss://gateway.pocketshell.io' }])(
+    'refuses malformed or unenrolled gateway intent without a direct SSH fallback (%j)', async (gateway) => {
+      const result = await handlers.get(ipc.ssh.connect)!(null as never,
+        { host: '192.168.86.35', user: 'User', gateway } as never);
+      expect(result).toMatchObject({ ok: false });
+      expect(mockOf(ssh, 'connect')).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses unsupported link intent before SSH', async () => {
+    const result = await handlers.get(ipc.ssh.connect)!(null as never,
+      { host: 'private', user: 'User', link: null } as never);
+    expect(result).toMatchObject({ ok: false });
+    expect(mockOf(ssh, 'connect')).not.toHaveBeenCalled();
+  });
   it('refuses input for a shell that is not showing the session it names', async () => {
     mockOf(tmuxClients, 'isShowing').mockReturnValue(false);
     const handler = handlers.get(ipc.shell.input)!;
@@ -833,7 +848,7 @@ describe('syncIpc — applyHosts adopts the coercion outcome', () => {
   });
 });
 
-describe('workspacesIpc — no connection is qualified for host-managed roots', () => {
+describe('workspacesIpc — legacy connections remain unqualified for host-managed roots', () => {
   type Handler = (e: unknown, ...args: unknown[]) => unknown;
   const handler = (channel: string): Handler => handlers.get(channel)! as unknown as Handler;
 
@@ -850,16 +865,16 @@ describe('workspacesIpc — no connection is qualified for host-managed roots', 
       [ipc.workspaces.add, ['conn-1', 'hetzner', '~/git']],
       [ipc.workspaces.remove, ['conn-1', 'hetzner', '~/git']],
     ] as const) {
-      expect(() => handler(channel)({}, ...args)).toThrow(
+      await expect(handler(channel)({}, ...args)).rejects.toThrow(
         'This connection does not provide host-managed workspace roots.',
       );
     }
     expect(mockOf(ssh, 'exec')).not.toHaveBeenCalled();
   });
 
-  it('rejects a malformed connection id on every channel', () => {
+  it('rejects a malformed connection id on every channel', async () => {
     for (const channel of Object.values(ipc.workspaces)) {
-      expect(() => handler(channel)({}, 42)).toThrow('Invalid workspace connection.');
+      await expect(handler(channel)({}, 42)).rejects.toThrow('Invalid workspace connection.');
     }
   });
 });

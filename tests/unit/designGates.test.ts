@@ -149,6 +149,12 @@ describe('design gates', () => {
       // stores' logic left through this door before.
       'packages/ui/src/app/components/FileTree.vue':
         'extract the row context menu, then the create-flow naming row, into their own components',
+      // SessionTreeRowsView crossed the cap when the root headers took the
+      // reorder drag and its indicator states beside the folder rows'. The
+      // queue that brings it back under, same order FileTree's follows:
+      // self-contained pieces leave for their own components.
+      'packages/ui/src/app/components/SessionTreeRowsView.vue':
+        'extract the agent badge run, then the narrow layout’s session leaves, into their own components',
     };
     const offenders = vueSourceFiles()
       .map((f) => ({ file: rel(f), lines: readFileSync(f, 'utf8').split('\n').length }))

@@ -30,6 +30,7 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('electron', () => ({
+  app: { getPath: () => '/nonexistent/pocketshell-owned-test' },
   ipcMain: {
     handle: (c: string, fn: (...a: unknown[]) => unknown) => handlers.set(c, fn),
     on: vi.fn(),
@@ -173,14 +174,14 @@ const VALID_GATEWAY = { serverUrl: 'wss://gateway.pocketshell.io', deviceId: 'de
 const VALID_LINK = { relayUrl: 'wss://relay.example:8765', hostId: 'nat-box' };
 
 const REFUSED: Array<[string, Record<string, unknown>, string]> = [
-  ['valid gateway', { gateway: VALID_GATEWAY }, transportRefusalMessage('gateway-unsupported', null)],
-  ['null gateway', { gateway: null }, transportRefusalMessage('gateway-unsupported', null)],
-  ['malformed gateway', { gateway: 'wss://surprise' }, transportRefusalMessage('gateway-unsupported', null)],
-  ['link + gateway', { link: VALID_LINK, gateway: VALID_GATEWAY }, transportRefusalMessage('gateway-unsupported', null)],
+  ['unenrolled gateway', { gateway: VALID_GATEWAY }, 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.'],
+  ['null gateway', { gateway: null }, transportRefusalMessage('gateway-invalid', null)],
+  ['malformed gateway', { gateway: 'wss://surprise' }, transportRefusalMessage('gateway-invalid', null)],
+  ['link + gateway', { link: VALID_LINK, gateway: VALID_GATEWAY }, transportRefusalMessage('link-and-gateway', null)],
   ['link alone', { link: VALID_LINK }, transportRefusalMessage('link-unsupported', null)],
 ];
 
-describe('desktop#8: the ssh:connect boundary refuses gateway/link-marked hosts', () => {
+describe('desktop#8: the ssh:connect boundary refuses invalid/unenrolled gateway and link hosts', () => {
   it.each(REFUSED)('%s: picker tap opens zero sockets and shows core\'s refusal', async (_label, markers, message) => {
     const { errors } = await tapAccountHost(markers);
     // The shared store forwarded the marker verbatim…

@@ -1,38 +1,30 @@
 import { ipcMain } from 'electron';
 import { ipc } from '../../shared/channels.js';
+import type { IpcContext } from './context.js';
 
-/**
- * The shared contract's `workspaces` group (core `WorkspaceRootsApi`): host-
- * registered workspace roots over the host CLI's `pocketshell workspaces`.
- *
- * The desktop qualifies NO connection for host-managed roots yet. The
- * contract's per-connection `capability(connectionId)` exists for exactly
- * this: answering null keeps that connection on the per-host roots list in
- * Settings — the desktop's roots, unchanged — and the shared store then never
- * asks this platform to list, add or remove. Qualifying a connection takes a
- * stable host identity only the host CLI's enrolment can vouch for, and none
- * of the desktop's connection kinds carries one today.
- *
- * So the three verbs refuse rather than run: a caller that skipped the
- * capability gets an honest error instead of a command against a host that
- * was never qualified, and nothing here pretends to have listed anything.
- */
-export function registerWorkspacesIpc(): void {
-  ipcMain.handle(ipc.workspaces.capability, (_evt, connectionId: unknown) => {
-    readConnectionId(connectionId);
-    return null;
+/** Main alone selects the provisioned native executable and enrolled identity. */
+export function registerWorkspacesIpc({ ssh }: IpcContext): void {
+  const native = (connectionId: string) => {
+    if (typeof connectionId !== 'string' || connectionId === '') throw new Error('Invalid workspace connection.');
+    const client = ssh.nativeWindowsCli(connectionId);
+    if (!client) throw new Error('This connection does not provide host-managed workspace roots.');
+    return client;
+  };
+  ipcMain.handle(ipc.workspaces.capability, async (_event, connectionId: string) => {
+    if (typeof connectionId !== 'string' || connectionId === '') throw new Error('Invalid workspace connection.');
+    const client = ssh.nativeWindowsCli(connectionId);
+    return client ? client.workspaceCapability() : null;
   });
-  for (const verb of ['list', 'add', 'remove'] as const) {
-    ipcMain.handle(ipc.workspaces[verb], (_evt, connectionId: unknown) => {
-      readConnectionId(connectionId);
-      throw new Error(NOT_QUALIFIED);
+  ipcMain.handle(ipc.workspaces.list, async (_event, connectionId: string, _host: string) => {
+    const client = native(connectionId);
+    const { hostIdentity } = await client.workspaceCapability();
+    return client.listWorkspaces(hostIdentity);
+  });
+  for (const operation of ['add', 'remove'] as const) {
+    ipcMain.handle(ipc.workspaces[operation], async (_event, connectionId: string, _host: string, path: string) => {
+      const client = native(connectionId);
+      if (typeof path !== 'string' || !path.trim() || path.includes('\0')) throw new Error('Invalid workspace path.');
+      return operation === 'add' ? client.addWorkspace(path) : client.removeWorkspace(path);
     });
   }
-}
-
-const NOT_QUALIFIED = 'This connection does not provide host-managed workspace roots.';
-
-function readConnectionId(raw: unknown): string {
-  if (typeof raw !== 'string' || raw === '') throw new Error('Invalid workspace connection.');
-  return raw;
 }

@@ -629,3 +629,58 @@ describe('folder order', () => {
     expect(settings.defaultHost).toBe('hetzner');
   });
 });
+
+/**
+ * The session panel's hand-arranged ROOT order — `folder order` above, one
+ * level up. The RULES live in `renderer/rootOrder.ts` and are tested there;
+ * the store owns the default, the round trip, and the one deliberate
+ * asymmetry with the folder arrangement: a picked sort leaves it standing,
+ * because a sort never reorders the root sequence and so cannot veto it.
+ */
+describe('root order', () => {
+  it('defaults to nothing arranged, which means "the grouped order"', () => {
+    expect(useSettingsStore().rootOrder).toEqual({});
+    expect(useSettingsStore().rootOrderFor('hetzner')).toEqual([]);
+  });
+
+  it('records a drag against the host alias and persists it', () => {
+    const settings = useSettingsStore();
+    settings.setRootOrder('hetzner', ['~/tmp', '~/git']);
+    expect(settings.rootOrderFor('hetzner')).toEqual(['~/tmp', '~/git']);
+    expect(stored()['rootOrder']).toEqual({ hetzner: ['~/tmp', '~/git'] });
+  });
+
+  it('REMOVES a host entry rather than storing an empty arrangement', () => {
+    const settings = useSettingsStore();
+    settings.setRootOrder('hetzner', ['~/tmp']);
+    settings.setRootOrder('hetzner', []);
+    expect(settings.rootOrder).toEqual({});
+  });
+
+  it('picking a sort does NOT clear the root arrangement', () => {
+    // The mirror of `folder order`'s exclusivity test, and deliberately the
+    // opposite answer: the sort reorders the rows WITHIN each root and never
+    // the root sequence (app/folderSort.ts), so a kept root ranking cannot
+    // veto it. Erasing an arrangement still being honoured would be a loss
+    // with nothing to point at.
+    const settings = useSettingsStore();
+    settings.setRootOrder('hetzner', ['~/tmp', '~/git']);
+    settings.setSessionTreeSort('name');
+    expect(settings.sessionTreeSort).toBe('name');
+    expect(settings.rootOrderFor('hetzner')).toEqual(['~/tmp', '~/git']);
+  });
+
+  it('survives a restart', () => {
+    useSettingsStore().setRootOrder('hetzner', ['~/tmp', '~/git']);
+    setActivePinia(createPinia());
+    expect(useSettingsStore().rootOrderFor('hetzner')).toEqual(['~/tmp', '~/git']);
+  });
+
+  it('degrades a corrupt blob per HOST and per KEY, not per setting', () => {
+    expect(
+      coerceSettings({
+        rootOrder: { good: ['~/git', 7, '~/tmp'], broken: 'not-a-list' },
+      }).rootOrder,
+    ).toEqual({ good: ['~/git', '~/tmp'] });
+  });
+});

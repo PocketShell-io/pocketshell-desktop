@@ -77,6 +77,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: PocketShell-io/pocketshell-core
+          ref: 8e0c75e15441e3773a83ca429fb25d92aac446c9
           path: pocketshell-core
           persist-credentials: false
       - name: Stage and build @pocketshell/core (file sibling)
@@ -169,6 +170,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: PocketShell-io/pocketshell-core
+          ref: 8e0c75e15441e3773a83ca429fb25d92aac446c9
           path: pocketshell-core
           persist-credentials: false
       - name: Stage and build @pocketshell/core (file sibling)
