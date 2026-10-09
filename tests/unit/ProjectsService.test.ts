@@ -1040,7 +1040,8 @@ describe('ProjectsService Windows SFTP home', () => {
 
 
 describe('qualified native folder scripts', () => {
-  const folder = 'C:/Projects/%TEMP%! & snow ☃';
+  const selected = '/C:/Users/alexey/PocketShellFleet/20261009-6cbe21e/fixtures/desktop-gateway-ui-e0300fcbf9/workspace %TEMP%! & ☃';
+  const folder = selected.slice(1);
   const id = '11111111-1111-4111-8111-111111111111';
   function fixture(resolveExit = 0, mkdirExit = 0, empty = false) {
     const scripts: string[] = [];
@@ -1071,24 +1072,34 @@ describe('qualified native folder scripts', () => {
   }
   it('starts through qualified literal canonicalisation without raw POSIX SSH', async () => {
     const f = fixture();
-    expect(await f.projects.startSession('native', { folder, namePolicy: 'unique' })).toMatchObject({ ok: true, aplexerId: id });
+    expect(await f.projects.startSession('native', { folder: selected, namePolicy: 'unique' })).toMatchObject({ ok: true, aplexerId: id, folder });
     expect(f.raw).not.toHaveBeenCalled();
-    expect(f.scripts.find((script) => script.startsWith(':; '))).toContain('%TEMP%! & snow ☃');
+    expect(f.scripts.find((script) => script.startsWith(':; '))).toBe(`:; cd -- '${folder}' && pwd -P`);
+    expect(f.scripts.find((script) => script.includes('sessions create'))).toContain(`--cwd '${folder}'`);
     expect(f.scripts.filter((script) => script.includes('pocketshell.exe'))).toEqual(
       expect.arrayContaining([expect.stringMatching(/^exec /)]));
   });
   it('creates and resolves through qualified scripts without raw POSIX SSH', async () => {
     const f = fixture();
-    expect(await f.projects.createFolder('native', { parent: 'C:/Projects', name: '%TEMP%! & snow ☃' }))
+    expect(await f.projects.createFolder('native', { parent: selected.slice(0, selected.lastIndexOf('/')), name: 'workspace %TEMP%! & ☃' }))
       .toEqual({ ok: true, path: folder, error: null });
     expect(f.raw).not.toHaveBeenCalled();
-    expect(f.scripts.filter((script) => script.startsWith(':; '))).toHaveLength(2);
+    expect(f.scripts.filter((script) => script.startsWith(':; '))).toEqual([
+      `:; mkdir -p -- '${folder}'`, `:; cd -- '${folder}' && pwd -P`,
+    ]);
   });
-  it.each([1, 124, -1])('refuses canonicalisation exit %s before allocating a UUID', async (code) => {
+  it.each([1, 124, -1])('refuses canonicalisation exit %s even with nonempty stdout before allocating a UUID', async (code) => {
     const f = fixture(code);
-    expect(await f.projects.startSession('native', { folder, namePolicy: 'unique' }))
+    expect(await f.projects.startSession('native', { folder: selected, namePolicy: 'unique' }))
       .toMatchObject({ ok: false, aplexerId: null });
     expect(f.scripts.some((script) => script.includes('sessions create'))).toBe(false);
+    expect(f.raw).not.toHaveBeenCalled();
+  });
+  it.each([1, 124, -1])('rejects post-mkdir canonicalisation exit %s even with nonempty stdout', async (code) => {
+    const f = fixture(code);
+    expect(await f.projects.createFolder('native', {
+      parent: selected.slice(0, selected.lastIndexOf('/')), name: 'workspace %TEMP%! & ☃',
+    })).toMatchObject({ ok: false, path: null });
     expect(f.raw).not.toHaveBeenCalled();
   });
   it('does not report mkdir success when native canonicalisation returns no path', async () => {
