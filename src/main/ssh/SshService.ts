@@ -177,7 +177,13 @@ export class SshService {
       const client = newClient();
       const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+      // The dial settles exactly once: the first failure (or 'ready') wins and
+      // everything after it is the same dead dial reporting again.
+      let settled = false;
       const fail = (error: string) => {
+        clearTimeout(timer);
+        if (settled) return;
+        settled = true;
         try {
           client.end();
         } catch {
@@ -192,6 +198,13 @@ export class SshService {
 
       client.once('ready', () => {
         clearTimeout(timer);
+        if (settled) {
+          // Ready after a timeout/refusal already answered the caller: this
+          // client is nobody's — close it rather than register a ghost.
+          client.end();
+          return;
+        }
+        settled = true;
       const id = this.registry.register({
         kind: 'ssh',
         client,
@@ -215,9 +228,15 @@ export class SshService {
         resolve({ ok: true, connectionId: id });
       });
 
-      client.once('error', (err: NodeJS.ErrnoException & { code?: string }) => {
-        clearTimeout(timer);
-        fail(translateError(err));
+      // `on`, not `once`, and attached before connect: ssh2 can emit 'error'
+      // MORE than once for one failed dial — a socket reset (ECONNRESET) and
+      // then, on the socket's close, "Connection lost before handshake". With
+      // a one-shot listener the second emission had none, so EventEmitter
+      // threw it as an uncaught exception in the main process (desktop#8
+      // follow-up). Pre-ready, only the first error answers the caller; the
+      // post-ready lifecycle handlers below take over once connected.
+      client.on('error', (err: NodeJS.ErrnoException & { code?: string }) => {
+        if (!settled) fail(translateError(err));
       });
 
       try {
@@ -255,7 +274,6 @@ export class SshService {
           },
         });
       } catch (e) {
-        clearTimeout(timer);
         fail(`Failed to load key: ${(e as Error).message}`);
       }
     });

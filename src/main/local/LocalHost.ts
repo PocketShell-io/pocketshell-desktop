@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, extname, isAbsolute, join } from 'node:path';
 import type { ExecResult, HostEntry, HostPlatform } from '@pocketshell/core';
 import type { ExecOptions } from '../ssh/SshService.js';
 import { EXEC_DEFAULT_TIMEOUT_MS } from '../ssh/SshService.js';
@@ -304,6 +304,32 @@ class LocalPtyChannel {
 }
 
 /**
+ * Where [file] would be run from, or null when it is not on this machine.
+ *
+ * A path (absolute, or carrying a separator — `C:\Windows\...` on a POSIX
+ * machine is a path too, and one that does not exist) is checked as given; a
+ * bare name is looked up on PATH, with PATHEXT's suffixes on Windows when
+ * the name carries no extension. The same rule a spawn applies, asked first.
+ */
+export function findExecutable(file: string): string | null {
+  if (isAbsolute(file) || file.includes('/') || file.includes('\\')) {
+    return existsSync(file) ? file : null;
+  }
+  const suffixes =
+    process.platform === 'win32' && extname(file) === ''
+      ? ['', ...(process.env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)]
+      : [''];
+  for (const dir of (process.env['PATH'] ?? '').split(delimiter)) {
+    if (!dir) continue;
+    for (const suffix of suffixes) {
+      const candidate = join(dir, file + suffix);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/**
  * Open a local PTY shell.
  *
  * `command` given runs AS the PTY (`bash -c <command>`) — the `'exec'` mode
@@ -337,6 +363,15 @@ export function openLocalShell(opts: {
         file: bash,
         args: ['--login', '-i'],
       };
+  // A chosen shell must exist BEFORE the spawn. Only ConPTY refuses a missing
+  // binary synchronously: a POSIX PTY forks first, so a missing file there is
+  // a child that dies on exec — the open would "succeed", and the typed
+  // command written into it fails later as an EBADF on a dead descriptor.
+  if (chosen.file !== bash && !findExecutable(chosen.file)) {
+    throw new Error(
+      `Could not open the ${opts.shell || 'default'} shell (${chosen.file}): not found on this machine`,
+    );
+  }
   try {
     return ptyApi.spawn(chosen.file, chosen.args, {
       name: opts.term ?? 'xterm-256color',

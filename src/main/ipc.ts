@@ -21,6 +21,7 @@ import { registerSftpIpc } from './ipc/sftpIpc.js';
 import { registerPortsIpc } from './ipc/portsIpc.js';
 import { registerPreviewIpc } from './ipc/previewIpc.js';
 import { registerSyncIpc } from './ipc/syncIpc.js';
+import { registerWorkspacesIpc } from './ipc/workspacesIpc.js';
 
 /**
  * Registers all ipcMain handlers. Called once from the main process entry.
@@ -133,4 +134,5 @@ export function registerIpcHandlers(deps: {
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
   registerSyncIpc(ctx);
+  registerWorkspacesIpc();
 }
