@@ -88,6 +88,7 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 vi.mock('@ui/app/ipc', () => ({
   api: {
     ssh: { onState: vi.fn(() => () => {}) },
+    helper: { sessionsList: vi.fn(async () => [{ name: 'main', tag: 'main', workspace: 'C:/workspace', aplexerId: '11111111-1111-4111-8111-111111111111', aplexerPhase: 'running' }]) },
     shell: {
       open: vi.fn(async () => 'shell-1'),
       attachSession: vi.fn(async () => ({ ok: true, shellId: 'shell-1' })),
@@ -452,4 +453,127 @@ describe('existing shortcut authority with prefix ownership', () => {
     prefix(); selected = false;
     expect(customKeyHandler!(keydown('c', { ctrlKey: true }))).toBe(true); composerKey();
   });
+});
+
+
+describe('intentional native detach versus unexpected client exit', () => {
+  it('keeps the mounted pane detached after the actual Ctrl-b d input and client exit', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const { wrapper, shells, key } = await nativePane();
+    prefix(); terminalData!('\u0002');
+    expect(customKeyHandler!(keydown('d'))).toBe(true);
+    terminalData!('d');
+    await flushPromises();
+    const exit = vi.mocked(api.shell.onExited).mock.calls.at(-1)![0];
+    exit({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+    expect(shells.shellIdFor(key)).toBeNull();
+    expect(wrapper.emitted('typed')).toBeUndefined();
+    expect(api.shell.input).toHaveBeenCalledWith('shell-1', 'd');
+  });
+
+  it('reattaches a genuine client drop with the same exit code and no intentional chord', async () => {
+    const { api } = await import('@ui/app/ipc');
+    await nativePane();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.helper.sessionsList).toHaveBeenCalledWith('conn-1');
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['no prefix bytes', 'no suffix bytes', 'rejected prefix', 'rejected suffix', 'wrong suffix', 'modified suffix'])(
+  'does not suppress recovery for %s', async (control) => {
+    const { api } = await import('@ui/app/ipc');
+    await nativePane();
+    if (control === 'rejected prefix') vi.mocked(api.shell.input).mockResolvedValueOnce(false);
+    prefix();
+    if (control !== 'no prefix bytes') terminalData!('\u0002');
+    await flushPromises();
+    if (control === 'rejected suffix') vi.mocked(api.shell.input).mockResolvedValueOnce(false);
+    expect(customKeyHandler!(keydown(control === 'wrong suffix' ? 'p' : 'd',
+      { ctrlKey: control === 'modified suffix' }))).toBe(true);
+    if (control !== 'no suffix bytes') terminalData!(control === 'wrong suffix' ? 'p' : 'd');
+    await flushPromises();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a stale target even if its old shell ID remains the same', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const { wrapper } = await nativePane();
+    // UUID-only change does not itself open a different shell. The old attach
+    // must neither detach the new identity nor recover against that identity.
+    await wrapper.setProps({ aplexerId: '22222222-2222-4222-8222-222222222222' });
+    prefix(); terminalData!('\u0002');
+    expect(customKeyHandler!(keydown('d'))).toBe(true); terminalData!('d');
+    await flushPromises();
+    const count = vi.mocked(api.shell.attachSession).mock.calls.length;
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(count);
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+  });
+
+  it('refuses recovery when target identity changes during the live-session verdict', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const { wrapper } = await nativePane();
+    let finish: ((rows: Awaited<ReturnType<typeof api.helper.sessionsList>>) => void) | undefined;
+    vi.mocked(api.helper.sessionsList).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await wrapper.setProps({ aplexerId: '22222222-2222-4222-8222-222222222222' });
+    finish!([{ name: 'main', tag: 'main', workspace: 'C:/workspace',
+      aplexerId: '11111111-1111-4111-8111-111111111111', aplexerPhase: 'running',
+      backend: 'aplexer', created: 1, activity: 1, attached: true, path: 'C:/workspace' }]);
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(api.shell.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps intentional detach across hidden-to-visible container callbacks', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const observers: ResizeObserverCallback[] = [];
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { observers.push(callback); }
+      observe(): void {} disconnect(): void {}
+    });
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length; });
+    const { FitAddon } = await import('@xterm/addon-fit');
+    vi.spyOn(FitAddon.prototype, 'proposeDimensions').mockReturnValue({ cols: 80, rows: 24 });
+    const { wrapper } = await nativePane();
+    prefix(); terminalData!('\u0002');
+    expect(customKeyHandler!(keydown('d'))).toBe(true); terminalData!('d');
+    await flushPromises();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    visible(terminalElement(wrapper), 0, 0);
+    observers[0]!([], {} as ResizeObserver); frames.splice(0).forEach(fn => fn(0));
+    visible(terminalElement(wrapper));
+    observers[0]!([], {} as ResizeObserver); frames.splice(0).forEach(fn => fn(1));
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(1);
+    expect(api.helper.sessionsList).not.toHaveBeenCalled();
+  });
+
+  it('an explicit new attach resets the intentional-detach receipt', async () => {
+    const { api } = await import('@ui/app/ipc');
+    const { wrapper } = await nativePane();
+    prefix(); terminalData!('\u0002');
+    expect(customKeyHandler!(keydown('d'))).toBe(true); terminalData!('d');
+    await flushPromises();
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    await wrapper.setProps({ sessionKey: 'workspace-next', sessionName: 'next' });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(2);
+    vi.mocked(api.helper.sessionsList).mockResolvedValueOnce([{ name: 'next', tag: 'next', workspace: 'C:/workspace',
+      aplexerId: '11111111-1111-4111-8111-111111111111', aplexerPhase: 'running',
+      backend: 'aplexer', created: 1, activity: 1, attached: true, path: 'C:/workspace' }]);
+    vi.mocked(api.shell.onExited).mock.calls.at(-1)![0]({ shellId: 'shell-1', exitCode: 0 });
+    await flushPromises();
+    expect(api.shell.attachSession).toHaveBeenCalledTimes(3);
+  });
+
 });
