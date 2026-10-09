@@ -11,8 +11,8 @@ import { resetWorkspaceState, ensureHelperUp, E2E_HOST_NAME, HOST_PORT, TEST_KEY
  * tab bar) -> click a FOLDER -> its workspace fills the right pane with one tab
  * per tmux session in the folder — no Files tab until something asks for one —
  * while the panel stays put -> close the folder -> back to the host list. Port
- * forwarding and Provider usage are host header icons that open overlays, one
- * click each.
+ * forwarding and Provider usage are host header icons that open their
+ * Maintenance tool panes, one click each.
  *
  * Terminal: switching between the fixture's two sessions repeatedly used to
  * stack an extra xterm `onData`/`onResize` handler per switch, so tmux's
@@ -136,17 +136,18 @@ test.describe('session-scoped navigation + terminal wiring', () => {
     await expect(page.locator('.session-placeholder')).toBeVisible();
   });
 
-  test('Port forwarding and Provider usage are header icons that open overlays', async () => {
-    // Each overlay answers to its OWN button — one click, no menu. The
+  test('Port forwarding and Provider usage are header icons that open Maintenance tools', async () => {
+    // Each tool answers to its OWN button — one click, no menu — and opens
+    // as a tab of the Maintenance workspace; the tab's × closes it. The
     // names are the buttons' tooltips, as they were for every trigger this
     // strip has had.
     await page.getByRole('button', { name: 'Port forwarding' }).click();
-    await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Port forwarding' })).toHaveCount(0);
+    await expect(page.locator('.tool-view-slot:visible .fwd-table')).toBeVisible();
+    await page.getByTitle('Close this tool', { exact: true }).click();
+    await expect(page.locator('.tool-view-slot:visible .fwd-table')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Provider usage' }).click();
-    const usage = page.getByRole('dialog', { name: 'Provider usage' });
+    const usage = page.locator('.tool-view-slot:visible');
     await expect(usage).toBeVisible();
     // The stub fleet's two fixture rows, exercising the whole identity cell:
     // the claude row wears its vendor mark and dates its POSITIVE banked
@@ -160,8 +161,8 @@ test.describe('session-scoped navigation + terminal wiring', () => {
     await expect(usage.locator('.note', { hasText: '2 resets available' })).toContainText(
       /expires in \d+d/,
     );
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Provider usage' })).toHaveCount(0);
+    await page.getByTitle('Close this tool', { exact: true }).click();
+    await expect(usage).toHaveCount(0);
   });
 
   test('selecting a folder fills the right pane and keeps the panel visible', async () => {
