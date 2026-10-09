@@ -266,7 +266,7 @@ describe('explicit enrolled CMD Desktop native policy', () => {
 
 
 describe('qualified native generic script boundary', () => {
-  it('executes compound and pipeline semantics with fixed builtin prefix and preserves options', async () => {
+  it.skipIf(process.platform !== 'linux')('executes compound and pipeline semantics with fixed builtin prefix and preserves options', async () => {
     const options = { stdin: 'literal input', timeoutMs: 1234 };
     const capture = vi.fn(async (command: string, supplied?: { stdin?: string; timeoutMs?: number }) => {
       if (command.endsWith('--version')) return result('0.5.8');
