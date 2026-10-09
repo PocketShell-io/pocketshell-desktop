@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SshService } from '../../src/main/ssh/SshService';
 import {
   execLocal,
@@ -227,21 +230,62 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
+  /**
+   * Run [body] with one environment variable pointed at an EMPTY directory —
+   * the fixture for "this machine has no such shell", built the same way on
+   * every OS instead of assumed of the runner (windows-latest has pwsh).
+   */
+  async function withEmptyDirAs(name: string, body: () => Promise<void>): Promise<void> {
+    const empty = mkdtempSync(join(tmpdir(), 'ps-no-shell-'));
+    const saved = process.env[name];
+    process.env[name] = empty;
+    try {
+      await body();
+    } finally {
+      if (saved === undefined) delete process.env[name];
+      else process.env[name] = saved;
+      rmSync(empty, { recursive: true, force: true });
+    }
+  }
+
   it('refuses an unresolvable shell choice instead of falling back to bash', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    // Missing pwsh is a fixture, not an assumption about the test runner's PATH.
-    const nativePty = createRequire(import.meta.url)('@lydell/node-pty') as typeof import('@lydell/node-pty');
-    const spawn = vi.spyOn(nativePty, 'spawn').mockImplementationOnce(() => { throw new Error('missing shell binary'); });
-    try {
+    // pwsh resolves on PATH; a PATH with nothing on it has no pwsh.
+    await withEmptyDirAs('PATH', async () => {
       await expect(
-      ssh.openTrackedShell(connectionId, {
-        shell: 'pwsh',
-        onData: () => undefined,
-      }),
-    ).rejects.toThrow(/Could not open the pwsh shell/);
-    } finally { spawn.mockRestore(); }
+        ssh.openTrackedShell(connectionId, {
+          shell: 'pwsh',
+          onData: () => undefined,
+        }),
+      ).rejects.toThrow(/Could not open the pwsh shell \(pwsh\.exe\): not found on this machine/);
+    });
+    ssh.close(connectionId);
+  });
+
+  it('refuses a missing Windows-layout shell before a PTY exists to type into', async () => {
+    // The open used to "succeed" on a POSIX PTY — fork first, exec fails in
+    // the child — and the typed command then hit the dead descriptor as an
+    // unhandled EBADF. The refusal must come from the open, with no shell
+    // registered and no output ever delivered.
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    let delivered = '';
+    await withEmptyDirAs('SystemRoot', async () => {
+      await expect(
+        ssh.openTrackedShell(connectionId, {
+          shell: 'powershell',
+          command: 'exit',
+          commandMode: 'typed',
+          onData: (data) => {
+            delivered += data.toString('utf8');
+          },
+        }),
+      ).rejects.toThrow(/Could not open the powershell shell \(.*powershell\.exe\): not found on this machine/);
+    });
+    expect(delivered).toBe('');
     ssh.close(connectionId);
   });
 

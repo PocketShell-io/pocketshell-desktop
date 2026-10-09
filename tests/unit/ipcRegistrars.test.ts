@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HostEntry } from '@pocketshell/core';
+import { transportRefusalMessage, type HostEntry } from '@pocketshell/core';
 import { log } from '../../src/main/log';
 import { checkForUpdate } from '../../src/main/update/ReleaseChecker';
 import { runBootstrap } from '../../src/main/helper/bootstrap';
@@ -101,6 +101,7 @@ const { registerSftpIpc } = await import('../../src/main/ipc/sftpIpc');
 const { registerPortsIpc } = await import('../../src/main/ipc/portsIpc');
 const { registerPreviewIpc } = await import('../../src/main/ipc/previewIpc');
 const { registerSyncIpc } = await import('../../src/main/ipc/syncIpc');
+const { registerWorkspacesIpc } = await import('../../src/main/ipc/workspacesIpc');
 const { decryptEnvelope, encryptToEnvelope } = await import('../../src/main/sync/SyncCrypto');
 
 const ssh = fakeService();
@@ -161,6 +162,7 @@ beforeEach(() => {
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
   registerSyncIpc(ctx);
+  registerWorkspacesIpc(ctx);
 });
 
 describe('terminalIpc — the composer session fence', () => {
@@ -833,7 +835,7 @@ describe('syncIpc — applyHosts adopts the coercion outcome', () => {
         { name: 'ok-host', hostname: 'ok.example', fromConfig: true },
         { name: 'gate', hostname: 'gate.example', fromConfig: true, gateway: { via: 'x' } },
       ]),
-    ).rejects.toThrow(/gate.*gateway/);
+    ).rejects.toThrow(new Error(transportRefusalMessage('gateway-unsupported', 'gate')));
     const lastCall = vi.mocked(applyHostsToConfig).mock.calls.at(-1)?.[1] as unknown[];
     expect(lastCall).toMatchObject([{ name: 'hetzner' }]); // nothing new written
   });
@@ -843,5 +845,36 @@ describe('syncIpc — applyHosts adopts the coercion outcome', () => {
     await expect(
       (handler as unknown as (e: unknown, hosts: unknown) => Promise<unknown>)({}, 'not-an-array'),
     ).resolves.toEqual({ added: [] });
+  });
+});
+
+describe('workspacesIpc — legacy connections remain unqualified for host-managed roots', () => {
+  type Handler = (e: unknown, ...args: unknown[]) => unknown;
+  const handler = (channel: string): Handler => handlers.get(channel)! as unknown as Handler;
+
+  it('answers the contract\'s null capability, which keeps roots on the Settings list', async () => {
+    // core WorkspaceRootsApi.capability: null retains the local roots, and the
+    // shared store then never calls list/add/remove for that connection.
+    await expect(Promise.resolve(handler(ipc.workspaces.capability)({}, 'conn-1'))).resolves.toBeNull();
+    expect(mockOf(ssh, 'exec')).not.toHaveBeenCalled();
+  });
+
+  it('refuses list, add and remove instead of running a host command', async () => {
+    for (const [channel, args] of [
+      [ipc.workspaces.list, ['conn-1', 'hetzner']],
+      [ipc.workspaces.add, ['conn-1', 'hetzner', '~/git']],
+      [ipc.workspaces.remove, ['conn-1', 'hetzner', '~/git']],
+    ] as const) {
+      await expect(handler(channel)({}, ...args)).rejects.toThrow(
+        'This connection does not provide host-managed workspace roots.',
+      );
+    }
+    expect(mockOf(ssh, 'exec')).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed connection id on every channel', async () => {
+    for (const channel of Object.values(ipc.workspaces)) {
+      await expect(handler(channel)({}, 42)).rejects.toThrow('Invalid workspace connection.');
+    }
   });
 });

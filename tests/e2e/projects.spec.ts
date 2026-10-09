@@ -235,7 +235,9 @@ test.describe('folder-first session creation + port panel controls', () => {
   });
 
   test('the port panel shows discovered ports with process and folder columns', async () => {
-    // The header opens Ports as a Maintenance workspace tool pane.
+    // Ports has its own header icon whose accessible name is its `title` —
+    // one click, no kebab to open first. It opens the Ports tool as a tab of
+    // the Maintenance workspace (a tool pane, not an overlay dialog).
     await page.getByRole('button', { name: 'Port forwarding' }).click();
     await expect(page.locator('.tool-view-slot:visible .fwd-table')).toBeVisible();
 
@@ -305,6 +307,7 @@ test.describe('folder-first session creation + port panel controls', () => {
     await expect(page.getByRole('button', { name: 'Auto-forward: OFF' })).toBeVisible({
       timeout: 20_000,
     });
+    // The tool closes at its tab's ×, and its pane goes with it.
     await page.getByTitle('Close this tool', { exact: true }).click();
     await expect(page.locator('.tool-view-slot:visible .fwd-table')).toHaveCount(0);
   });

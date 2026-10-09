@@ -11,8 +11,8 @@ import { resetWorkspaceState, ensureHelperUp, E2E_HOST_NAME, HOST_PORT, TEST_KEY
  * tab bar) -> click a FOLDER -> its workspace fills the right pane with one tab
  * per tmux session in the folder — no Files tab until something asks for one —
  * while the panel stays put -> close the folder -> back to the host list. Port
- * forwarding and Provider usage are host header icons that open tool panes, one
- * click each.
+ * forwarding and Provider usage are host header icons that open their
+ * Maintenance tool panes, one click each.
  *
  * Terminal: switching between the fixture's two sessions repeatedly used to
  * stack an extra xterm `onData`/`onResize` handler per switch, so tmux's
@@ -137,7 +137,10 @@ test.describe('session-scoped navigation + terminal wiring', () => {
   });
 
   test('Port forwarding and Provider usage are header icons that open Maintenance tools', async () => {
-    // Each button opens its Maintenance tool directly; its tab closes the tool.
+    // Each tool answers to its OWN button — one click, no menu — and opens
+    // as a tab of the Maintenance workspace; the tab's × closes it. The
+    // names are the buttons' tooltips, as they were for every trigger this
+    // strip has had.
     await page.getByRole('button', { name: 'Port forwarding' }).click();
     await expect(page.locator('.tool-view-slot:visible .fwd-table')).toBeVisible();
     await page.getByTitle('Close this tool', { exact: true }).click();

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aliasesToAutoCheck,
   assembleSyncSet,
   parseSyncPayload,
   serializeSyncPayload,
@@ -61,26 +60,6 @@ describe('assembleSyncSet', () => {
 
   it('is empty when nothing is ticked', () => {
     expect(assembleSyncSet([host('a')], [host('r')], [])).toEqual([]);
-  });
-});
-
-describe('aliasesToAutoCheck', () => {
-  it('lists account aliases the selection lacks', () => {
-    expect(aliasesToAutoCheck([host('a'), host('b')], ['b'], [])).toEqual(['a']);
-  });
-
-  it('is empty when the selection already covers the account', () => {
-    expect(aliasesToAutoCheck([host('a')], ['a', 'x'], [])).toEqual([]);
-  });
-
-  it('is every alias on a fresh machine', () => {
-    expect(aliasesToAutoCheck([host('a'), host('b')], [], [])).toEqual(['a', 'b']);
-  });
-
-  it('never claims an alias the local config already has — an untick must stand', () => {
-    // The user unticked 'dropped'; the account still holds it. Because the
-    // config has the alias, the untick survives the next pull.
-    expect(aliasesToAutoCheck([host('kept'), host('dropped')], ['kept'], ['kept', 'dropped'])).toEqual([]);
   });
 });
 

@@ -5,13 +5,13 @@ import type { IpcContext } from './context.js';
 /** Main alone selects the provisioned native executable and enrolled identity. */
 export function registerWorkspacesIpc({ ssh }: IpcContext): void {
   const native = (connectionId: string) => {
-    if (typeof connectionId !== 'string') throw new Error('Invalid workspace connection.');
+    if (typeof connectionId !== 'string' || connectionId === '') throw new Error('Invalid workspace connection.');
     const client = ssh.nativeWindowsCli(connectionId);
     if (!client) throw new Error('This connection does not provide host-managed workspace roots.');
     return client;
   };
   ipcMain.handle(ipc.workspaces.capability, async (_event, connectionId: string) => {
-    if (typeof connectionId !== 'string') throw new Error('Invalid workspace connection.');
+    if (typeof connectionId !== 'string' || connectionId === '') throw new Error('Invalid workspace connection.');
     const client = ssh.nativeWindowsCli(connectionId);
     return client ? client.workspaceCapability() : null;
   });

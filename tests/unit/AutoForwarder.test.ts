@@ -78,6 +78,23 @@ function occupy(port: number): Promise<Server> {
   });
 }
 
+/**
+ * A port the OS just handed out and released — free right now on THIS
+ * machine. A fixed port number is an assumption about the machine the suite
+ * runs on (a developer box can have anything listening on 8801).
+ */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
 function makeForwarder(ssh: ScriptedSsh, config: Partial<AutoForwardConfig> = {}): AutoForwarder {
   const fwd = new AutoForwarder(ssh.asService(), 'conn-1', registry, {
     config: { ...DEFAULT_AUTO_CONFIG, ...config },
@@ -313,19 +330,16 @@ describe('local port allocation', () => {
   });
 
   it('honours a user remap over the mirror', async () => {
-    // The running Desktop can already forward 8801; keep the real bind test
-    // while choosing an available remap instead of assuming a vacant machine.
-    const local = await makeForwarder(new ScriptedSsh()).findAvailableLocalPort(8801);
-    expect(local).not.toBeNull();
+    const remapTo = await freePort();
     const ssh = new ScriptedSsh().push([9840]);
     const fwd = new AutoForwarder(ssh.asService(), 'conn-1', registry, {
       config: DEFAULT_AUTO_CONFIG,
-      remappings: { 9840: local! },
+      remappings: { 9840: remapTo },
     });
     forwarders.push(fwd);
     await fwd.refresh();
     expect(fwd.snapshot()[0]).toMatchObject({
-      listenPort: local,
+      listenPort: remapTo,
       destPort: 9840,
       remapped: true,
     });

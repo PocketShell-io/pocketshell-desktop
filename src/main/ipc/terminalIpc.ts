@@ -2,7 +2,7 @@ import type { IpcContext } from './context.js';
 import { ipcMain, app } from 'electron';
 import { join } from 'node:path';
 import { ipc } from '../../shared/channels.js';
-import type { HostEntry } from '@pocketshell/core';
+import { unsupportedTransport, type HostEntry } from '@pocketshell/core';
 import { readSshConfig } from '../ssh-config/SshConfigParser.js';
 import { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { withSelfEntry } from '../local/LocalHost.js';
@@ -44,10 +44,10 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         link?: unknown;
       },
     ) => {
-      // Preserve transport intent: malformed or unsupported markers must never dial TCP.
-      if (Object.prototype.hasOwnProperty.call(payload, 'link')) {
-        return { ok: false, error: 'This Desktop build does not support link transport.' };
-      }
+      // Gateway is implemented here; link remains unsupported. Preserve own-present
+      // malformed/conflicting markers and refuse before credentials or a socket.
+      const refusal = unsupportedTransport(payload, { gateway: true, link: false }, payload.hostAlias ?? null);
+      if (refusal.refused) return { ok: false as const, error: refusal.message };
       let transport = {};
       if (Object.prototype.hasOwnProperty.call(payload, 'gateway')) {
         const target = normalizeGatewayTarget(payload.gateway);
