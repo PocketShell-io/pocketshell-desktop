@@ -109,7 +109,7 @@ The picker's first row is **self** — this computer, no SSH. Its sessions are t
 
 ## Install
 
-Windows, macOS, and Linux. Each ships x64 and arm64.
+Windows ships x64. macOS and Linux ship x64 and arm64. Windows ARM64 packaging is excluded until its native ConPTY dependency closure is qualified.
 
 | | You get |
 |---|---|

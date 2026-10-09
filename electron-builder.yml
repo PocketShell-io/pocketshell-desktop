@@ -30,11 +30,9 @@ files:
   - '!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}'
   - '!**/*.{md,markdown}'
   - '!**/.{idea,git,cache,vscode,DS_Store}'
-# Every platform ships BOTH arches deliberately: x64 because it is still the
-# default everywhere, arm64 because that is where the fleet is heading (and
-# where one of the user's machines already is - a Windows-on-ARM tablet).
-# Cross-building each arch costs only a second Electron download per target;
-# the matrix stays one job per OS.
+# macOS and Linux keep both architectures. Windows ships only x64 until
+# packaging selects and verifies an ARM64 ConPTY closure: cross-building
+# Electron alone currently leaves the installed win32-x64 native addon in it.
 mac:
   category: public.app-category.developer-tools
   target:
@@ -51,14 +49,13 @@ win:
   # phone sideloads: download, unpack, run — and the update banner's download
   # link replaces this copy by hand. NSIS also cannot merge into the zip
   # pipeline (an arch list on nsis folds both runtimes into one ~170 MB
-  # installer), while zip is naturally per-arch: one pass, two files, no
+  # installer), while zip is naturally per-arch: one file per supported arch, no
   # collision thanks to `${arch}`. The update check on the phone and here is
   # a browser download, so nothing about updating needs an installer.
   artifactName: "${productName}-${version}-win-${arch}.${ext}"
   target:
     - target: zip
       arch:
-        - arm64
         - x64
 linux:
   category: Development
