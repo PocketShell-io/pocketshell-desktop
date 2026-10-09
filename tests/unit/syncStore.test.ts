@@ -218,6 +218,26 @@ describe('syncStore — the selection is the payload', () => {
       expect(pushedPayload(0).hosts.map((h) => h.name)).toEqual(['other', 'fixture']);
     });
 
+    it('an untick is one-shot: after it removed the host, a re-add by another device is kept', async () => {
+      accountPull();
+      const sync = await readyStore([host('hetzner'), host('other')]);
+      useSettingsStore().syncSelectedHosts = ['other'];
+      await sync.loadAccount();
+      sync.setSelected('hetzner', false);
+      await sync.syncNow();
+      expect(pushedPayload(0).hosts.map((h) => h.name)).toEqual(['other', 'fixture']);
+
+      // Another device re-adds hetzner; this one just presses Sync now.
+      syncApi.pull.mockResolvedValue({
+        kind: 'ok',
+        version: 5,
+        plaintext: serializeSyncPayload([host('other'), host('fixture'), host('hetzner', 'hetzner.new')]),
+      });
+      await sync.syncNow();
+
+      expect(pushedPayload(1).hosts.map((h) => h.name)).toEqual(['other', 'fixture', 'hetzner']);
+    });
+
     it('the Account window shows "In account", ticked, not "remove on sync"', async () => {
       accountPull();
       syncApi.accountHosts.mockResolvedValue(null);
