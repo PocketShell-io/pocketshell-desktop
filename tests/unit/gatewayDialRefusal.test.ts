@@ -49,6 +49,28 @@ vi.mock('../../src/main/ssh-config/KnownHosts', () => ({
 }));
 vi.mock('../../src/main/ssh-config/SshConfigParser', () => ({ readSshConfig: vi.fn(() => []) }));
 
+// Capture every real ssh2 Client the service creates, so a control dial can
+// be awaited to its LAST event ('close') before the test (and the listener)
+// ends — nothing from the dial can land after teardown on any platform.
+const { dialClients } = vi.hoisted(() => ({ dialClients: [] as import('ssh2').Client[] }));
+vi.mock('../../src/main/ssh/ConnectionRegistry', async (orig) => {
+  const real = await orig<typeof import('../../src/main/ssh/ConnectionRegistry')>();
+  return {
+    ...real,
+    newClient: () => {
+      const c = real.newClient();
+      c.once('close', () => ((c as unknown as { psClosed: boolean }).psClosed = true));
+      dialClients.push(c);
+      return c;
+    },
+  };
+});
+/** Resolve when the dial's client has emitted 'close' (its last event). */
+const dialClosed = (c: import('ssh2').Client): Promise<void> =>
+  (c as unknown as { psClosed?: boolean }).psClosed ? Promise.resolve() : new Promise((r) => c.once('close', () => r()));
+/** The listener accepts and drops the socket before any SSH ident: the dial fails pre-handshake. */
+const PRE_HANDSHAKE = /^(Connection lost before handshake|Connection reset: )/;
+
 const { ipc } = await import('../../src/shared/channels');
 const { registerTerminalIpc } = await import('../../src/main/ipc/terminalIpc');
 const { SshService } = await import('../../src/main/ssh/SshService');
@@ -174,9 +196,17 @@ describe('desktop#8: the ssh:connect boundary refuses gateway/link-marked hosts'
   });
 
   it('control: the same unmarked account host DOES dial (the listener is live)', async () => {
+    dialClients.length = 0;
     await tapAccountHost({});
     expect(payloads).toHaveLength(1);
     expect(sshConnect).toHaveBeenCalledTimes(1);
+    // Observe the dial to its end: the connect resolves with the pre-handshake
+    // failure (the listener drops the socket), and the client has closed.
+    const res = await (sshConnect.mock.results[0]!.value as Promise<{ ok: boolean; error?: string }>);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(PRE_HANDSHAKE);
+    expect(dialClients).toHaveLength(1);
+    await dialClosed(dialClients[0]!);
     expect(accepted).toBe(1);
   });
 });

@@ -36,6 +36,28 @@ vi.mock('../../src/main/ssh-config/SshConfigWriter', async (orig) => {
   return { ...real, applyHostsToConfig: (_p: unknown, hosts: never) => real.applyHostsToConfig(cfg.path, hosts) };
 });
 
+// Capture every real ssh2 Client the service creates, so a control dial can
+// be awaited to its LAST event ('close') before the test (and the listener)
+// ends — nothing from the dial can land after teardown on any platform.
+const { dialClients } = vi.hoisted(() => ({ dialClients: [] as import('ssh2').Client[] }));
+vi.mock('../../src/main/ssh/ConnectionRegistry', async (orig) => {
+  const real = await orig<typeof import('../../src/main/ssh/ConnectionRegistry')>();
+  return {
+    ...real,
+    newClient: () => {
+      const c = real.newClient();
+      c.once('close', () => ((c as unknown as { psClosed: boolean }).psClosed = true));
+      dialClients.push(c);
+      return c;
+    },
+  };
+});
+/** Resolve when the dial's client has emitted 'close' (its last event). */
+const dialClosed = (c: import('ssh2').Client): Promise<void> =>
+  (c as unknown as { psClosed?: boolean }).psClosed ? Promise.resolve() : new Promise((r) => c.once('close', () => r()));
+/** The listener accepts and drops the socket before any SSH ident: the dial fails pre-handshake. */
+const PRE_HANDSHAKE = /^(Connection lost before handshake|Connection reset: )/;
+
 const { ipc } = await import('../../src/shared/channels');
 const { registerSyncIpc } = await import('../../src/main/ipc/syncIpc');
 const { registerTerminalIpc } = await import('../../src/main/ipc/terminalIpc');
@@ -95,7 +117,6 @@ async function tapConfigRow(name: string): Promise<unknown> {
     hostAlias: row.name,
     timeoutMs: 1500,
   });
-  await new Promise((r) => setTimeout(r, 300));
   return res;
 }
 
@@ -132,7 +153,14 @@ describe('desktop#8: Sync now never writes a transport-marked host as a plain co
   it('control: an ordinary account host IS written, and its config row dials', async () => {
     await expect(applyHosts([accountHost({})])).resolves.toEqual({ added: ['nat-box'] });
     expect(configText()).toMatch(/^Host nat-box$/m);
-    await tapConfigRow('nat-box');
+    dialClients.length = 0;
+    const res = (await tapConfigRow('nat-box')) as { ok: boolean; error?: string };
+    // Observe the dial to its end: a pre-handshake failure (the listener
+    // drops the socket) and a closed client, before the listener goes away.
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(PRE_HANDSHAKE);
+    expect(dialClients).toHaveLength(1);
+    await dialClosed(dialClients[0]!);
     expect(accepted).toBe(1);
   });
 });
