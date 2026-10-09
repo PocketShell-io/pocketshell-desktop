@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SshService } from '../../src/main/ssh/SshService';
 import {
@@ -128,7 +131,9 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
-  it('opens the chosen shell for a bare terminal, and keeps joins on bash', async () => {
+  // Windows PowerShell lives under the Windows directory, so only a Windows
+  // machine can open it: elsewhere the same choice is the refusal below.
+  it.skipIf(process.platform !== 'win32')('opens the chosen Windows PowerShell for a bare terminal', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
@@ -161,7 +166,13 @@ describe('SshService — a local dial', () => {
         .catch(reject);
     });
     expect(sawPs).toBe(true);
+    ssh.close(connectionId);
+  });
 
+  it('keeps a session join on bash whatever the bare-shell choice', async () => {
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
     // A session join carries its POSIX script and must reach bash even with
     // the choice set: the join output is the bash-echoed sentinel.
     const sawBash = await new Promise<boolean>((resolve, reject) => {
@@ -194,16 +205,62 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
+  /**
+   * Run [body] with one environment variable pointed at an EMPTY directory —
+   * the fixture for "this machine has no such shell", built the same way on
+   * every OS instead of assumed of the runner (windows-latest has pwsh).
+   */
+  async function withEmptyDirAs(name: string, body: () => Promise<void>): Promise<void> {
+    const empty = mkdtempSync(join(tmpdir(), 'ps-no-shell-'));
+    const saved = process.env[name];
+    process.env[name] = empty;
+    try {
+      await body();
+    } finally {
+      if (saved === undefined) delete process.env[name];
+      else process.env[name] = saved;
+      rmSync(empty, { recursive: true, force: true });
+    }
+  }
+
   it('refuses an unresolvable shell choice instead of falling back to bash', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
     const connectionId = result.ok && result.connectionId ? result.connectionId : '';
-    await expect(
-      ssh.openTrackedShell(connectionId, {
-        shell: 'pwsh',
-        onData: () => undefined,
-      }),
-    ).rejects.toThrow(/Could not open the pwsh shell/);
+    // pwsh resolves on PATH; a PATH with nothing on it has no pwsh.
+    await withEmptyDirAs('PATH', async () => {
+      await expect(
+        ssh.openTrackedShell(connectionId, {
+          shell: 'pwsh',
+          onData: () => undefined,
+        }),
+      ).rejects.toThrow(/Could not open the pwsh shell \(pwsh\.exe\): not found on this machine/);
+    });
+    ssh.close(connectionId);
+  });
+
+  it('refuses a missing Windows-layout shell before a PTY exists to type into', async () => {
+    // The open used to "succeed" on a POSIX PTY — fork first, exec fails in
+    // the child — and the typed command then hit the dead descriptor as an
+    // unhandled EBADF. The refusal must come from the open, with no shell
+    // registered and no output ever delivered.
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    let delivered = '';
+    await withEmptyDirAs('SystemRoot', async () => {
+      await expect(
+        ssh.openTrackedShell(connectionId, {
+          shell: 'powershell',
+          command: 'exit',
+          commandMode: 'typed',
+          onData: (data) => {
+            delivered += data.toString('utf8');
+          },
+        }),
+      ).rejects.toThrow(/Could not open the powershell shell \(.*powershell\.exe\): not found on this machine/);
+    });
+    expect(delivered).toBe('');
     ssh.close(connectionId);
   });
 
