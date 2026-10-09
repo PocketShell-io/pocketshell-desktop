@@ -18,7 +18,8 @@ export function readGatewayHosts(path: string): GatewayHostRegistration[] {
     const r = entry as Record<string, unknown>;
     const gateway = normalizeGatewayTarget(r.gateway);
     const nativeWindowsCli = r.nativeWindowsCli === undefined ? undefined : normalizeNativeWindowsHostCli(r.nativeWindowsCli);
-    if (nativeWindowsCli === null) return [];
+    if (nativeWindowsCli === null || (nativeWindowsCli?.transport === 'openssh-cmd-git-bash'
+      && nativeWindowsCli.deviceId !== gateway?.deviceId)) return [];
     const pin = typeof r.sshHostKeyFingerprint === 'string'
       ? normalizeSha256Fingerprint(r.sshHostKeyFingerprint) : null;
     if (!gateway || !pin || typeof r.name !== 'string' || !r.name.trim()

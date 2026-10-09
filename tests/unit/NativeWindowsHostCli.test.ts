@@ -184,3 +184,81 @@ describe('Win32 OpenSSH non-PTY Bash argument grouping', () => {
     expect(calls).toHaveLength(beforeAttach);
   });
 });
+
+
+describe('explicit enrolled CMD Desktop native policy', () => {
+  const deviceId = 'host-laptop-fixture';
+  const bash = 'C:/Program Files/Git/bin/bash.exe';
+  const policy = { executable, transport: 'openssh-cmd-git-bash' as const, deviceId,
+    trustedBashExecutable: bash, trustedBashSha256: 'a'.repeat(64) };
+  function decode(command: string, pty = false): string {
+    const prefix = (pty ? 'call ' : '') + '"C:\\Program Files\\Git\\bin\\bash.exe" --noprofile --norc -c "eval $\'';
+    expect(command.startsWith(prefix)).toBe(true);
+    expect(command.endsWith('\'"')).toBe(true);
+    const hex = command.slice(prefix.length, -2);
+    expect(hex).toMatch(/^(?:\\x[0-9a-f]{2})*$/);
+    return Buffer.from(hex.replaceAll('\\x', ''), 'hex').toString('utf8');
+  }
+  it('retains only the explicitly matching device-bound main registration', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pocketshell-cmd-policy-'));
+    try {
+      const registration = { name: 'Laptop', user: 'alexey', identityFile: 'protected-key',
+        gateway: { serverUrl: 'wss://gateway.pocketshell.io', deviceId },
+        sshHostKeyFingerprint: 'SHA256:Qjlw4xV9MzuBS4r5FJxy9fyZaexWMN3xHIhiluYZT2w' };
+      const file = join(dir, 'hosts.json');
+      writeFileSync(file, JSON.stringify([
+        { ...registration, nativeWindowsCli: policy },
+        { ...registration, nativeWindowsCli: { ...policy, deviceId: 'foreign-device' } },
+        { ...registration, nativeWindowsCli: { ...policy, trustedBashSha256: '' } },
+        { ...registration, nativeWindowsCli: { ...policy, trustedBashExecutable: 'C:/bad%PATH%/bash.exe' } },
+      ]));
+      expect(readGatewayHosts(file)).toEqual([expect.objectContaining({ nativeWindowsCli: policy })]);
+      expect(normalizeNativeWindowsHostCli({ ...policy, trustedBashSha256: 'A'.repeat(64) })).toEqual(policy);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it('routes real Desktop callers through one literal encoder, preserving stdin and UUID attach', async () => {
+    const calls: { command: string; options?: { stdin?: string; timeoutMs?: number } }[] = [];
+    const cwd = 'C:/own/%TEMP%! & snow ☃';
+    const capture = vi.fn(async (command: string, options?: { stdin?: string; timeoutMs?: number }) => {
+      const script = decode(command); calls.push({ command, options });
+      if (script.endsWith('--version')) return result('pocketshell 0.5.8');
+      if (script.endsWith('platform --json')) return result({ ...platform, capabilities: [...platform.capabilities, 'sessions.create', 'tree.cas'] });
+      if (script.includes('sessions list')) return result({ schema: 3, sessions: [{ id, name: 'snow:main', workspace: cwd, tag: 'main', attached: false }] });
+      if (script.endsWith('tree get')) return result({ nodes: [], version: 7, cli_version: '0.5.8' });
+      if (script.includes('sessions create')) return result({ schema: 3, name: 'snow:main', id, created: true });
+      throw new Error('Unexpected script ' + script);
+    });
+    const native = new NativeWindowsHostCli(policy, capture, deviceId);
+    const legacyExec = vi.fn();
+    const ssh = { nativeWindowsCli: () => native, exec: legacyExec, hostPlatform: vi.fn() } as unknown as SshService;
+    const helper = new PocketshellClient(ssh, new AplexerClient(ssh));
+    expect((await helper.listSessions('connection'))[0]?.aplexerId).toBe(id);
+    await helper.treeGet('connection', 'display-alias');
+    expect((await native.createSession('main', cwd)).id).toBe(id);
+    const scripts = calls.map(({ command }) => decode(command));
+    expect(scripts[0]).toBe("exec '" + executable + "' --version");
+    expect(scripts[1]).toBe("exec '" + executable + "' platform --json");
+    expect(scripts.filter((script) => script.endsWith('--version'))).toHaveLength(1);
+    expect(calls.find(({ command }) => decode(command).endsWith('tree get'))?.options).toEqual({ stdin: JSON.stringify({ host: deviceId }) });
+    expect(scripts.at(-1)).toBe("exec '" + executable + "' sessions create --json --cwd '" + cwd + "' -- 'main'");
+    expect(calls.at(-1)?.options).toEqual({ timeoutMs: 60_000 });
+    expect(decode(await native.attachCommand(id), true)).toBe("exec '" + executable + "' sessions attach -- '" + id + "'");
+    expect(legacyExec).not.toHaveBeenCalled();
+  });
+  it('refuses missing authority, ambiguous Bash fields, NUL and over-bound commands before transport', async () => {
+    const exec = vi.fn(async (command: string) => decode(command).endsWith('--version') ? result('0.5.8') : result(platform));
+    expect(() => new NativeWindowsHostCli(policy, exec, 'foreign-device')).toThrow('device identity');
+    expect(() => new NativeWindowsHostCli(policy, exec)).toThrow('device identity');
+    for (const path of ['bash.exe', 'C:/bad!x!/bash.exe', 'C:/bad&x/bash.exe', 'C:/bad^x/bash.exe', 'C:/../bash.exe', 'C:/bad\n/bash.exe']) {
+      expect(normalizeNativeWindowsHostCli({ ...policy, trustedBashExecutable: path })).toBeNull();
+    }
+    expect(normalizeNativeWindowsHostCli({ ...policy, extraAuthority: true })).toBeNull();
+    expect(normalizeNativeWindowsHostCli({ executable, trustedBashExecutable: bash })).toBeNull();
+    expect(exec).not.toHaveBeenCalled();
+    const native = new NativeWindowsHostCli(policy, exec, deviceId);
+    await native.ready();
+    await expect(native.listWorkspaces('bad\0host')).rejects.toThrow('NUL');
+    await expect(native.listWorkspaces('x'.repeat(2000))).rejects.toThrow('8000');
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+});

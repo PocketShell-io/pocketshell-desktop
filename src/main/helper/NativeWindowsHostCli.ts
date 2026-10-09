@@ -8,17 +8,32 @@ export interface NativeTreeSnapshot {
 }
 
 /** Main-provisioned policy, never accepted from renderer connection payloads. */
-export interface NativeWindowsHostCliPolicy { executable: string }
+export type NativeWindowsHostCliPolicy = { executable: string } & (
+  { transport?: 'openssh-git-bash' } |
+  { transport: 'openssh-cmd-git-bash'; deviceId: string; trustedBashExecutable: string; trustedBashSha256: string }
+);
 
 export function normalizeNativeWindowsHostCli(value: unknown): NativeWindowsHostCliPolicy | null {
-  if (!value || typeof value !== 'object') return null;
-  const executable = (value as Record<string, unknown>).executable;
-  // Windows drive-absolute path, with forward slashes for the configured Git Bash shell.
-  // Reject shell metacharacters that cannot survive the OpenSSH PTY argv wrapper.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const policy = value as Record<string, unknown>;
+  const executable = policy.executable;
   if (typeof executable !== 'string' || [...executable].some((char) => char.charCodeAt(0) < 32)
-    || !/^[A-Za-z]:\/(?:[^"'\\$`]+\/)*pocketshell\.exe$/i.test(executable)
+    || !/^[A-Za-z]:\/(?:[^"'\\$\u0060]+\/)*pocketshell\.exe$/i.test(executable)
     || executable.split('/').some((part) => part === '..' || part === '.')) return null;
-  return { executable };
+  if (policy.transport === undefined || policy.transport === 'openssh-git-bash') {
+    if ('deviceId' in policy || 'trustedBashExecutable' in policy || 'trustedBashSha256' in policy) return null;
+    return policy.transport === undefined ? { executable } : { executable, transport: 'openssh-git-bash' };
+  }
+  if (policy.transport !== 'openssh-cmd-git-bash'
+    || Object.keys(policy).some((key) => !['executable', 'transport', 'deviceId', 'trustedBashExecutable', 'trustedBashSha256'].includes(key))
+    || typeof policy.deviceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,63}$/.test(policy.deviceId)
+    || typeof policy.trustedBashExecutable !== 'string'
+    || !/^[A-Za-z]:\/(?:[^"'\\$\u0060%!&|<>^]+\/)*bash\.exe$/i.test(policy.trustedBashExecutable)
+    || [...policy.trustedBashExecutable].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+    || policy.trustedBashExecutable.split('/').some((part) => part === '.' || part === '..')
+    || typeof policy.trustedBashSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(policy.trustedBashSha256)) return null;
+  return { executable, transport: 'openssh-cmd-git-bash', deviceId: policy.deviceId,
+    trustedBashExecutable: policy.trustedBashExecutable, trustedBashSha256: policy.trustedBashSha256.toLowerCase() };
 }
 
 type Exec = (command: string, options?: { stdin?: string; timeoutMs?: number }) => Promise<ExecResult>;
@@ -42,11 +57,30 @@ export class NativeWindowsHostCli {
 
   constructor(readonly policy: NativeWindowsHostCliPolicy, exec: Exec,
     readonly hostIdentity?: string) {
-    this.binary = shellQuote(policy.executable);
+    if (policy.transport === 'openssh-cmd-git-bash') {
+      const qualified = normalizeNativeWindowsHostCli(policy);
+      if (!qualified || qualified.transport !== 'openssh-cmd-git-bash' || qualified.deviceId !== hostIdentity) {
+        throw new Error('Native CMD policy requires the corresponding enrolled gateway device identity.');
+      }
+      this.policy = Object.freeze(qualified);
+    }
+    this.binary = shellQuote(this.policy.executable);
     // Win32 OpenSSH groups Bash -c arguments only when the script starts with
     // an unquoted word. Keep every non-PTY native invocation in that form.
-    this.exec = (command, options) => exec(`exec ${command}`, options);
+    this.exec = (command, options) => exec(this.command(`exec ${command}`), options);
     this.core = new HostCliCore({ exec: (command, timeoutMs) => this.exec(command, { timeoutMs }) }, this.binary);
+  }
+
+  private command(script: string, pty = false): string {
+    if (this.policy.transport !== 'openssh-cmd-git-bash') return pty ? '"' + script + '"' : script;
+    if (script.includes('\0')) throw new Error('Native CMD scripts cannot contain NUL bytes.');
+    const hex = [...Buffer.from(script, 'utf8')].map((byte) => '\\x' + byte.toString(16).padStart(2, '0')).join('');
+    // Provisioned Bash receives the whole literal script. Only CMD PTY gets call.
+    const invocation = '"' + this.policy.trustedBashExecutable.split('/').join('\\')
+      + '" --noprofile --norc -c "eval $\'' + hex + '\'"';
+    const command = pty ? 'call ' + invocation : invocation;
+    if (command.length > 8000) throw new Error('Native CMD command exceeds the qualified 8000 character bound.');
+    return command;
   }
 
   ready(): Promise<string> {
@@ -214,6 +248,6 @@ export class NativeWindowsHostCli {
       throw new Error('Native attach requires a session UUID or its eight-character prefix.');
     }
     // Windows OpenSSH re-splits the command; the outer pair preserves the Bash script.
-    return `"${this.core.buildAttachCommand(id)}"`;
+    return this.command(this.core.buildAttachCommand(id), true);
   }
 }
