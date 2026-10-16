@@ -549,8 +549,11 @@ describe('isShortcut — the shape every call site becomes', () => {
   });
 
   it('follows a rebinding without the call site being rebuilt', () => {
-    const moved = resolveBindings({ 'terminal.copySelection': 'Ctrl+Shift+Y' });
-    expect(isShortcut(moved, 'terminal.copySelection', { key: 'Y', ctrlKey: true, shiftKey: true })).toBe(
+    // Ctrl+Shift+U, not Y: Y is terminal.copyScreen's default now, and an
+    // override colliding with a shipped default is refused wholesale — this
+    // test wants a chord nothing else holds.
+    const moved = resolveBindings({ 'terminal.copySelection': 'Ctrl+Shift+U' });
+    expect(isShortcut(moved, 'terminal.copySelection', { key: 'U', ctrlKey: true, shiftKey: true })).toBe(
       true,
     );
     expect(isShortcut(moved, 'terminal.copySelection', { key: 'C', ctrlKey: true, shiftKey: true })).toBe(
