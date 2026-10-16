@@ -8,7 +8,16 @@ export interface NativeTreeSnapshot {
 }
 
 /** Main-provisioned policy, never accepted from renderer connection payloads. */
-export interface NativeWindowsHostCliPolicy { executable: string }
+export interface NativeCmdGitBashTransport {
+  kind: 'cmd-git-bash';
+  executable: string;
+  /** Out-of-band provisioning custody receipt; never supplied by renderer. */
+  sha256: string;
+}
+export interface NativeWindowsHostCliPolicy {
+  executable: string;
+  shellTransport?: NativeCmdGitBashTransport;
+}
 
 export function normalizeNativeWindowsHostCli(value: unknown): NativeWindowsHostCliPolicy | null {
   if (!value || typeof value !== 'object') return null;
@@ -18,7 +27,26 @@ export function normalizeNativeWindowsHostCli(value: unknown): NativeWindowsHost
   if (typeof executable !== 'string' || [...executable].some((char) => char.charCodeAt(0) < 32)
     || !/^[A-Za-z]:\/(?:[^"'\\$`]+\/)*pocketshell\.exe$/i.test(executable)
     || executable.split('/').some((part) => part === '..' || part === '.')) return null;
-  return { executable };
+  const transport = (value as Record<string, unknown>).shellTransport;
+  if (transport === undefined) return { executable };
+  if (!transport || typeof transport !== 'object' || Array.isArray(transport)) return null;
+  const shell = transport as Record<string, unknown>;
+  if (shell.kind !== 'cmd-git-bash' || typeof shell.executable !== 'string'
+    || !/^[A-Za-z]:\/(?:[^"'\\$`%!:&|<>^()]+\/)*bash\.exe$/i.test(shell.executable)
+    || [...shell.executable].some((char) => char.charCodeAt(0) < 32)
+    || shell.executable.split('/').some((part) => part === '..' || part === '.')
+    || typeof shell.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(shell.sha256)) return null;
+  return { executable, shellTransport: { kind: 'cmd-git-bash', executable: shell.executable,
+    sha256: shell.sha256.toLowerCase() } };
+}
+
+/** Encode only the Bash script; CMD must never see its percent expansions or metacharacters. */
+export function cmdGitBashCommand(script: string, transport: NativeCmdGitBashTransport): string {
+  if (script.includes('\0')) throw new Error('Native shell script contains an invalid NUL.');
+  const encoded = Array.from(Buffer.from(script, 'utf8'), (byte) => `\\x${byte.toString(16).padStart(2, '0')}`).join('');
+  const command = `"${transport.executable.replace(/\//g, '\\')}" --noprofile --norc -c "eval $'${encoded}'"`;
+  if (command.length > 8191) throw new Error('Native command exceeds the Windows CMD command-line limit.');
+  return command;
 }
 
 type Exec = (command: string, options?: { stdin?: string; timeoutMs?: number }) => Promise<ExecResult>;
@@ -37,11 +65,13 @@ export class NativeWindowsHostCli {
   private qualification?: Promise<string>;
   private capabilities = new Set<string>();
   private treeSnapshots = new WeakSet<NativeTreeSnapshot>();
+  private readonly exec: Exec;
 
-  constructor(readonly policy: NativeWindowsHostCliPolicy, private readonly exec: Exec,
+  constructor(readonly policy: NativeWindowsHostCliPolicy, exec: Exec,
     readonly hostIdentity?: string) {
     this.binary = shellQuote(policy.executable);
-    this.core = new HostCliCore({ exec: (command, timeoutMs) => exec(command, { timeoutMs }) }, this.binary);
+    this.exec = (command, options) => exec(policy.shellTransport ? cmdGitBashCommand(command, policy.shellTransport) : command, options);
+    this.core = new HostCliCore({ exec: (command, timeoutMs) => this.exec(command, { timeoutMs }) }, this.binary);
   }
 
   ready(): Promise<string> {
@@ -209,6 +239,7 @@ export class NativeWindowsHostCli {
       throw new Error('Native attach requires a session UUID or its eight-character prefix.');
     }
     // Windows OpenSSH re-splits the command; the outer pair preserves the Bash script.
-    return `"${this.core.buildAttachCommand(id)}"`;
+    const script = this.core.buildAttachCommand(id);
+    return this.policy.shellTransport ? cmdGitBashCommand(script, this.policy.shellTransport) : `"${script}"`;
   }
 }

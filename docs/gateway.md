@@ -75,3 +75,18 @@ read, including its exact version. A write consumes that snapshot. Conflict JSON
 is a failure even when the CLI exits zero; the caller must read again and merge
 before retrying. Reconciliation invalidates previous snapshots. Legacy callers
 that do not retain a snapshot still refuse native tree writes.
+
+For an endpoint whose OpenSSH default shell is CMD, main can additionally
+provision `nativeWindowsCli.shellTransport` with `kind: "cmd-git-bash"`, the
+verified absolute `bash.exe` path and its 64-character hexadecimal `sha256`
+custody receipt. Provisioning verifies the remote file independently; this
+metadata does not attest the file itself. Unsupported kinds, relative paths,
+CMD metacharacters in the Bash executable path and missing digests omit the
+registration.
+
+This transport invokes the provisioned Bash with `--noprofile --norc` for each
+command. The Bash script crosses CMD as hexadecimal UTF-8 bytes, preserving
+literal percent signs, quotes and Unicode in CLI arguments without modifying
+the endpoint's default shell or global PATH. Commands containing NUL or exceeding
+the CMD limit refuse explicitly. Both non-PTY stdin/EOF and PTY session operations
+must be qualified on the actual endpoint before provisioning this opt-in.
