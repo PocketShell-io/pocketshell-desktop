@@ -175,10 +175,12 @@ const VALID_LINK = { relayUrl: 'wss://relay.example:8765', hostId: 'nat-box' };
 
 const REFUSED: Array<[string, Record<string, unknown>, string]> = [
   ['unenrolled gateway', { gateway: VALID_GATEWAY }, 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.'],
-  ['null gateway', { gateway: null }, transportRefusalMessage('gateway-invalid', null)],
-  ['malformed gateway', { gateway: 'wss://surprise' }, transportRefusalMessage('gateway-invalid', null)],
-  ['link + gateway', { link: VALID_LINK, gateway: VALID_GATEWAY }, transportRefusalMessage('link-and-gateway', null)],
-  ['link alone', { link: VALID_LINK }, transportRefusalMessage('link-unsupported', null)],
+  // Core's shared store sends HostEntry.name as hostAlias on every dial, so
+  // the refusal names the host rather than the bare "This host".
+  ['null gateway', { gateway: null }, transportRefusalMessage('gateway-invalid', 'gw-box')],
+  ['malformed gateway', { gateway: 'wss://surprise' }, transportRefusalMessage('gateway-invalid', 'gw-box')],
+  ['link + gateway', { link: VALID_LINK, gateway: VALID_GATEWAY }, transportRefusalMessage('link-and-gateway', 'gw-box')],
+  ['link alone', { link: VALID_LINK }, transportRefusalMessage('link-unsupported', 'gw-box')],
 ];
 
 describe('desktop#8: the ssh:connect boundary refuses invalid/unenrolled gateway and link hosts', () => {
