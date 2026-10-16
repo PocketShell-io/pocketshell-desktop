@@ -71,6 +71,10 @@ vi.mock('@xterm/xterm', () => ({
       },
     };
     unicode = { activeVersion: '6', register: (): void => {} };
+    // The capture chords read the pane's buffer (terminalCapture.ts). An empty
+    // one keeps copyToClipboard's empty guard between the chord and the
+    // clipboard, so a capture here stays a routing fact, not an I/O fact.
+    buffer = { active: { viewportY: 0, length: 0, getLine: () => undefined } };
     attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean): void {
       customKeyHandler = fn;
     }
@@ -296,10 +300,17 @@ describe('pane-local prefix ownership controls', () => {
     expect(wrapper.emitted('typed')).toEqual([['d']]);
   });
 
-  it('Shift Ctrl-B arms the same suffix ownership', async () => {
-    await nativePane();
-    expect(customKeyHandler!(keydown('B', { ctrlKey: true, shiftKey: true }))).toBe(true);
-    expect(customKeyHandler!(keydown('d'))).toBe(true);
+  it('Shift Ctrl-B is the buffer capture now, and arms no prefix', async () => {
+    const { wrapper } = await nativePane();
+    // The chord is ours: cancelled, never delivered to the shell, and the
+    // pane-as-text capture rides out through the clipboard path.
+    const e = keydown('B', { ctrlKey: true, shiftKey: true });
+    expect(customKeyHandler!(e)).toBe(false);
+    expect(e.defaultPrevented).toBe(true);
+    // And it owns its key alone — nothing is armed, so the next key types
+    // through the composer exactly as it would without any prefix.
+    composerKey('d');
+    expect(wrapper.emitted('typed')).toEqual([['d']]);
   });
 
   it.each([{ altKey: true }, { metaKey: true }, { isComposing: true }, { repeat: true }])(
