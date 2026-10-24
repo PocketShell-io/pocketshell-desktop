@@ -4,6 +4,8 @@
 
 <h1 align="center">PocketShell Desktop</h1>
 
+See [SCOPE.md](SCOPE.md) for ownership and product boundaries.
+
 <p align="center">
   A keyboard-first SSH client for the dev box you already use.<br>
   Real terminals. Live aplexer sessions. The agents running inside them.
