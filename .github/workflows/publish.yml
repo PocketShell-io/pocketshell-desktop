@@ -8,11 +8,14 @@
 # so the pipeline itself is exercised continuously and a release tag never
 # triggers it for the first time.
 #
-# PRs run both jobs too: typecheck/lint/unit on the build
-# matrix, and the smoke gate's full unit + integration + E2E pass against the
-# Docker fixtures — so a PR cannot merge with a red E2E (pair this with
-# branch protection requiring the checks). The release job is gated on the tag
-# ref and never fires for a PR.
+# PRs run a fast subset only: the ubuntu build leg (typecheck/lint/unit plus
+# the Linux installer compile) as the merge signal. The windows/macos build
+# legs and the Docker-backed smoke gate are main/tag-only: macOS bills at 10x
+# and the PR legs burned ~1,710 billable-equiv min/30d with no extra signal
+# over the ubuntu leg (branch `main` is not under branch protection, so the
+# skipped smoke check blocks nothing). Pushes to main and v* tags keep the
+# full 3-OS matrix, the smoke gate, and the draft-release job unchanged.
+# The release job is gated on the tag ref and never fires for a PR.
 name: publish
 
 on:
@@ -38,6 +41,9 @@ concurrency:
 jobs:
   build:
     name: Build installers (${{ matrix.os }})
+    # Full 3-OS matrix on push-to-main, tags and dispatch only; PRs use the
+    # build-pr job below instead. Skipped jobs never take a runner (0 minutes).
+    if: ${{ github.event_name != 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
@@ -141,8 +147,71 @@ jobs:
             release/*.zip
             release/latest*.yml
 
+  # PR-only fast signal: the ubuntu leg of build (same steps, single runner).
+  # Keeps PRs on typecheck/lint/unit plus the Linux installer compile while
+  # the windows/macos legs and the smoke gate stay main/tag-only. Intentional
+  # duplication with build above (no matrix context allowed in jobs.if, so one
+  # job cannot cover both cases); keep the step lists in sync.
+  build-pr:
+    name: Build installers (ubuntu-latest)
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - uses: actions/checkout@v7
+        with:
+          repository: PocketShell-io/pocketshell-core
+          ref: 8e0c75e15441e3773a83ca429fb25d92aac446c9
+          path: pocketshell-core
+          persist-credentials: false
+      - name: Stage and build @pocketshell/core (file sibling)
+        shell: bash
+        run: |
+          mv "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
+          cd "$GITHUB_WORKSPACE/../pocketshell-core"
+          npm ci && npm run build
+          rm -rf node_modules .git tests
+          npm ci --prefix packages/ui --no-fund --no-audit
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run build
+      - run: rm -rf "$GITHUB_WORKSPACE/../pocketshell-core/packages/ui/node_modules"
+        shell: bash
+      - run: npx electron-builder --publish never
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-ubuntu-latest
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            release/*.blockmap
+            release/*.AppImage
+            release/*.deb
+            release/*.dmg
+            release/*.zip
+            release/latest*.yml
+
   smoke:
     name: Smoke gate (Docker-backed)
+    # Main/tag-only: the full Docker E2E pass stays on push-to-main and tags.
+    # PRs skip it; the ubuntu build leg is the PR signal instead.
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -263,8 +332,8 @@ jobs:
     needs: [build, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The only job that talks to GitHub Releases; build and smoke — which run
-    # on every PR — inherit the workflow's read-only default.
+    # The only job that talks to GitHub Releases; every other job inherits
+    # the workflow's read-only default.
     permissions:
       contents: write
     steps:
