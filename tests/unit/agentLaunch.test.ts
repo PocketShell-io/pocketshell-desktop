@@ -383,7 +383,7 @@ describe('the picker surface', () => {
 
   it('labels grok in the same title case as the rest', () => {
     expect(KIND_LABELS).toEqual({
-      claude: 'Claude Code',
+      claude: 'Claude',
       codex: 'Codex',
       opencode: 'OpenCode',
       grok: 'Grok',

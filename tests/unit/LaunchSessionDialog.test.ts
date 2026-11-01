@@ -190,7 +190,7 @@ describe('the Grok gate', () => {
     expect(grok!.classes()).toContain('unavailable');
     expect(grok!.attributes('title')).toMatch(/too old to start Grok/);
     // The engines the pinned helper does have are not dimmed with it.
-    expect(segment(wrapper, 'Claude Code')!.classes()).not.toContain('unavailable');
+    expect(segment(wrapper, 'Claude')!.classes()).not.toContain('unavailable');
   });
 
   it('refuses to create anything when Grok is picked on a 0.4.44 host', async () => {
@@ -213,7 +213,7 @@ describe('the Grok gate', () => {
     const codex = segment(wrapper, 'Codex');
     expect(codex!.classes()).toContain('unavailable');
     expect(codex!.attributes('title')).toMatch(/no `codex` on its PATH/);
-    expect(segment(wrapper, 'Claude Code')!.classes()).not.toContain('unavailable');
+    expect(segment(wrapper, 'Claude')!.classes()).not.toContain('unavailable');
     await click(wrapper, 'Codex');
     expect(wrapper.text()).toMatch(/install the Codex CLI first/);
     expect(createButton(wrapper).attributes('disabled')).toBeDefined();
@@ -224,7 +224,7 @@ describe('the Grok gate', () => {
   it('dims every engine when pocketshell itself is missing from PATH', async () => {
     binaries.mockResolvedValue(['claude', 'codex']);
     const wrapper = await open();
-    for (const label of ['Claude Code', 'Codex', 'Grok']) {
+    for (const label of ['Claude', 'Codex', 'Grok']) {
       expect(segment(wrapper, label)!.classes()).toContain('unavailable');
       expect(segment(wrapper, label)!.attributes('title')).toMatch(
         /no `pocketshell` on its PATH/,
@@ -278,7 +278,7 @@ describe('the Grok gate', () => {
     // The asymmetry: unknown means no for grok, yes for the baseline three.
     kinds.mockRejectedValue(new Error('ssh channel closed'));
     const wrapper = await open();
-    expect(segment(wrapper, 'Claude Code')!.classes()).not.toContain('unavailable');
+    expect(segment(wrapper, 'Claude')!.classes()).not.toContain('unavailable');
     await click(wrapper, 'Codex');
     expect(createButton(wrapper).attributes('disabled')).toBeUndefined();
     await click(wrapper, 'Create session');
@@ -384,7 +384,7 @@ describe('a host that has no profiles to offer', () => {
   it('says so, and still launches on the engine default', async () => {
     profiles.mockResolvedValue([]);
     const wrapper = await open();
-    expect(wrapper.text()).toMatch(/no Claude Code profiles configured/);
+    expect(wrapper.text()).toMatch(/no Claude profiles configured/);
     await click(wrapper, 'Create session');
     expect(confirmed(wrapper)).toMatchObject({ profile: null });
   });
