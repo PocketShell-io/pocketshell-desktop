@@ -101,14 +101,15 @@ jobs:
           mv "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
           cd "$GITHUB_WORKSPACE/../pocketshell-core"
           npm ci && npm run build
-          # Cut the tree back to what the published package would carry
-          # ("files": ["dist"] — core has zero runtime dependencies).
+          # Cut the tree back to the built package plus production deps only.
           # electron-builder follows the app's symlink into this whole
           # directory: its macOS lane node-gyp-rebuilds the devDeps it finds
           # there and dies on ssh2's optional cpu-features (the runner
           # python ships no distutils), and tests/.git would only bloat the
-          # asar. Nothing past this line needs any of it.
+          # asar. Reinstall production deps only: source imports resolve from
+          # this sibling checkout, so its runtime packages must remain here.
           rm -rf node_modules .git tests
+          npm ci --omit=dev
           # The shared interface package (@pocketshell/ui) rides in the core
           # sibling: desktop's renderer bundles its .vue/.ts straight from
           # packages/ui/src, so vue and the compiler toolchain must resolve
@@ -183,6 +184,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/../pocketshell-core"
           npm ci && npm run build
           rm -rf node_modules .git tests
+          npm ci --omit=dev
           npm ci --prefix packages/ui --no-fund --no-audit
       - run: npm ci
       - run: npm run typecheck
@@ -257,14 +259,15 @@ jobs:
           mv "$GITHUB_WORKSPACE/pocketshell-core" "$GITHUB_WORKSPACE/../pocketshell-core"
           cd "$GITHUB_WORKSPACE/../pocketshell-core"
           npm ci && npm run build
-          # Cut the tree back to what the published package would carry
-          # ("files": ["dist"] — core has zero runtime dependencies).
+          # Cut the tree back to the built package plus production deps only.
           # electron-builder follows the app's symlink into this whole
           # directory: its macOS lane node-gyp-rebuilds the devDeps it finds
           # there and dies on ssh2's optional cpu-features (the runner
           # python ships no distutils), and tests/.git would only bloat the
-          # asar. Nothing past this line needs any of it.
+          # asar. Reinstall production deps only: source imports resolve from
+          # this sibling checkout, so its runtime packages must remain here.
           rm -rf node_modules .git tests
+          npm ci --omit=dev
           # The shared interface package (@pocketshell/ui) rides in the core
           # sibling: desktop's renderer bundles its .vue/.ts straight from
           # packages/ui/src, so vue and the compiler toolchain must resolve
