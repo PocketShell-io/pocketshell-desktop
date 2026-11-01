@@ -240,6 +240,22 @@ class LocalPtyChannel {
   private readonly dataListeners = new Set<(chunk: Buffer) => void>();
   private readonly closeListeners = new Set<(exitCode?: number) => void>();
   private exited = false;
+  /**
+   * True once `proc.kill()` has been sent — set synchronously, unlike
+   * {@link exited}, which waits for the exit-watcher's callback.
+   *
+   * The gate is load-bearing. node-pty's Windows ConPTY kill is not
+   * idempotent (microsoft/node-pty#983): PtyKill closes the pseudo-console
+   * but leaves the record in place until the exit-watcher thread reaps it,
+   * so a second kill — or a resize — inside that window uses the freed
+   * structure and corrupts the process heap (0xc0000374, ~1s later, taking
+   * the whole app down). This channel is exactly the caller that provokes
+   * it: `SshService.shellClose` calls `end()` and then `close()`, which
+   * both used to reach `proc.kill()`. Eight app deaths in a month traced to
+   * this — every one within a second of a local shell open, the faulting
+   * thread's stack in ntdll's heap code with conpty.node state on it.
+   */
+  private killed = false;
 
   constructor(private readonly proc: import('@lydell/node-pty').IPty) {
     proc.onData((chunk) => {
@@ -278,6 +294,11 @@ class LocalPtyChannel {
 
   /** ssh2's argument order; the pixel sizes are meaningless to a local PTY. */
   setWindow(rows: number, cols: number, _height: number, _width: number): void {
+    // A resize that lands after the kill (same freed-record window as the
+    // second kill — PtyResize reads the same record) is how the corruption
+    // fires without a second close; skip it. The catch stays for a child
+    // that died on its own between the check and the call.
+    if (this.killed || this.exited) return;
     try {
       this.proc.resize(cols, rows);
     } catch {
@@ -294,7 +315,12 @@ class LocalPtyChannel {
   }
 
   private kill(): void {
-    if (this.exited) return;
+    // One kill per channel, ever. `exited` alone cannot provide this: it is
+    // set from the exit-watcher's callback, which lands a beat after the
+    // kill itself — the exact beat in which node-pty's second PtyKill frees
+    // what the first one closed (see the {@link killed} note).
+    if (this.exited || this.killed) return;
+    this.killed = true;
     try {
       this.proc.kill();
     } catch {

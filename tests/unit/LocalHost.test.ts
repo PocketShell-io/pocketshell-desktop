@@ -132,6 +132,63 @@ describe('SshService — a local dial', () => {
     ssh.close(connectionId);
   });
 
+  it.skipIf(process.platform !== 'win32')('sends exactly one kill when a shell is closed', async () => {
+    // node-pty's Windows ConPTY kill is not idempotent
+    // (microsoft/node-pty#983): the second PtyKill before the exit-watcher
+    // reaps the record closes the pseudo-console twice and corrupts the
+    // heap — 0xc0000374, the app dead ~1s later. shellClose's shape
+    // (`end(); close();`) used to do exactly that on every tab close. The
+    // channel must gate the kill to one, so close both ways and count.
+    const ssh = new SshService();
+    const result = await ssh.connect({ host: 'self', user: 'me', local: true });
+    const connectionId = result.ok && result.connectionId ? result.connectionId : '';
+    const nativePty = createRequire(import.meta.url)('@lydell/node-pty') as typeof import('@lydell/node-pty');
+    const originalSpawn = nativePty.spawn;
+    let killCalls = 0;
+    const spawn = vi.spyOn(nativePty, 'spawn').mockImplementationOnce((file, args, options) => {
+      const proc = originalSpawn(file, args, options);
+      const originalKill = proc.kill.bind(proc);
+      // An own property, so it shadows the prototype's kill for the
+      // channel's `proc.kill()` calls without touching the class.
+      Object.defineProperty(proc, 'kill', {
+        value: (signal?: string) => {
+          killCalls += 1;
+          return originalKill(signal);
+        },
+      });
+      return proc;
+    });
+    // The id only exists once the open resolves; the exit callback and the
+    // close call both need it, so it travels through this holder.
+    const shell: { id: string } = { id: '' };
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('killed PTY never exited in 15s')), 15_000);
+      void ssh
+        .openTrackedShell(connectionId, {
+          command: 'sleep 30',
+          commandMode: 'exec',
+          cols: 100,
+          rows: 30,
+          onData: () => {},
+          onExit: (code) => {
+            clearTimeout(timer);
+            resolve(code);
+          },
+        })
+        .then((id) => {
+          // The child is alive under the PTY; closing must kill it once —
+          // not once per channel method — and the exit still arrives.
+          shell.id = id;
+          ssh.shellClose(id);
+        })
+        .catch(reject);
+    });
+    spawn.mockRestore();
+    expect(killCalls).toBe(1);
+    expect(exitCode).not.toBe(0);
+    ssh.close(connectionId);
+  }, 20_000);
+
   it.skipIf(process.platform !== 'win32')('opens the chosen PowerShell for a bare terminal and accepts input at its prompt', async () => {
     const ssh = new SshService();
     const result = await ssh.connect({ host: 'self', user: 'me', local: true });
