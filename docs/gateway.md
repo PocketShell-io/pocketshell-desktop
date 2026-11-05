@@ -10,9 +10,40 @@ the trusted PocketShell sync broker's `POST /gateway/token`. Only the resulting
 scoped, short-lived gateway JWT reaches the gateway; the Google token never does.
 There is no fallback to direct TCP when a gateway target is malformed or offline.
 
-Provision `gateway-hosts.json` in Electron's `userData` directory (development on
-Windows: `%APPDATA%/pocketshell-desktop/gateway-hosts.json`). Its array entries are
-local enrollments, not a synced source of host trust:
+## Pairing a device through the UI
+
+With the account signed in, the host picker lists the account's enrolled
+gateway devices with their last authoritative presence, exactly as the gateway
+reports it — nothing probes a device. "Add a device" pairs one: give it a
+display name and the SSH user, paste the host-key trust (`pocketshell gateway
+show --host-key` on the host, the `pocketshell-link show` line, or a
+`SHA256:` fingerprint), and pick the SSH client key the host must accept.
+
+Client keys come from two places: the existing public keys in `~/.ssh` that
+have a private half beside them, and keys generated on request — an ed25519
+pair whose private half stays a `0600` file under the app's `userData`
+(`gateway-keys/`), registered in `gateway-keys.json`. Only public halves ever
+cross the process bridge.
+
+Pairing writes the enrollment record into `gateway-hosts.json` (below) with
+the chosen key's path as the `identityFile` — the same field the dial path
+has always loaded — and stamps it with the signed-in account, so the pairings
+list follows the account. Re-pairing the same device on the same gateway
+replaces the record. The device list is only ever asked of the pinned gateway
+origin (`GATEWAY_DEFAULT_SERVER_URL`); every other origin is refused before a
+fetch, the same posture the token exchange takes toward any other broker.
+
+A failed gateway dial is classified through core's dial matrix, and the
+picker offers the matching next step — sign in, pair, reconnect as the
+current account, or "the host is offline".
+
+## Hand-provisioning (manual alternative)
+
+`gateway-hosts.json` in Electron's `userData` directory (development on
+Windows: `%APPDATA%/pocketshell-desktop/gateway-hosts.json`) remains the
+source of dial trust, and the UI pairing is simply a first-class writer of
+it. Its array entries are local enrollments, not a synced source of host
+trust:
 
 ```json
 [
@@ -34,7 +65,10 @@ state. The gateway's ready-frame key is advisory and is never accepted as a pin.
 Invalid registrations are omitted; absent or mismatched pins refuse connections
 before user authentication. Entries appear in Desktop's host picker after a
 refresh or restart. The client requires WSS; plaintext WS is only available to
-transport tests with explicit development opt-in.
+transport tests with explicit development opt-in. An enrollment file that does
+not parse as an array is never overwritten — neither by hand nor by the UI —
+so provisioned trust cannot be silently lost. Hand-provisioned entries (no
+account stamp) dial but are nobody's pairing in the UI.
 
 For a Windows endpoint provisioned with the reviewed native CLI, main's local
 registration may additionally contain `nativeWindowsCli: { "executable":
