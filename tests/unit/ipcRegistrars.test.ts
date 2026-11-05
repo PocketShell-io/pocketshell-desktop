@@ -129,6 +129,7 @@ const ctx = {
   preview: preview as never,
   syncAuth: syncAuth as never,
   sync: sync as never,
+  gateway: { devices: vi.fn(async () => []) } as never,
   openAccountWindow: vi.fn(),
   openWorkspaceWindow: vi.fn(),
   getWindows,

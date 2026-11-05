@@ -9,6 +9,7 @@ import type { ProjectsService } from '../projects/ProjectsService.js';
 import type { HtmlPreviewService } from '../preview/HtmlPreviewService.js';
 import type { GoogleAuth } from '../sync/GoogleAuth.js';
 import type { SyncService } from '../sync/SyncService.js';
+import type { GatewayDirectory } from '../sync/GatewayDirectory.js';
 import type { AttachmentStager } from '../attachments/AttachmentStager.js';
 import type { LocalFileReader } from '../attachments/LocalFileReader.js';
 
@@ -34,6 +35,8 @@ export interface IpcContext {
   syncAuth: GoogleAuth;
   /** The sync API client, speaking encrypted envelopes. */
   sync: SyncService;
+  /** The gateway device-list client; its token authority is `sync`. */
+  gateway: GatewayDirectory;
   /** Open or focus the separate Account & sync window. */
   openAccountWindow: () => void;
   /**

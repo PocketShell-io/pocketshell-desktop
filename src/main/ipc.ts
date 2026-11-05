@@ -10,6 +10,7 @@ import { ProjectsService } from './projects/ProjectsService.js';
 import { HtmlPreviewService } from './preview/HtmlPreviewService.js';
 import { GoogleAuth } from './sync/GoogleAuth.js';
 import { SyncService } from './sync/SyncService.js';
+import { GatewayDirectory } from './sync/GatewayDirectory.js';
 import { AttachmentStager } from './attachments/AttachmentStager.js';
 import { LocalFileReader } from './attachments/LocalFileReader.js';
 import type { IpcContext } from './ipc/context.js';
@@ -21,6 +22,7 @@ import { registerSftpIpc } from './ipc/sftpIpc.js';
 import { registerPortsIpc } from './ipc/portsIpc.js';
 import { registerPreviewIpc } from './ipc/previewIpc.js';
 import { registerSyncIpc } from './ipc/syncIpc.js';
+import { registerGatewayIpc } from './ipc/gatewayIpc.js';
 import { registerWorkspacesIpc } from './ipc/workspacesIpc.js';
 
 /**
@@ -80,6 +82,9 @@ export function registerIpcHandlers(deps: {
   // hosts where tmuxctl puts every session on its own server.
   const tmuxClients = new TmuxClientPool(ssh, helper);
 
+  // The gateway device list, authorized by the routing token `sync` mints.
+  const gateway = new GatewayDirectory({ sync });
+
   const broadcast = (channel: string, payload: unknown): void => {
     for (const win of getWindows()) {
       if (!win.isDestroyed()) win.webContents.send(channel, payload);
@@ -117,6 +122,7 @@ export function registerIpcHandlers(deps: {
     preview,
     syncAuth,
     sync,
+    gateway,
     openAccountWindow,
     openWorkspaceWindow,
     getWindows,
@@ -134,5 +140,6 @@ export function registerIpcHandlers(deps: {
   registerPortsIpc(ctx);
   registerPreviewIpc(ctx);
   registerSyncIpc(ctx);
+  registerGatewayIpc(ctx);
   registerWorkspacesIpc(ctx);
 }

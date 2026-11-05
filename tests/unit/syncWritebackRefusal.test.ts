@@ -124,18 +124,18 @@ async function tapConfigRow(name: string): Promise<unknown> {
 const VALID_GATEWAY = { serverUrl: 'wss://gateway.pocketshell.io', deviceId: 'dev-123' };
 const VALID_LINK = { relayUrl: 'wss://relay.example:8765', hostId: 'nat-box' };
 
-const MARKED: Array<[string, Record<string, unknown>, TransportRefusalReason, string]> = [
-  ['valid link', { link: VALID_LINK }, 'link-unsupported', transportRefusalMessage('link-unsupported', null)],
-  ['null link', { link: null }, 'link-unsupported', transportRefusalMessage('link-unsupported', null)],
-  ['malformed link', { link: 'wss://relay' }, 'link-unsupported', transportRefusalMessage('link-unsupported', null)],
-  ['valid gateway', { gateway: VALID_GATEWAY }, 'gateway-unsupported', 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.'],
-  ['null gateway', { gateway: null }, 'gateway-unsupported', transportRefusalMessage('gateway-invalid', null)],
-  ['malformed gateway', { gateway: 'wss://surprise' }, 'gateway-unsupported', transportRefusalMessage('gateway-invalid', null)],
-  ['link + gateway', { link: VALID_LINK, gateway: VALID_GATEWAY }, 'gateway-unsupported', transportRefusalMessage('link-and-gateway', null)],
+const MARKED: Array<[string, Record<string, unknown>, TransportRefusalReason, string, Record<string, unknown> | null]> = [
+  ['valid link', { link: VALID_LINK }, 'link-unsupported', transportRefusalMessage('link-unsupported', null), null],
+  ['null link', { link: null }, 'link-unsupported', transportRefusalMessage('link-unsupported', null), null],
+  ['malformed link', { link: 'wss://relay' }, 'link-unsupported', transportRefusalMessage('link-unsupported', null), null],
+  ['valid gateway', { gateway: VALID_GATEWAY }, 'gateway-unsupported', 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.', { gatewayFailureKind: 'pairing_required' }],
+  ['null gateway', { gateway: null }, 'gateway-unsupported', transportRefusalMessage('gateway-invalid', null), null],
+  ['malformed gateway', { gateway: 'wss://surprise' }, 'gateway-unsupported', transportRefusalMessage('gateway-invalid', null), null],
+  ['link + gateway', { link: VALID_LINK, gateway: VALID_GATEWAY }, 'gateway-unsupported', transportRefusalMessage('link-and-gateway', null), null],
 ];
 
 describe('desktop#8: Sync now never writes a transport-marked host as a plain config block', () => {
-  it.each(MARKED)('%s: refused with core\'s text, nothing written, no socket', async (_l, markers, reason, dialMessage) => {
+  it.each(MARKED)('%s: refused with core\'s text, nothing written, no socket', async (_l, markers, reason, dialMessage, extra) => {
     const ordinary = { name: 'plain-box', hostname: '127.0.0.1', port, user: 'me', identityFile: keyPath };
     await expect(applyHosts([ordinary, accountHost(markers)])).rejects.toThrow(
       new Error(transportRefusalMessage(reason, 'nat-box')),
@@ -148,7 +148,7 @@ describe('desktop#8: Sync now never writes a transport-marked host as a plain co
     // build validates/enrolls gateway targets, while config can encode neither transport.
     const tap = await connect({ host: '127.0.0.1', port, user: 'me', privateKeyPath: keyPath, ...markers });
     await new Promise((r) => setTimeout(r, 300));
-    expect(tap).toEqual({ ok: false, error: dialMessage });
+    expect(tap).toEqual({ ok: false, error: dialMessage, ...(extra ?? {}) });
     expect(accepted).toBe(0);
   });
 

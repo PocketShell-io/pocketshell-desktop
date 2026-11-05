@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron';
 import { ipc } from '../shared/channels.js';
+import { GATEWAY_DEFAULT_SERVER_URL } from '@pocketshell/core';
 import type { GeometryProbe, UpdateCheckResult } from '@pocketshell/core';
+import type { GatewayAddDeviceRequest, GatewayAddDeviceResult, GatewayClientKey, GatewayDevice, GatewayPairingSummary } from '@pocketshell/core';
 import type { SyncApplyResult, SyncPullResult, SyncPushResult, SyncStatus } from '@pocketshell/core';
 import type { ZoomCommand } from '../shared/zoomKeys.js';
 import type {
@@ -833,6 +835,31 @@ const api = {
     /** Append hosts missing from ~/.ssh/config; returns the aliases added. */
     applyHosts: (hosts: HostEntry[]): Promise<SyncApplyResult> =>
       ipcRenderer.invoke(ipc.sync.applyHosts, hosts),
+  },
+  /**
+   * The gateway directory (PocketShellApi['gateway']). Its PRESENCE is the
+   * capability: the shared tree probes the group (gatewayCapability) and
+   * only then shows the picker's device source. Routing tokens and host-key
+   * pins never cross here — `pairings` answers summaries, `addDevice` takes
+   * the user's pasted pin, and the private half of every client key stays in
+   * main.
+   */
+  gateway: {
+    /** The gateway desktop lists devices on and pairs against. */
+    defaultServerUrl: GATEWAY_DEFAULT_SERVER_URL,
+    /** The account's devices, from the gateway's own last list — never a probe. */
+    devices: (serverUrl: string): Promise<GatewayDevice[]> =>
+      ipcRenderer.invoke(ipc.gateway.devices, serverUrl),
+    /** This desktop's saved pairings for the signed-in account. */
+    pairings: (): Promise<GatewayPairingSummary[]> => ipcRenderer.invoke(ipc.gateway.pairings),
+    /** Keys a pairing can pin: existing ~/.ssh keys and PocketShell-generated ones. */
+    clientKeys: (): Promise<GatewayClientKey[]> => ipcRenderer.invoke(ipc.gateway.clientKeys),
+    /** Generate an ed25519 pair; the private half stays in main. */
+    createClientKey: (label: string): Promise<GatewayClientKey> =>
+      ipcRenderer.invoke(ipc.gateway.createClientKey, label),
+    /** Write the enrollment (host marker + pasted pin + chosen key) and return the pairing. */
+    addDevice: (request: GatewayAddDeviceRequest): Promise<GatewayAddDeviceResult> =>
+      ipcRenderer.invoke(ipc.gateway.addDevice, request),
   },
 } as const;
 
