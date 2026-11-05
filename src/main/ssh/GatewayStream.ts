@@ -4,11 +4,28 @@ import {
   buildGatewayAuthFrame,
   classifyGatewayClose,
   gatewaySshUrl,
+  GATEWAY_CLOSED_ERROR_CODE,
   GATEWAY_HANDSHAKE_TIMEOUT_MS,
   GATEWAY_MAX_WS_MESSAGE_BYTES,
+  isGatewayVerdictCloseCode,
   parseGatewayHandshakeFrame,
   type GatewayTransportTarget,
 } from '@pocketshell/core';
+
+/**
+ * A handshake close the gateway meant as a verdict (an application close
+ * code, 4000–4999). The close code rides the error so the dial's IPC layer
+ * can classify it through core's one matrix (classifyGatewayDialFailure)
+ * without re-deriving it from prose.
+ */
+export type GatewayVerdictError = Error & { code: typeof GATEWAY_CLOSED_ERROR_CODE; gatewayCloseCode: number };
+
+function gatewayVerdictError(closeCode: number): GatewayVerdictError {
+  return Object.assign(new Error(classifyGatewayClose(closeCode).userMessage), {
+    code: GATEWAY_CLOSED_ERROR_CODE,
+    gatewayCloseCode: closeCode,
+  }) as GatewayVerdictError;
+}
 
 /** Real SSH bytes only; account admission happens before ssh2 sees the stream. */
 export function openGatewayStream(
@@ -48,8 +65,10 @@ export function openGatewayStream(
     socket.on('open', () => socket.send(buildGatewayAuthFrame(token, target.deviceId)));
     socket.on('error', fail);
     socket.on('close', (code) => {
-      if (!settled) fail(new Error(classifyGatewayClose(code).userMessage));
-      else { stream.push(null); stream.destroy(); }
+      if (!settled) {
+        if (isGatewayVerdictCloseCode(code)) fail(gatewayVerdictError(code));
+        else fail(new Error(classifyGatewayClose(code).userMessage));
+      } else { stream.push(null); stream.destroy(); }
     });
     socket.on('message', (data, binary) => {
       const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as Buffer);

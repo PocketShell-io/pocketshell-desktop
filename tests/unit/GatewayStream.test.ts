@@ -4,6 +4,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { openGatewayStream } from '../../src/main/ssh/GatewayStream';
+import { classifyGatewayDialFailure } from '@pocketshell/core';
 
 const servers: WebSocketServer[] = [];
 afterEach(async () => {
@@ -74,5 +75,26 @@ describe('gateway stream', () => {
     const { server, target } = await gateway();
     server.on('connection', (peer) => peer.on('message', () => peer.close(4503)));
     await expect(openGatewayStream(target, 'test', { allowInsecureWs: true })).rejects.toThrow('not connected');
+  });
+
+  it.each([
+    [4503, 'not connected', 'host_offline'],
+    [4401, 'sign-in expired', 'unauthorized'],
+  ])('codes a %i verdict close with its close code so the dial matrix can read it', async (closeCode, messagePart, kind) => {
+    const { server, target } = await gateway();
+    server.on('connection', (peer) => peer.on('message', () => peer.close(closeCode)));
+    const error = await openGatewayStream(target, 'test', { allowInsecureWs: true }).catch((e: unknown) => e) as Error & { code?: string; gatewayCloseCode?: number };
+    expect(error.message).toContain(messagePart);
+    expect(error.code).toBe('GATEWAY_CLOSED');
+    expect(error.gatewayCloseCode).toBe(closeCode);
+    expect(classifyGatewayDialFailure(error.code!, { gatewayCloseCode: error.gatewayCloseCode })?.kind).toBe(kind);
+  });
+
+  it('leaves an anonymous close uncoded', async () => {
+    const { server, target } = await gateway();
+    server.on('connection', (peer) => peer.on('message', () => peer.close(1011)));
+    const error = await openGatewayStream(target, 'test', { allowInsecureWs: true }).catch((e: unknown) => e) as Error & { code?: string };
+    expect(error.message).toContain('closed before it was ready');
+    expect(error.code).toBeUndefined();
   });
 });

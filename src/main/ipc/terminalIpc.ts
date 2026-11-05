@@ -2,13 +2,37 @@ import type { IpcContext } from './context.js';
 import { ipcMain, app } from 'electron';
 import { join } from 'node:path';
 import { ipc } from '../../shared/channels.js';
-import { unsupportedTransport, type HostEntry } from '@pocketshell/core';
+import {
+  classifyGatewayDialFailure,
+  GATEWAY_CLOSED_ERROR_CODE,
+  normalizeGatewayTarget,
+  unsupportedTransport,
+  type GatewayDialFailure,
+  type HostEntry,
+} from '@pocketshell/core';
 import { readSshConfig } from '../ssh-config/SshConfigParser.js';
 import { KnownHosts } from '../ssh-config/KnownHosts.js';
 import { withSelfEntry } from '../local/LocalHost.js';
-import { normalizeGatewayTarget } from '@pocketshell/core';
 import { readGatewayHosts } from '../ssh/GatewayHosts.js';
 import { openGatewayStream } from '../ssh/GatewayStream.js';
+import { NotSignedInError } from '../sync/GoogleAuth.js';
+
+/**
+ * The error a gateway dial threw, read through core's one dial matrix. A
+ * verdict close arrives coded by GatewayStream (GATEWAY_CLOSED + the close
+ * code); being signed out is this platform's NOT_SIGNED_IN refusal; anything
+ * else the matrix does not know keeps the generic message with no kind.
+ */
+function gatewayDialFailure(error: unknown): GatewayDialFailure | null {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === GATEWAY_CLOSED_ERROR_CODE) {
+    return classifyGatewayDialFailure(GATEWAY_CLOSED_ERROR_CODE, {
+      gatewayCloseCode: (error as { gatewayCloseCode?: unknown }).gatewayCloseCode,
+    });
+  }
+  if (error instanceof NotSignedInError) return classifyGatewayDialFailure('NOT_SIGNED_IN', {});
+  return null;
+}
 
 
 export function registerTerminalIpc(ctx: IpcContext): void {
@@ -54,7 +78,15 @@ export function registerTerminalIpc(ctx: IpcContext): void {
         if (!target || payload.local) return { ok: false, error: 'Invalid gateway connection target.' };
         const registration = registrations().find((r) => r.host.gateway?.deviceId === target.deviceId
           && r.host.gateway.serverUrl === target.serverUrl);
-        if (!registration) return { ok: false, error: 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.' };
+        // Core's matrix calls this refusal GATEWAY_UNPAIRED; its kind is what
+        // makes the picker offer "Pair this device" beside the error line.
+        if (!registration) {
+          return {
+            ok: false,
+            error: 'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.',
+            gatewayFailureKind: 'pairing_required',
+          };
+        }
         try {
           const token = await ctx.sync.gatewayToken();
           transport = {
@@ -64,7 +96,12 @@ export function registerTerminalIpc(ctx: IpcContext): void {
             nativeWindowsCliHostIdentity: target.deviceId,
           };
         } catch (error) {
-          return { ok: false, error: `Gateway connection failed: ${(error as Error).message}` };
+          const failure = gatewayDialFailure(error);
+          return {
+            ok: false,
+            error: failure ? failure.userMessage : `Gateway connection failed: ${(error as Error).message}`,
+            ...(failure ? { gatewayFailureKind: failure.kind } : {}),
+          };
         }
       }
       const knownHosts = new KnownHosts();

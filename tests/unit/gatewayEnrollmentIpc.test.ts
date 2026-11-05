@@ -14,6 +14,7 @@ vi.mock('../../src/main/ssh-config/KnownHosts', () => ({ KnownHosts: class { con
 import { registerTerminalIpc } from '../../src/main/ipc/terminalIpc';
 import { ipc } from '../../src/shared/channels';
 import { transportRefusalMessage } from '@pocketshell/core';
+import { NotSignedInError } from '../../src/main/sync/GoogleAuth';
 const gateway = { serverUrl: 'wss://gateway.pocketshell.io', deviceId: 'unit-enrolled-device' };
 const policy: import('../../src/main/helper/NativeWindowsHostCli').NativeWindowsHostCliPolicy = {
   executable: 'C:/Unit/pocketshell.exe', transport:'openssh-cmd-git-bash', deviceId:gateway.deviceId,
@@ -51,9 +52,26 @@ describe('maintained gateway/native and shared refusal IPC coexist', () => {
   it('unregistered device and different origin refuse before broker use',async () => {
     enroll();
     for (const target of [{...gateway,deviceId:'unit-unknown'},{...gateway,serverUrl:'wss://other.example'}]) {
-      await expect(invoke({gateway:target})).resolves.toEqual({ok:false,error:'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.'});
+      await expect(invoke({gateway:target})).resolves.toEqual({ok:false,error:'Enroll this gateway host and its trusted SSH fingerprint on this Desktop first.',gatewayFailureKind:'pairing_required'});
     }
     expect(state.token).not.toHaveBeenCalled();expect(state.knownHosts).not.toHaveBeenCalled();expect(state.connect).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['offline host verdict close', Object.assign(new Error('The host is not connected to the gateway right now — check that its agent is running.'), { code: 'GATEWAY_CLOSED', gatewayCloseCode: 4503 }),
+      { error: 'The host is not connected to the gateway right now — check that its agent is running.', gatewayFailureKind: 'host_offline' }],
+    ['expired sign-in verdict close', Object.assign(new Error('Your sign-in expired — sign in again and retry.'), { code: 'GATEWAY_CLOSED', gatewayCloseCode: 4401 }),
+      { error: 'Your sign-in expired — sign in again and retry.', gatewayFailureKind: 'unauthorized' }],
+    ['signed-out native refusal', new NotSignedInError('not signed in'),
+      { error: 'Sign in to your PocketShell account to connect through the gateway.', gatewayFailureKind: 'sign_in_required' }],
+  ])('%s classifies through core\'s dial matrix',async (_label,thrown,expected) => {
+    enroll();state.stream.mockRejectedValueOnce(thrown);
+    await expect(invoke({gateway})).resolves.toEqual({ok:false,...expected});
+    expect(state.connect).not.toHaveBeenCalled();expect(state.knownHosts).not.toHaveBeenCalled();
+  });
+  it('an unclassified gateway failure keeps the generic message and no kind',async () => {
+    enroll();state.stream.mockRejectedValueOnce(new Error('unit socket exploded'));
+    await expect(invoke({gateway})).resolves.toEqual({ok:false,error:'Gateway connection failed: unit socket exploded'});
+    expect(state.connect).not.toHaveBeenCalled();
   });
   it('local-marked gateway refuses without token/socket fallback',async () => {
     enroll();await expect(invoke({gateway,local:true})).resolves.toEqual({ok:false,error:'Invalid gateway connection target.'});
