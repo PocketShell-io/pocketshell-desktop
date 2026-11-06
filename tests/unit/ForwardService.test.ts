@@ -167,7 +167,11 @@ describe('ForwardService persistence round-trip', () => {
     ssh.scanPorts = [8080];
     const store = new PortfwdStore(new MemoryBackend());
     store.setName('conn-1', 8080, 'dev server');
-    store.setRemap('conn-1', 8080, 9090);
+    // A hard-coded remap target is a real bind: on a machine where the
+    // port is taken (or in a Windows exclusion block) the forward never
+    // appears at all, so the port is allocated, not assumed.
+    const remapTo = await freePort();
+    store.setRemap('conn-1', 8080, remapTo);
     service = makeService(ssh, store);
 
     service.startAuto('conn-1');
@@ -175,7 +179,7 @@ describe('ForwardService persistence round-trip', () => {
 
     const state = service.list('conn-1')[0]!;
     expect(state.name).toBe('dev server');
-    expect(state.listenPort).toBe(9090);
+    expect(state.listenPort).toBe(remapTo);
   });
 
   it('setIntent from a cold panel lazily starts the engine and persists', async () => {
