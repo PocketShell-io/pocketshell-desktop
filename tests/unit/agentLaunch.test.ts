@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  HELPER_BASELINE_KINDS,
-  HELPER_VERSION_WITHOUT_GROK,
   KIND_LABELS,
-  LAUNCHABLE_KINDS,
+  OFFLINE_LAUNCHABLE_KINDS,
   buildLaunchCommand,
   isLaunchableKind,
-  kindNeedsNewerHelper,
+  kindLabel,
   kindUnavailableReason,
+  launchableKindsFor,
   launchBlocker,
+  parseAgentBinaries,
   parseProfileRows,
   profileFlagName,
   profilesFor,
@@ -34,45 +34,15 @@ import {
  * profile / no profile, skip / no skip, and a directory with a space in it.
  */
 const V44 = resolve(__dirname, 'fixtures');
-const readV44 = (name: string): string => readFileSync(resolve(V44, name), 'utf8');
+// Git may check the captures out with CRLF on Windows; the assertions
+// below match the captured LF lines, so normalise on read.
+const CRLF = /\r\n/g;
+const readV44 = (name: string): string =>
+  readFileSync(resolve(V44, name), 'utf8').replace(CRLF, '\n');
 
 describe('the 0.4.44 `pocketshell agent` contract, as captured', () => {
-  const groupHelp = readV44('v0.4.44-agent-help.txt');
   const claudeHelp = readV44('v0.4.44-agent-claude-help.txt');
   const opencodeHelp = readV44('v0.4.44-agent-opencode-help.txt');
-
-  it('lists exactly the three subcommands this app treats as its baseline', () => {
-    // The `Commands:` block of `pocketshell agent --help`.
-    const listed = [...groupHelp.matchAll(/^ {2}(\w+) {2,}Launch/gm)].map((m) => m[1]);
-    expect(listed).toEqual(['claude', 'codex', 'opencode']);
-    // The baseline is the pinned version's list, verbatim. LAUNCHABLE_KINDS is
-    // WIDER — it is what the app can spell, not what this helper accepts — and
-    // the gap between the two is exactly the set that has to be probed for.
-    expect([...HELPER_BASELINE_KINDS]).toEqual(listed);
-    expect([...LAUNCHABLE_KINDS]).toEqual([...listed, 'grok', 'antigravity']);
-    for (const kind of HELPER_BASELINE_KINDS) expect(kindNeedsNewerHelper(kind)).toBe(false);
-    expect(kindNeedsNewerHelper('grok')).toBe(true);
-  });
-
-  it('has no `grok` subcommand, which is what the picker refuses on', () => {
-    expect(groupHelp).not.toMatch(/^ {2}grok\b/m);
-    expect(readV44('v0.4.44-agent-no-such-command.stderr.txt')).toContain(
-      "Error: No such command 'grok'.",
-    );
-    // Launchable in the sense that this app knows the line…
-    expect(isLaunchableKind('grok')).toBe(true);
-    // …but refused on a host whose captured help is the fixture above. This is
-    // the whole guard: the exit-2 plain-shell failure never reaches the user.
-    const onPinnedHost = { subcommands: [...HELPER_BASELINE_KINDS] };
-    expect(kindUnavailableReason('grok', onPinnedHost)).toMatch(/too old to start Grok/);
-    expect(kindUnavailableReason('grok', onPinnedHost)).toContain('`grok` subcommand');
-    expect(kindUnavailableReason('grok', onPinnedHost)).toContain(
-      `newer than ${HELPER_VERSION_WITHOUT_GROK}`,
-    );
-    expect(launchBlocker({ kind: 'grok', dir: '/srv/app' }, onPinnedHost)).toBe(
-      kindUnavailableReason('grok', onPinnedHost),
-    );
-  });
 
   it('marks --dir required, which is the bug this module fixes', () => {
     expect(claudeHelp).toMatch(/--dir TEXT[\s\S]*?\[required\]/);
@@ -222,7 +192,7 @@ describe('launchBlocker', () => {
   });
 
   it('blocks a kind that is not an agent at all', () => {
-    expect(launchBlocker({ kind: 'shell' as never, dir: '/srv/app' })).toBe(
+    expect(launchBlocker({ kind: 'shell', dir: '/srv/app' })).toBe(
       'Pick an agent to launch.',
     );
   });
@@ -237,81 +207,81 @@ describe('launchBlocker', () => {
   });
 });
 
-/**
- * The host capability gate — the reason Grok can be offered at all.
- *
- * `grok` is a real `pocketshell agent` subcommand in the helper's own repo but
- * is NOT in any released helper, so no host in `tests/unit/fixtures` has it and
- * none can be captured yet. What is pinned here is therefore the DECISION
- * table, not a second fixture: given what a host said, what does the picker do.
- * The 0.4.44 row is the one that must never regress, because getting it wrong
- * is the exit-2 plain-shell bug this whole module exists to prevent.
- */
-describe('kindUnavailableReason', () => {
-  const PINNED = [...HELPER_BASELINE_KINDS];
-  const UPGRADED = [...HELPER_BASELINE_KINDS, 'grok'];
-
-  it('allows every baseline kind on the pinned helper', () => {
-    for (const kind of HELPER_BASELINE_KINDS) {
-      expect(kindUnavailableReason(kind, { subcommands: PINNED })).toBeNull();
-    }
+describe('launch engine catalog and readiness', () => {
+  it('uses the host catalog when present and excludes non-agent rows', () => {
+    expect(launchableKindsFor(['codex', 'shell', 'custom engine', 'codex'])).toEqual([
+      'codex',
+      'custom engine',
+    ]);
+    expect(launchableKindsFor([])).toEqual([]);
   });
 
-  it('allows grok once the host lists it', () => {
-    expect(kindUnavailableReason('grok', { subcommands: UPGRADED })).toBeNull();
-    expect(launchBlocker({ kind: 'grok', dir: '/srv/app' }, { subcommands: UPGRADED })).toBeNull();
+  it('uses the static names only when the host catalog is unavailable', () => {
+    expect(launchableKindsFor(null)).toEqual(OFFLINE_LAUNCHABLE_KINDS);
+    expect(launchableKindsFor(undefined)).toEqual(OFFLINE_LAUNCHABLE_KINDS);
   });
 
-  it('names the host’s own version in the too-old message when bootstrap has one', () => {
-    const reason = kindUnavailableReason('grok', {
-      subcommands: PINNED,
-      helperVersion: 'pocketshell 0.4.44',
-    });
-    expect(reason).toContain('This host runs pocketshell 0.4.44.');
+  it('keeps the launcher PATH check independent of the engine catalog', () => {
+    const support = { engineIds: ['codex'], binaries: ['codex'] };
+    expect(kindUnavailableReason('codex', support)).toMatch(/no `pocketshell` on its PATH/);
+    expect(kindUnavailableReason('codex', { engineIds: ['codex'], binaries: ['pocketshell'] })).toBeNull();
   });
 
-  it('says nothing about a version bootstrap never read', () => {
-    expect(kindUnavailableReason('grok', { subcommands: PINNED, helperVersion: null })).not.toContain(
-      'This host runs',
+  it('uses executable names only for the offline fallback', () => {
+    const support = { engineIds: null, binaries: ['pocketshell', 'claude'] };
+    expect(kindUnavailableReason('codex', support)).toContain('no `codex` on its PATH');
+    expect(kindUnavailableReason('claude', support)).toBeNull();
+    // A custom live engine need not have an executable matching its ID.
+    expect(kindUnavailableReason('custom engine', {
+      engineIds: ['custom engine'],
+      binaries: ['pocketshell'],
+    })).toBeNull();
+  });
+
+  it('distinguishes a successful empty catalog from an unavailable catalog', () => {
+    expect(kindUnavailableReason('claude', { engineIds: [] })).toContain(
+      'does not report an available Claude engine',
     );
-    expect(kindUnavailableReason('grok', { subcommands: PINNED, helperVersion: '  ' })).not.toContain(
-      'This host runs',
+    expect(kindUnavailableReason('claude', { engineIds: null, probing: true })).toContain(
+      'Checking whether this host has an available Claude engine',
     );
   });
 
-  // --- the unknown host: the direction of the default -----------------------
-
-  it('lets the baseline through when the probe could not answer', () => {
-    // A failed exec must not cost the user three agents that certainly work.
-    for (const kind of HELPER_BASELINE_KINDS) {
-      expect(kindUnavailableReason(kind, { subcommands: null })).toBeNull();
-      expect(kindUnavailableReason(kind, { subcommands: null, probing: true })).toBeNull();
-    }
-  });
-
-  it('refuses grok when the probe could not answer', () => {
-    const reason = kindUnavailableReason('grok', { subcommands: null });
-    expect(reason).toMatch(/Could not ask this host/);
-    expect(reason).toContain(`newer than ${HELPER_VERSION_WITHOUT_GROK}`);
-  });
-
-  it('says "not yet" rather than "no" while the probe is still in flight', () => {
-    expect(kindUnavailableReason('grok', { subcommands: null, probing: true })).toBe(
-      'Checking whether this host’s pocketshell can start Grok…',
+  it('accepts and quotes custom engine IDs safely', () => {
+    const choice = { kind: 'custom engine', dir: '/srv/app' };
+    expect(isLaunchableKind(choice.kind)).toBe(true);
+    expect(launchBlocker(choice, { engineIds: ['custom engine'] })).toBeNull();
+    expect(buildLaunchCommand({ ...choice, skipPermissions: true, profile: null })).toBe(
+      "pocketshell agent 'custom engine' --dir '/srv/app'",
     );
-  });
-
-  it('refuses a baseline kind the host positively did not list', () => {
-    // Not the expected case, but the probe answering "no claude here" is a real
-    // answer and deserves its own sentence rather than the version one.
-    const reason = kindUnavailableReason('claude', { subcommands: ['codex', 'opencode'] });
-    expect(reason).toContain('`claude` subcommand');
-    expect(reason).not.toContain('too old');
   });
 
   it('blocks a folder with no host directory, BEFORE anything is created', () => {
     expect(launchBlocker({ kind: 'claude', dir: '' })).toMatch(/no known directory/);
     expect(launchBlocker({ kind: 'claude', dir: '   ' })).toMatch(/no known directory/);
+  });
+});
+
+describe('parseAgentBinaries', () => {
+  it('reads the names the command -v loop echoed, one per line', () => {
+    expect(parseAgentBinaries(['pocketshell', 'claude', ''].join('\n'))).toEqual([
+      'pocketshell',
+      'claude',
+    ]);
+    // Windows-hosted CRLF output survives.
+    expect(parseAgentBinaries(['pocketshell', 'codex', ''].join('\r\n'))).toEqual([
+      'pocketshell',
+      'codex',
+    ]);
+  });
+
+  it('drops lines that are not launch binaries', () => {
+    // The loop echoes NAMES, but membership checks consume this list, so a
+    // stray line is dropped rather than trusted.
+    expect(parseAgentBinaries(['pocketshell', '/usr/bin/claude', ''].join('\n'))).toEqual([
+      'pocketshell',
+    ]);
+    expect(parseAgentBinaries('')).toEqual([]);
   });
 });
 
@@ -376,9 +346,16 @@ describe('profile rows', () => {
 });
 
 describe('the picker surface', () => {
-  it('labels every launchable kind', () => {
-    for (const kind of LAUNCHABLE_KINDS) expect(KIND_LABELS[kind]).toBeTruthy();
-    expect(Object.keys(KIND_LABELS).sort()).toEqual([...LAUNCHABLE_KINDS].sort());
+  it('labels every offline fallback kind and formats custom names', () => {
+    for (const kind of OFFLINE_LAUNCHABLE_KINDS) expect(kindLabel(kind)).toBeTruthy();
+    expect([...OFFLINE_LAUNCHABLE_KINDS].sort()).toEqual(Object.keys(KIND_LABELS).sort());
+    expect(kindLabel('my-custom_engine')).toBe('My Custom Engine');
+  });
+
+  it('formats engine IDs that match inherited object property names', () => {
+    expect(kindLabel('toString')).toBe('ToString');
+    expect(kindLabel('constructor')).toBe('Constructor');
+    expect(kindLabel('__proto__')).toBe('Proto');
   });
 
   it('labels grok in the same title case as the rest', () => {

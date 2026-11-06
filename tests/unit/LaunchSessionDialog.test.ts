@@ -42,13 +42,22 @@ const LaunchSessionDialog = (await import('@ui/app/components/LaunchSessionDialo
 const { useConnectionStore } = await import('@ui/app/stores/connection');
 const { useSettingsStore } = await import('@ui/app/stores/settings');
 
-/** What `pocketshell agent --help` lists on the pinned helper: no grok. */
-const PINNED_KINDS = ['claude', 'codex', 'opencode'];
-/** The same host after the (still unreleased) grok subcommand lands. */
-const UPGRADED_KINDS = [...PINNED_KINDS, 'grok'];
+/**
+ * The live engine catalog a typical host's `a engines --json` answers: the
+ * three classic engines, no grok, no antigravity — those appear only when
+ * this host's catalog lists them, or when the query fails outright (the
+ * picker's small static fallback).
+ */
+const LIVE_KINDS = ['claude', 'codex', 'opencode'];
+/** The same host after grok was installed and `a engines` refreshed. */
+const WITH_GROK = [...LIVE_KINDS, 'grok'];
 
-/** Everything on PATH: the helper and every engine the picker offers. */
-const ALL_BINARIES = ['pocketshell', ...UPGRADED_KINDS, 'antigravity'];
+/**
+ * Everything on PATH: the launcher and the offline-fallback engine CLIs.
+ * The live catalog decides engine availability on its own; this probe is
+ * the `pocketshell` launcher check plus the fallback's executable check.
+ */
+const ALL_BINARIES = ['pocketshell', 'claude', 'codex', 'opencode', 'grok', 'antigravity'];
 
 /** The host's real 0.4.44 shape: a default profile plus a named sibling. */
 const HOST_PROFILES = [
@@ -91,7 +100,7 @@ beforeEach(() => {
   localStorage.clear();
   setActivePinia(createPinia());
   profiles.mockReset().mockResolvedValue(HOST_PROFILES);
-  kinds.mockReset().mockResolvedValue(PINNED_KINDS);
+  kinds.mockReset().mockResolvedValue(LIVE_KINDS);
   binaries.mockReset().mockResolvedValue(ALL_BINARIES);
   useConnectionStore().connectionId = 'conn-1';
 });
@@ -164,15 +173,16 @@ describe('what the helper cannot do', () => {
 });
 
 /**
- * Grok, and the host probe that makes offering it safe.
+ * The engine catalog gate.
  *
- * The property under test is the one the old "just don't list Grok" answer got
- * for free and that adding the option could easily lose: on a host whose
- * `pocketshell agent` has no `grok` subcommand, NOTHING is ever created. The
- * user gets a sentence naming the version boundary instead of a session that
- * comes up as a plain shell with a click usage message in it.
+ * The picker renders ONLY what the host's `a engines --json` lists (shell is
+ * the separate choice), and the small static fallback appears solely when the
+ * query could not be answered. A failed query must neither strand the user
+ * engine-less nor invent availability the host never claimed: the fallback's
+ * engines are gated by the independent PATH probe, and the `pocketshell`
+ * launcher check applies in every case.
  */
-describe('the Grok gate', () => {
+describe('the engine catalog gate', () => {
   /** The segmented-control button for [label], or undefined. */
   function segment(wrapper: VueWrapper, label: string) {
     return wrapper.findAll('button.segment').find((b) => b.text().trim() === label);
@@ -183,57 +193,16 @@ describe('the Grok gate', () => {
     return wrapper.findAll('button').find((b) => b.text().trim() === 'Create session')!;
   }
 
-  it('lists Grok even on a host that cannot run it, dimmed and explained', async () => {
+  it('shows a live catalog that excludes engines this host does not list', async () => {
     const wrapper = await open();
-    const grok = segment(wrapper, 'Grok');
-    expect(grok, 'Grok is offered, not hidden').toBeTruthy();
-    expect(grok!.classes()).toContain('unavailable');
-    expect(grok!.attributes('title')).toMatch(/too old to start Grok/);
-    // The engines the pinned helper does have are not dimmed with it.
-    expect(segment(wrapper, 'Claude')!.classes()).not.toContain('unavailable');
+    expect(segment(wrapper, 'Claude')).toBeTruthy();
+    expect(segment(wrapper, 'Codex')).toBeTruthy();
+    expect(segment(wrapper, 'Grok'), 'not listed, not dimmed — absent').toBeUndefined();
+    expect(wrapper.text()).not.toMatch(/Checking this host/);
   });
 
-  it('refuses to create anything when Grok is picked on a 0.4.44 host', async () => {
-    const wrapper = await open();
-    await click(wrapper, 'Grok');
-    expect(wrapper.text()).toMatch(/too old to start Grok/);
-    expect(wrapper.text()).toMatch(/newer than 0\.4\.44/);
-    const button = createButton(wrapper);
-    expect(button.attributes('disabled')).toBeDefined();
-    await button.trigger('click');
-    expect(wrapper.emitted('confirm')).toBeUndefined();
-  });
-
-  it('dims an engine the host has no CLI for, with the install remedy', async () => {
-    // The helper lists codex; the codex CLI is not installed. The launch
-    // would be typed into the session shell and die with the helper's own
-    // "not installed" sentence, so the picker refuses it here instead.
-    binaries.mockResolvedValue(['pocketshell', 'claude', 'opencode', 'grok']);
-    const wrapper = await open();
-    const codex = segment(wrapper, 'Codex');
-    expect(codex!.classes()).toContain('unavailable');
-    expect(codex!.attributes('title')).toMatch(/no `codex` on its PATH/);
-    expect(segment(wrapper, 'Claude')!.classes()).not.toContain('unavailable');
-    await click(wrapper, 'Codex');
-    expect(wrapper.text()).toMatch(/install the Codex CLI first/);
-    expect(createButton(wrapper).attributes('disabled')).toBeDefined();
-    await createButton(wrapper).trigger('click');
-    expect(wrapper.emitted('confirm')).toBeUndefined();
-  });
-
-  it('dims every engine when pocketshell itself is missing from PATH', async () => {
-    binaries.mockResolvedValue(['claude', 'codex']);
-    const wrapper = await open();
-    for (const label of ['Claude', 'Codex', 'Grok']) {
-      expect(segment(wrapper, label)!.classes()).toContain('unavailable');
-      expect(segment(wrapper, label)!.attributes('title')).toMatch(
-        /no `pocketshell` on its PATH/,
-      );
-    }
-  });
-
-  it('launches Grok once the host lists the subcommand', async () => {
-    kinds.mockResolvedValue(UPGRADED_KINDS);
+  it('launches Grok once the host catalog lists it', async () => {
+    kinds.mockResolvedValue(WITH_GROK);
     const wrapper = await open();
     expect(segment(wrapper, 'Grok')!.classes()).not.toContain('unavailable');
     await click(wrapper, 'Grok');
@@ -250,32 +219,58 @@ describe('the Grok gate', () => {
   });
 
   it('shows Grok no permission toggle and no profile picker', async () => {
-    kinds.mockResolvedValue(UPGRADED_KINDS);
+    kinds.mockResolvedValue(WITH_GROK);
     const wrapper = await open();
     await click(wrapper, 'Grok');
     expect(wrapper.text()).not.toContain('Skip permission prompts');
     expect(wrapper.text()).not.toContain('Claude (Z.AI)');
   });
 
-  it('refuses Grok when the host could not be asked at all', async () => {
-    // A failed probe is the same answer as "no grok here", because being wrong
-    // in the other direction costs the user the plain-shell failure.
+  it('says "no engines" on a successful empty catalog instead of inventing defaults', async () => {
+    kinds.mockResolvedValue([]);
+    const wrapper = await open();
+    expect(wrapper.text()).toContain('No available agent engines on this host.');
+    expect(segment(wrapper, 'Claude')).toBeUndefined();
+  });
+
+  it('falls back to the static engine list only when the query fails', async () => {
     kinds.mockRejectedValue(new Error('ssh channel closed'));
     const wrapper = await open();
-    await click(wrapper, 'Grok');
-    expect(wrapper.text()).toMatch(/Could not ask this host/);
-    expect(createButton(wrapper).attributes('disabled')).toBeDefined();
+    // The fallback names every engine this app knows, gated by PATH.
+    for (const label of ['Claude', 'Codex', 'OpenCode', 'Grok', 'Antigravity']) {
+      expect(segment(wrapper, label)!.classes()).not.toContain('unavailable');
+    }
   });
 
-  it('treats a null answer the same as a failure', async () => {
-    kinds.mockResolvedValue(null);
+  it('dims a fallback engine whose CLI the host lacks, with the install remedy', async () => {
+    // The catalog query failed, so executable names decide: no codex on PATH.
+    kinds.mockRejectedValue(new Error('ssh channel closed'));
+    binaries.mockResolvedValue(['pocketshell', 'claude', 'opencode']);
     const wrapper = await open();
-    await click(wrapper, 'Grok');
+    const codex = segment(wrapper, 'Codex');
+    expect(codex!.classes()).toContain('unavailable');
+    expect(codex!.attributes('title')).toMatch(/no `codex` on its PATH/);
+    await click(wrapper, 'Codex');
+    expect(createButton(wrapper).attributes('disabled')).toBeDefined();
+    await createButton(wrapper).trigger('click');
+    expect(wrapper.emitted('confirm')).toBeUndefined();
+  });
+
+  it('dims every engine when pocketshell itself is missing from PATH', async () => {
+    kinds.mockResolvedValue(WITH_GROK);
+    binaries.mockResolvedValue(['claude', 'codex']);
+    const wrapper = await open();
+    for (const label of ['Claude', 'Codex', 'Grok']) {
+      expect(segment(wrapper, label)!.classes()).toContain('unavailable');
+      expect(segment(wrapper, label)!.attributes('title')).toMatch(
+        /no `pocketshell` on its PATH/,
+      );
+    }
+    await click(wrapper, 'Claude');
     expect(createButton(wrapper).attributes('disabled')).toBeDefined();
   });
 
-  it('does not let a failed probe take away the engines the helper pins', async () => {
-    // The asymmetry: unknown means no for grok, yes for the baseline three.
+  it('does not let a failed query strand the user engine-less', async () => {
     kinds.mockRejectedValue(new Error('ssh channel closed'));
     const wrapper = await open();
     expect(segment(wrapper, 'Claude')!.classes()).not.toContain('unavailable');
@@ -285,7 +280,7 @@ describe('the Grok gate', () => {
     expect(confirmed(wrapper)).toMatchObject({ kind: 'codex' });
   });
 
-  it('still opens a plain shell on a host the probe could not answer for', async () => {
+  it('still opens a plain shell on a host the query could not answer for', async () => {
     kinds.mockRejectedValue(new Error('ssh channel closed'));
     const wrapper = await open();
     await click(wrapper, 'Shell');
@@ -293,20 +288,21 @@ describe('the Grok gate', () => {
     expect(confirmed(wrapper)).toBeNull();
   });
 
-  it('re-opens on a remembered Grok and blocks it again on an old host', async () => {
-    // The remembered default can outlive the host it was chosen on. It must
-    // come back as a refusal with a reason, never as a silent launch.
-    kinds.mockResolvedValue(UPGRADED_KINDS);
+  it('re-opens on a remembered Grok only while the catalog still lists it', async () => {
+    // The remembered default can outlive the host it was chosen on. When the
+    // catalog no longer lists the engine, the pick resets to the first
+    // available one — never a launch the host does not offer.
+    kinds.mockResolvedValue(WITH_GROK);
     const first = await open();
     await click(first, 'Grok');
     await click(first, 'Create session');
     expect(useSettingsStore().agentLaunchDefaults).toMatchObject({ kind: 'grok' });
 
-    kinds.mockResolvedValue(PINNED_KINDS);
+    kinds.mockResolvedValue(LIVE_KINDS);
     const second = await open();
-    expect(segment(second, 'Grok')!.classes()).toContain('on');
-    expect(second.text()).toMatch(/too old to start Grok/);
-    expect(createButton(second).attributes('disabled')).toBeDefined();
+    expect(segment(second, 'Grok')).toBeUndefined();
+    await click(second, 'Create session');
+    expect(confirmed(second)).toMatchObject({ kind: 'claude' });
   });
 });
 
@@ -401,7 +397,7 @@ describe('a host that has no profiles to offer', () => {
 
 describe('Antigravity launch controls', () => {
   it('offers bypass by default and hides unsupported profiles', async () => {
-    kinds.mockResolvedValue([...PINNED_KINDS, 'antigravity']);
+    kinds.mockResolvedValue([...LIVE_KINDS, 'antigravity']);
     const wrapper = await open();
     await click(wrapper, 'Antigravity');
     expect(wrapper.text()).toContain('Skip permission prompts');
@@ -411,7 +407,7 @@ describe('Antigravity launch controls', () => {
   });
 
   it('lets the user retain per-action approvals', async () => {
-    kinds.mockResolvedValue([...PINNED_KINDS, 'antigravity']);
+    kinds.mockResolvedValue([...LIVE_KINDS, 'antigravity']);
     const wrapper = await open();
     await click(wrapper, 'Antigravity');
     await click(wrapper, 'Skip permission prompts');
@@ -419,16 +415,8 @@ describe('Antigravity launch controls', () => {
     expect(confirmed(wrapper)).toMatchObject({ kind: 'antigravity', skipPermissions: false });
   });
 
-  it('disables Antigravity on an older host', async () => {
+  it('leaves Antigravity out of a catalog that does not list it', async () => {
     const wrapper = await open();
-    const button = wrapper.findAll('button').find((b) => b.text().trim() === 'Antigravity');
-    expect(button?.classes()).toContain('unavailable');
-    expect(button?.attributes('title')).toContain('Antigravity');
-    await click(wrapper, 'Antigravity');
-    expect(wrapper.text()).toContain('too old to start Antigravity');
-    const create = wrapper.findAll('button').find((b) => b.text().trim() === 'Create session');
-    expect(create?.attributes('disabled')).toBeDefined();
-    await create?.trigger('click');
-    expect(wrapper.emitted('confirm')).toBeUndefined();
+    expect(wrapper.findAll('button').find((b) => b.text().trim() === 'Antigravity')).toBeUndefined();
   });
 });
