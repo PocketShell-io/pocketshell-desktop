@@ -118,13 +118,13 @@ describe('provisioned Windows gateway CLI', () => {
     const helper = new PocketshellClient(ssh);
     const aplexer = new AplexerClient(ssh);
     expect(await helper.usage('connection')).toEqual([]);
-    expect(await helper.agentSubcommands('connection')).toBeNull();
     expect(await helper.agentBinaries('connection')).toBeNull();
     expect(await helper.listProfiles('connection')).toEqual([]);
     expect(await helper.envList('connection', 'C:/work')).toEqual([]);
     expect(await helper.envGet('connection', 'C:/work', ['TEST'])).toEqual({});
     await expect(helper.envSet('connection', 'C:/work', { TEST: 'value' })).rejects.toThrow('does not support');
     expect(await aplexer.listWarnings('connection')).toEqual([]);
+    expect(await aplexer.engines('connection')).toBeNull();
     expect((await aplexer.ackWarnings('connection')).ok).toBe(false);
     expect(exec).not.toHaveBeenCalled();
   });

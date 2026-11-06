@@ -1,66 +1,15 @@
 /**
  * Pure parsers for the small CLI outputs that are not session-shaped:
- * `command -v` probes, agent subcommand listings, env rows, and the durable
- * tree registry's JSON payloads.
+ * env rows and the durable tree registry's JSON payloads. The agent
+ * subcommand listing's parser went with the probe it served — the launch
+ * picker's engine catalog is `a engines --json` now, parsed in core's
+ * `parseAplexerEngineIds`.
  */
 
 
 // `command -v` probe parsing lives in core now (see src/hostProbeParsers.ts there).
 export { parseCommandV, parseEnvVarRow } from '@pocketshell/core';
 
-// ---------------------------------------------------------------------------
-// bootstrap probe result parsing
-// ---------------------------------------------------------------------------
-
-
-/**
- * The subcommand names in the `Commands:` block of a click `--help`, or null
- * when the output could not be read that way.
- *
- * Written for `pocketshell agent --help`, which is how the app finds out
- * whether a host can launch a given engine. Asking the help text rather than
- * comparing `pocketshell --version` against a remembered table is the same
- * choice made everywhere else in this file: the helper is a separately
- * released project, this repo has been wrong about its documented contract
- * repeatedly, and the `Commands:` block is the host stating its own
- * capabilities in its own words. It also degrades honestly — a helper that
- * gains `grok` starts being offered the moment it is installed, with no
- * version table to bump here.
- *
- * The shape it parses, from `tests/unit/fixtures/v0.4.44-agent-help.txt`:
- *
- *     Commands:
- *       claude    Launch `claude` in --dir with first-run prompts suppressed.
- *       codex     Launch `codex` in --dir with first-run prompts suppressed.
- *       opencode  Launch `opencode` in --dir with first-run prompts suppressed.
- *
- * Names sit at exactly two spaces of indent; click wraps a long description
- * onto continuation lines indented to the description column, so an indented
- * line that does not start a name is SKIPPED rather than treated as the end of
- * the block. A non-indented line is a new section and does end it.
- *
- * **null, never `[]`, when the answer is unknown** — a non-zero exit, no
- * `Commands:` header, or a header with nothing parseable under it. Callers act
- * on the difference: `[]` would be a host claiming it can launch nothing,
- * which no real helper says, whereas null means we never got an answer and the
- * caller should fall back to what the pinned version guarantees rather than to
- * refusing everything. See shared/agentLaunch.ts `HostAgentSupport`.
- */
-export function parseAgentSubcommands(stdout: string, exitCode: number): string[] | null {
-  if (exitCode !== 0) return null;
-  const lines = stdout.split(/\r?\n/);
-  const start = lines.findIndex((line) => /^Commands:\s*$/.test(line));
-  if (start < 0) return null;
-  const names: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (line.trim() === '') continue;
-    // Back at the left margin: a new `--help` section, so the block is over.
-    if (!/^\s/.test(line)) break;
-    const match = /^ {2}(\S+)(?: {2,}\S|\s*$)/.exec(line);
-    if (match) names.push(match[1]!);
-  }
-  return names.length > 0 ? names : null;
-}
 
 
 /**

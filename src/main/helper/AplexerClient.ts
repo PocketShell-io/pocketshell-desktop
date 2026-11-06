@@ -154,6 +154,18 @@ export class AplexerClient {
     return this.core(connectionId).ackWarnings(target);
   }
 
+  /**
+   * The engine IDs this host can launch (`a engines --json`), for the launch
+   * picker's live catalog, or null when there is no answer — `a` absent or
+   * the query failed — which is the picker's offline signal. A provisioned
+   * native host runs no aplexer, so it answers null and the picker falls
+   * back, exactly like every other catalog consumer here.
+   */
+  async engines(connectionId: string): Promise<string[] | null> {
+    if (this.ssh.nativeWindowsCli?.(connectionId)) return null;
+    return this.core(connectionId).engines();
+  }
+
   /** The connection's core, created on first use with the desktop transport. */
   private core(connectionId: string): AplexerCore {
     if (this.ssh.nativeWindowsCli?.(connectionId)) {

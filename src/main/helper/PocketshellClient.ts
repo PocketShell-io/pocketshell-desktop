@@ -30,7 +30,6 @@ import {
 } from './sessionPathRecovery.js';
 import { parseUsageNdjson, type UsageRow } from './usageParsers.js';
 import {
-  parseAgentSubcommands,
   parseEnvVarRow,
   parseTreeGet,
   parseTreeReconcile,
@@ -1005,37 +1004,12 @@ export class PocketshellClient {
   }
 
   /**
-   * Which engines this host's `pocketshell agent` can actually launch
-   * (`pocketshell agent --help`), or null when the question could not be
-   * answered.
-   *
-   * The launch picker needs this because the helper is a separately released
-   * project and the app's own pinned version (0.4.44) has exactly three agent
-   * subcommands, no `grok`. Typing `pocketshell agent grok` at a host that
-   * lacks it exits 2 and leaves the user in a plain shell with a usage
-   * message — so the picker asks first. See shared/agentLaunch.ts for why the
-   * answer is read from the help text rather than from a version comparison,
-   * and why null must not be flattened into `[]`.
-   *
-   * Cheap enough to run on every open of the dialog: it is one exec of a
-   * `--help` that does no work host-side. It is deliberately NOT folded into
-   * the bootstrap probe, which runs once on connect — a host whose helper is
-   * upgraded while the app is connected should start offering the new engine
-   * without a reconnect.
-   */
-  async agentSubcommands(connectionId: string): Promise<string[] | null> {
-    if (this.ssh.nativeWindowsCli?.(connectionId)) return null;
-    const res = await this.ssh.exec(connectionId, pathAwareCommand('pocketshell agent --help'));
-    return parseAgentSubcommands(res.stdout, res.exitCode);
-  }
-
-  /**
    * Which of the launch binaries exist on the host's PATH — `pocketshell`
    * itself and the engine CLIs — or **null** when the probe failed. One exec:
    * a shell loop that `command -v`s every name and echoes the ones that
    * resolve. The loop's own exit status is meaningless (it is the last
    * iteration's), so the answer is read from stdout and a transport failure
-   * (empty output) is the null, same contract as {@link agentSubcommands}.
+   * (empty output) is the null, same contract as the old subcommand probe.
    *
    * This is the check that keeps a doomed launch in the UI: `pocketshell
    * agent` can list `codex` all it likes, but the launch is typed into a

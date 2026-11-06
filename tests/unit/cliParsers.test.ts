@@ -1,21 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  parseAgentSubcommands,
   parseCommandV,
   parseEnvVarRow,
   parseTreeGet,
   parseTreeReconcile,
   treeUpsertPayload,
 } from '@main/helper/cliParsers';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 /**
  * Host-captured 0.4.44 fixtures; helper-parsers.test.ts keeps the full note
  * on why these cannot come from the Docker fixture image.
  */
-const V44 = resolve(__dirname, 'fixtures');
-const readV44 = (name: string): string => readFileSync(resolve(V44, name), 'utf8');
 
 describe('parseCommandV', () => {
   it('returns the path on exit 0', () => {
@@ -26,73 +21,6 @@ describe('parseCommandV', () => {
   it('returns null on non-zero exit', () => {
     expect(parseCommandV('', 1)).toBeNull();
     expect(parseCommandV('not found', 127)).toBeNull();
-  });
-});
-
-/**
- * The capability probe behind the launch picker's Grok option.
- *
- * The positive case cannot be a fixture: `pocketshell agent grok` exists in the
- * helper's repo but in no RELEASED helper, so there is no host to capture a
- * grok-listing `--help` from. Rather than hand-author a whole fake file and let
- * it drift, the grok row is SPLICED into the real 0.4.44 capture — so the shape
- * being parsed stays the shape the helper actually prints, and only the one
- * line under test is synthetic.
- */
-describe('parseAgentSubcommands', () => {
-  const agentHelp = readV44('v0.4.44-agent-help.txt');
-
-  it('reads the three subcommands out of the real 0.4.44 capture', () => {
-    expect(parseAgentSubcommands(agentHelp, 0)).toEqual(['claude', 'codex', 'opencode']);
-  });
-
-  it('picks up a grok row appended to that same shape', () => {
-    const withGrok = `${agentHelp.trimEnd()}\n  grok      Launch \`grok\` in --dir with first-run prompts suppressed.\n`;
-    expect(parseAgentSubcommands(withGrok, 0)).toEqual([
-      'claude',
-      'codex',
-      'opencode',
-      'grok',
-    ]);
-  });
-
-  it('is null, not [], when the host could not be asked', () => {
-    // The distinction the launch picker acts on: null keeps the pinned
-    // baseline offered, whereas [] would read as "this host launches nothing".
-    expect(parseAgentSubcommands(agentHelp, 2)).toBeNull();
-    expect(parseAgentSubcommands('', 0)).toBeNull();
-    expect(parseAgentSubcommands('pocketshell: command not found\n', 127)).toBeNull();
-    expect(parseAgentSubcommands('Usage: pocketshell agent [OPTIONS]\n', 0)).toBeNull();
-    expect(parseAgentSubcommands('Commands:\n', 0)).toBeNull();
-  });
-
-  it('keeps a wrapped description out of the names', () => {
-    // click indents continuation lines to the description column; treating one
-    // as a subcommand would invent an engine, and stopping at one would hide
-    // every engine listed after it.
-    const wrapped = [
-      'Commands:',
-      '  claude    Launch `claude` in --dir with first-run prompts',
-      '            suppressed and the folder env merged.',
-      '  codex     Launch `codex` in --dir.',
-      '',
-    ].join('\n');
-    expect(parseAgentSubcommands(wrapped, 0)).toEqual(['claude', 'codex']);
-  });
-
-  it('stops at the next unindented section', () => {
-    const trailing = ['Commands:', '  claude    Launch `claude`.', '', 'Options:', '  -h, --help'].join(
-      '\n',
-    );
-    expect(parseAgentSubcommands(trailing, 0)).toEqual(['claude']);
-  });
-
-  it('survives CRLF, which is how the exec can hand it back', () => {
-    expect(parseAgentSubcommands(agentHelp.replace(/\n/g, '\r\n'), 0)).toEqual([
-      'claude',
-      'codex',
-      'opencode',
-    ]);
   });
 });
 

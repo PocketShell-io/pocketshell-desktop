@@ -684,7 +684,7 @@ describe('every remaining channel is wired to its service call', () => {
     { channel: ipc.projects.deriveName, service: projects, method: 'deriveSessionName', args: ['conn-1', '~/git/x', undefined], result: 'git-x' },
     { channel: ipc.projects.createFolder, service: projects, method: 'createFolder', args: ['conn-1', { parent: '~', name: 'n' }], result: { ok: true } },
     { channel: ipc.projects.startSession, service: projects, method: 'startSession', args: ['conn-1', { folder: '~/git/x' }], result: { ok: true } },
-    { channel: ipc.agent.kinds, service: helper, method: 'agentSubcommands', args: ['conn-1'], result: [] },
+    { channel: ipc.agent.kinds, service: aplexer, method: 'engines', args: ['conn-1'], result: [] },
     { channel: ipc.agent.profiles, service: helper, method: 'listProfiles', args: ['conn-1'], result: [] },
     { channel: ipc.agent.envList, service: helper, method: 'envList', args: ['conn-1', '~/p'], result: [] },
     { channel: ipc.agent.envGet, service: helper, method: 'envGet', args: ['conn-1', '~/p', ['A']], result: [] },

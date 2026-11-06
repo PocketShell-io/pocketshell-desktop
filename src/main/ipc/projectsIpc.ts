@@ -5,7 +5,7 @@ import type { AplexerSessionRef, CloneResult, CreateFolderRequest, CreateFolderR
 
 
 export function registerProjectsIpc(ctx: IpcContext): void {
-  const { projects, broadcast, tmuxClients, helper } = ctx;
+  const { projects, broadcast, tmuxClients, helper, aplexer } = ctx;
   // --- projects:* ----------------------------------------------------------
   // Folder-first session creation. The renderer browses folders with the SFTP
   // channels below (there is no second folder-listing path here on purpose);
@@ -124,11 +124,13 @@ export function registerProjectsIpc(ctx: IpcContext): void {
   // server-side pocketshell helper. The conversation-log and resumable
   // channels that used to live here went with the Conversation feature
   //
-  // Null, not [], when the host could not be asked — the launch picker uses
-  // the difference to decide whether an engine it cannot confirm should be
-  // offered anyway (shared/agentLaunch.ts).
+  // The launch picker's live engine catalog: `a engines --json`, read
+  // through the aplexer client. Null, not [], when the host could not be
+  // asked — the picker treats null as offline and falls back to its small
+  // static engine list, while [] is a real "no engines here"
+  // (shared/agentLaunch.ts).
   ipcMain.handle(ipc.agent.kinds, async (_evt, connectionId: string) => {
-    return helper.agentSubcommands(connectionId);
+    return aplexer.engines(connectionId);
   });
   ipcMain.handle(ipc.agent.binaries, async (_evt, connectionId: string) => {
     return helper.agentBinaries(connectionId);
