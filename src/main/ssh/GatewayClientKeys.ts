@@ -27,17 +27,23 @@ const BLOB_LINE = /^[A-Za-z0-9+/]+=*$/;
 /** The smallest real key blob (ed25519) is 51 base64 chars; anything shorter is prose. */
 const MIN_BLOB_BYTES = 20;
 
-/** `SHA256:<unpadded base64>` of a public key line's blob — what ssh-keygen -lf prints. */
-function fingerprintOfBlob(blob: string): string {
+/**
+ * `SHA256:<unpadded base64>` of a public key line's blob — what
+ * `ssh-keygen -lf` prints and what the user compares on the host. Null for a
+ * line with no readable blob. Host-key pins (the pairing's `pin.line`) and
+ * client keys share the shape, so both flow through here.
+ */
+export function publicKeyFingerprint(line: string): string | null {
+  const blob = line.trim().split(/\s+/)[1];
+  if (blob === undefined || !BLOB_LINE.test(blob) || Buffer.from(blob, 'base64').length < MIN_BLOB_BYTES) return null;
   const digest = createHash('sha256').update(Buffer.from(blob, 'base64')).digest('base64').replace(/=+$/, '');
   return `SHA256:${digest}`;
 }
 
 function keyOf(id: string, label: string, publicKey: string): GatewayClientKey | null {
   const line = publicKey.trim().split(/\r?\n/)[0] ?? '';
-  const blob = line.split(/\s+/)[1];
-  if (blob === undefined || !BLOB_LINE.test(blob) || Buffer.from(blob, 'base64').length < MIN_BLOB_BYTES) return null;
-  return { id, label, fingerprint: fingerprintOfBlob(blob), publicKey: line };
+  const fingerprint = publicKeyFingerprint(line);
+  return fingerprint === null ? null : { id, label, fingerprint, publicKey: line };
 }
 
 /**
