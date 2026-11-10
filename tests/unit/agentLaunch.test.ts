@@ -216,6 +216,23 @@ describe('launch engine catalog and readiness', () => {
     expect(launchableKindsFor([])).toEqual([]);
   });
 
+  it('collapses the zcodex spelling onto codex when the catalog lists both', () => {
+    // One engine, two catalog IDs — zcodex is Codex on the z.ai provider. The
+    // collapsed chip sits where either spelling first appeared.
+    expect(launchableKindsFor(['claude', 'codex', 'opencode', 'zcodex'])).toEqual([
+      'claude',
+      'codex',
+      'opencode',
+    ]);
+    expect(launchableKindsFor(['zcodex', 'claude', 'codex'])).toEqual(['codex', 'claude']);
+  });
+
+  it('keeps the alias spelling on a host that does not list codex', () => {
+    // Substituting `codex` would change the line `pocketshell agent` receives
+    // into one that host may not accept.
+    expect(launchableKindsFor(['zcodex', 'claude'])).toEqual(['zcodex', 'claude']);
+  });
+
   it('uses the static names only when the host catalog is unavailable', () => {
     expect(launchableKindsFor(null)).toEqual(OFFLINE_LAUNCHABLE_KINDS);
     expect(launchableKindsFor(undefined)).toEqual(OFFLINE_LAUNCHABLE_KINDS);

@@ -420,3 +420,18 @@ describe('Antigravity launch controls', () => {
     expect(wrapper.findAll('button').find((b) => b.text().trim() === 'Antigravity')).toBeUndefined();
   });
 });
+
+describe('the zcodex catalog spelling', () => {
+  // zcodex is Codex on the z.ai provider, and this host's `a engines` lists
+  // both IDs available — one engine, so one chip (the collapse itself is
+  // core's launchableKindsFor, pinned in agentLaunch.test.ts; what is
+  // checked HERE is that the picker renders the collapsed catalog).
+  it('shows one Codex entry for a catalog that spells the engine twice', async () => {
+    kinds.mockResolvedValue([...LIVE_KINDS, 'zcodex']);
+    const wrapper = await open();
+    expect(wrapper.findAll('button').find((b) => b.text().trim() === 'Zcodex')).toBeUndefined();
+    await click(wrapper, 'Codex');
+    await click(wrapper, 'Create session');
+    expect(confirmed(wrapper)).toMatchObject({ kind: 'codex' });
+  });
+});
