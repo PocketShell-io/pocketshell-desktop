@@ -22,6 +22,7 @@ vi.mock('electron', () => ({
 
 import {
   GoogleAuth,
+  NotSignedInError,
   createPkcePair,
   decodeIdTokenPayload,
   isIdTokenExpired,
@@ -29,6 +30,39 @@ import {
 
 function base64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function idToken(sub: string, generation: number): string {
+  return `header.${base64urlJson({ sub, email: 'a@b.c' })}.signature-${generation}`;
+}
+
+/** An openExternal that completes the browser leg: one code callback with the right state. */
+function browserApproves(): (authUrl: string) => Promise<unknown> {
+  return async (authUrl: string) => {
+    const auth = new URL(authUrl);
+    const redirect = new URL(auth.searchParams.get('redirect_uri')!);
+    redirect.searchParams.set('code', 'authorization-code');
+    redirect.searchParams.set('state', auth.searchParams.get('state')!);
+    const callback = await fetch(redirect);
+    expect(callback.ok).toBe(true);
+  };
+}
+
+/** Token-broker responses by grant type; tests override the refresh leg. */
+function brokerServing(idTokenOf: (generation: number) => string): typeof fetch {
+  return async (_input, init) => {
+    const body = JSON.parse(init?.body as string) as Record<string, string>;
+    if (body.grant_type === 'authorization_code') {
+      return new Response(
+        JSON.stringify({ id_token: idTokenOf(1), refresh_token: 'refresh-token', expires_in: 3600 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return new Response(JSON.stringify({ id_token: idTokenOf(2), expires_in: 3600 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
 }
 
 describe('createPkcePair', () => {
@@ -84,10 +118,82 @@ describe('isIdTokenExpired', () => {
   });
 });
 
+describe('getIdToken', () => {
+  const T0 = 1_000_000;
+
+  it('returns the cached token inside its hour, then refreshes through the broker once expired', async () => {
+    const userDataDir = mkdtempSync(join(tmpdir(), 'pocketshell-google-auth-'));
+    let nowMs = T0;
+    try {
+      const auth = new GoogleAuth({
+        userDataDir,
+        openExternal: browserApproves(),
+        fetchFn: brokerServing((gen) => idToken('sub-123', gen)),
+        now: () => nowMs,
+      });
+      await auth.login();
+      expect(await auth.getIdToken()).toBe(idToken('sub-123', 1));
+      nowMs = T0 + 2 * 3600_000; // past the TTL and the skew: the cache is stale
+      expect(await auth.getIdToken()).toBe(idToken('sub-123', 2));
+      expect(auth.status().loggedIn).toBe(true);
+    } finally {
+      rmSync(userDataDir, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it('forgets the session on invalid_grant — the refresh token is dead', async () => {
+    const userDataDir = mkdtempSync(join(tmpdir(), 'pocketshell-google-auth-'));
+    let nowMs = T0;
+    const broker = brokerServing((gen) => idToken('sub-123', gen));
+    const fetchFn: typeof fetch = async (input, init) => {
+      const body = JSON.parse(init?.body as string) as Record<string, string>;
+      if (body.grant_type === 'refresh_token') {
+        return new Response(
+          JSON.stringify({ error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return broker(input, init);
+    };
+    try {
+      const auth = new GoogleAuth({ userDataDir, openExternal: browserApproves(), fetchFn, now: () => nowMs });
+      await auth.login();
+      nowMs = T0 + 2 * 3600_000;
+      await expect(auth.getIdToken()).rejects.toBeInstanceOf(NotSignedInError);
+      expect(auth.status().loggedIn).toBe(false);
+      // And nothing resurrects it: the next call is "not signed in", not another doomed refresh.
+      await expect(auth.getIdToken()).rejects.toBeInstanceOf(NotSignedInError);
+    } finally {
+      rmSync(userDataDir, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it('keeps the session on a refresh failure that is not invalid_grant', async () => {
+    const userDataDir = mkdtempSync(join(tmpdir(), 'pocketshell-google-auth-'));
+    let nowMs = T0;
+    const broker = brokerServing((gen) => idToken('sub-123', gen));
+    const fetchFn: typeof fetch = async (input, init) => {
+      const body = JSON.parse(init?.body as string) as Record<string, string>;
+      if (body.grant_type === 'refresh_token') {
+        return new Response('token broker down', { status: 500 });
+      }
+      return broker(input, init);
+    };
+    try {
+      const auth = new GoogleAuth({ userDataDir, openExternal: browserApproves(), fetchFn, now: () => nowMs });
+      await auth.login();
+      nowMs = T0 + 2 * 3600_000;
+      await expect(auth.getIdToken()).rejects.toThrow(/token refresh failed \(HTTP 500\)/);
+      expect(auth.status().loggedIn).toBe(true);
+    } finally {
+      rmSync(userDataDir, { recursive: true, force: true });
+    }
+  }, 10_000);
+});
+
 describe('browser sign-in flow', () => {
   it('opens the browser and completes through the backend broker', async () => {
     const userDataDir = mkdtempSync(join(tmpdir(), 'pocketshell-google-auth-'));
-    const idToken = `header.${base64urlJson({ sub: 'sub-123', email: 'a@b.c' })}.signature`;
 
     try {
       const openExternal = vi.fn(async (authUrl: string) => {
@@ -107,7 +213,7 @@ describe('browser sign-in flow', () => {
         expect(body.grant_type).toBe('authorization_code');
         expect(body).not.toHaveProperty('client_secret');
         return new Response(
-          JSON.stringify({ id_token: idToken, refresh_token: 'refresh-token', expires_in: 3600 }),
+          JSON.stringify({ id_token: idToken('sub-123', 1), refresh_token: 'refresh-token', expires_in: 3600 }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       };

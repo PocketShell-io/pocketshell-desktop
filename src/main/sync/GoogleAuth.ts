@@ -91,8 +91,17 @@ function tokenBody(values: Record<string, string>): string {
   return JSON.stringify(values);
 }
 
-async function tokenError(response: Response): Promise<string> {
-  const raw = (await response.text()).trim();
+/** The broker's OAuth error code (`invalid_grant`, …), or null for non-JSON bodies. */
+function tokenErrorCode(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown };
+    return typeof parsed.error === 'string' ? parsed.error : null;
+  } catch {
+    return null;
+  }
+}
+
+function tokenErrorMessage(raw: string): string {
   if (raw === '') return 'no error details returned';
   try {
     const parsed = JSON.parse(raw) as { error?: unknown; error_description?: unknown };
@@ -104,6 +113,10 @@ async function tokenError(response: Response): Promise<string> {
     // Keep the bounded raw response below when Google returns non-JSON text.
   }
   return raw.slice(0, 400);
+}
+
+async function tokenError(response: Response): Promise<string> {
+  return tokenErrorMessage((await response.text()).trim());
 }
 
 interface StoredAuth extends GoogleIdentity {
@@ -188,7 +201,18 @@ export class GoogleAuth {
         refresh_token: refreshToken,
       }),
     });
-    if (!res.ok) throw new Error(`token refresh failed (HTTP ${res.status}): ${await tokenError(res)}`);
+    if (!res.ok) {
+      const raw = (await res.text()).trim();
+      if (tokenErrorCode(raw) === 'invalid_grant') {
+        // Google says the refresh token itself is expired or revoked — the
+        // grant is dead and no retry will ever succeed. Forget the session
+        // so status() reports signed out and the UI offers sign-in again,
+        // instead of this error on every call behind a "signed in" facade.
+        rmSync(this.tokenFile, { force: true });
+        throw new NotSignedInError('sign-in expired — sign in again');
+      }
+      throw new Error(`token refresh failed (HTTP ${res.status}): ${tokenErrorMessage(raw)}`);
+    }
     const tokens = (await res.json()) as TokenResponse;
     // A refresh response carries no new refresh token; the old one stands.
     this.store(tokens, refreshToken, stored);
