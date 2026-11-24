@@ -9,6 +9,7 @@ import {
   pushMru,
   reorderTabs,
   renamedSessionName,
+  shortenTabLabel,
   tabAfterClose,
 } from '../../src/shared/workspaceTabs';
 import { sanitisePart } from '../../src/shared/sessionNameParts';
@@ -101,6 +102,58 @@ describe('buildWorkspaceTabs', () => {
     expect(tabs).toEqual([
       { kind: 'files', id: 'f1', label: 'Files', path: '~/git/dtc-website' },
     ]);
+  });
+
+  it('labels every session tab with its NAME, verbatim, however long — the shorten is the render, not the bar', () => {
+    const long = 'task-hub2-e03984f3-aff1-5ac5-a864-e43465790437';
+    const tabs = buildWorkspaceTabs([{ name: long, created: 100 }]);
+    expect(tabs[0]?.label).toBe(long);
+  });
+});
+
+describe('shortenTabLabel', () => {
+  it('leaves a name at or under the budget verbatim', () => {
+    expect(shortenTabLabel('main')).toBe('main');
+    expect(shortenTabLabel('dtc-mig-finish')).toBe('dtc-mig-finish');
+    expect(shortenTabLabel('a'.repeat(24))).toBe('a'.repeat(24));
+  });
+
+  it('keeps the head AND the tail of a machine-minted name', () => {
+    // The head is what the eye matches (`task-hub2`), the tail is the entropy
+    // that tells two same-prefix sessions apart; 24 budget → 16 + `…` + 7.
+    expect(shortenTabLabel('task-hub2-e03984f3-aff1-5ac5-a864-e43465790437')).toBe(
+      'task-hub2-e03984…5790437',
+    );
+    expect(shortenTabLabel('task-hub2-9f13ab2c-1111-2222-3333-444455556666')).toBe(
+      'task-hub2-9f13ab…5556666',
+    );
+  });
+
+  it('spends one slot of the budget on the ellipsis itself', () => {
+    const out = shortenTabLabel('abcdefghijklmnopqrstuvwxyz'); // 26 chars
+    expect([...out].length).toBe(24);
+    expect(out).toContain('…');
+  });
+
+  it('honours a custom budget — head grows, tail holds its third', () => {
+    expect(shortenTabLabel('abcdefghijklmnopqrstuvwxyz', 10)).toBe('abcdef…xyz');
+    expect(shortenTabLabel('abcdefghijklmnopqrstuvwxyz', 12)).toBe('abcdefgh…xyz');
+  });
+
+  it('returns the label verbatim when the budget cannot hold a head and a tail', () => {
+    expect(shortenTabLabel('abcdefghijklmnopqrstuvwxyz', 5)).toBe(
+      'abcdefghijklmnopqrstuvwxyz',
+    );
+    expect(shortenTabLabel('abcdefghijklmnopqrstuvwxyz', 0)).toBe(
+      'abcdefghijklmnopqrstuvwxyz',
+    );
+  });
+
+  it('cuts on code points, so a non-BMP character never loses half of itself', () => {
+    // `𝄞` is one code point over two UTF-16 units; a unit-based slice would
+    // land inside one and render a lone surrogate.
+    const name = `task-hub2-${'𝄞'.repeat(20)}`;
+    expect(shortenTabLabel(name, 12)).toBe('task-hub…𝄞𝄞𝄞');
   });
 });
 
