@@ -241,7 +241,9 @@ describe('the folder workspace + menu creates a session', () => {
     const refresh = vi.spyOn(useSessionsStore(), 'refresh').mockImplementation(() =>
       new Promise<void>((resolve) => { finish = resolve; }));
     await createVia(wrapper, 'agent');
-    expect(refresh).toHaveBeenCalledWith('conn-1');
+    // `fresh: true` — an uncertain create must not be answered from the
+    // five-second poll's cache; the read goes to the host (useSessionLaunch).
+    expect(refresh).toHaveBeenCalledWith('conn-1', { fresh: true });
     expect(barError(wrapper)).toBeNull();
     await createVia(wrapper, 'shell');
     expect(startSession).toHaveBeenCalledTimes(1);
