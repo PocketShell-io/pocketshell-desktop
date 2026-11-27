@@ -375,3 +375,49 @@ describe('CodeEditor — teardown', () => {
     expect(host.querySelector('.cm-editor')).toBeNull();
   });
 });
+
+describe('CodeEditor — gotoPosition (the terminal link jump)', () => {
+  /**
+   * The exposed handle, typed the way FilesView's `editorRef` types it. The
+   * jump is what a terminal `src/main.ts:12:5` click asks for after the file
+   * has opened: cursor on the 1-based line (and column, when the suffix had
+   * one), scrolled to the middle of the view.
+   */
+  function editorOf(w: VueWrapper): { gotoPosition: (line: number, column?: number) => void } {
+    return w.vm as unknown as { gotoPosition: (line: number, column?: number) => void };
+  }
+
+  it('puts the cursor on the 1-based line', () => {
+    const w = mountEditor({ modelValue: 'alpha\nbeta\ngamma\n', filename: 'a.txt' });
+    editorOf(w).gotoPosition(2);
+    // 'alpha\n' is six code units, so line 2 starts at offset 6.
+    expect(viewOf(w).state.selection.main.head).toBe(6);
+  });
+
+  it('honours a 1-based column', () => {
+    const w = mountEditor({ modelValue: 'alpha\nbeta\ngamma\n', filename: 'a.txt' });
+    editorOf(w).gotoPosition(2, 3);
+    // Column 3 of line 2 is two code units past its start.
+    expect(viewOf(w).state.selection.main.head).toBe(8);
+  });
+
+  it('clamps past the document and past the line end instead of throwing', () => {
+    // The position was printed against the remote program's version of the
+    // file; this one may be shorter. A link that opens the file is still
+    // worth having — clamped, not dead.
+    const w = mountEditor({ modelValue: 'hi\n', filename: 'a.txt' });
+    editorOf(w).gotoPosition(99);
+    // The document has 2 lines; clamped to the last (empty) one.
+    expect(viewOf(w).state.selection.main.head).toBe(3);
+    editorOf(w).gotoPosition(1, 99);
+    // Clamped to the end of line 1.
+    expect(viewOf(w).state.selection.main.head).toBe(2);
+  });
+
+  it('changes nothing but the selection — no edit, no emit', () => {
+    const w = mountEditor({ modelValue: 'alpha\nbeta\n', filename: 'a.txt' });
+    editorOf(w).gotoPosition(2);
+    expect(docOf(w)).toBe('alpha\nbeta\n');
+    expect(w.emitted('update:modelValue')).toBeUndefined();
+  });
+});

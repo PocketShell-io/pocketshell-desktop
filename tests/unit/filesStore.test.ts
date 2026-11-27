@@ -437,6 +437,25 @@ describe('files store reveal', () => {
     expect(files.takeReveal()).toBeNull();
   });
 
+  it('parks the :12:5 position with the path, and both clear together', () => {
+    const files = useFilesStore();
+
+    files.requestReveal('src/main.ts', null, { line: 12, column: 5 });
+
+    expect(files.revealPosition).toEqual({ line: 12, column: 5 });
+    expect(files.takeReveal()).toBe('src/main.ts');
+    // The position is taken separately but belongs to the same request: a
+    // leftover one would jump a LATER file to a stale line.
+    expect(files.takeRevealPosition()).toEqual({ line: 12, column: 5 });
+    expect(files.takeRevealPosition()).toBeNull();
+  });
+
+  it('a plain path parks no position', () => {
+    const files = useFilesStore();
+    files.requestReveal('tmp/a.mp3', '~/git/foo');
+    expect(files.revealPosition).toBeNull();
+  });
+
   it('opens a file and moves the listing to its directory', async () => {
     realPath.mockImplementation((_c, p) => Promise.resolve(p));
     stat.mockResolvedValue({ size: 3, type: 'file' });

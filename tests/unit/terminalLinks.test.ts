@@ -252,6 +252,36 @@ describe('scanBufferLine — a path a TUI broke across two rows', () => {
     expect(files.reveal).toBe(PNG);
   });
 
+  it('opens a :12:5-suffixed path at the position the suffix carried', () => {
+    // The whole point of the suffix: `src/main.ts:12` is "open src/main.ts AT
+    // line 12", not "open src/main.ts and leave the user at the top". The
+    // detector peels the suffix off the path it opens and reports the numbers;
+    // the click hands them to the files store with the path.
+    const term = fakeTerminal(['wrote src/main.ts:12:5 done']);
+    const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
+    const files = useFilesStore();
+    const sessions = useSessionsStore();
+    sessions.sessions = [
+      { name: 'git-foo', created: 0, activity: 0, attached: true, path: '~/git/foo' },
+    ];
+
+    links[0]?.activate(CLICK, links[0].text);
+    expect(files.reveal).toBe('git/foo/src/main.ts');
+    expect(files.revealPosition).toEqual({ line: 12, column: 5 });
+    // The position is taken and cleared with the reveal it belongs to.
+    expect(files.takeRevealPosition()).toEqual({ line: 12, column: 5 });
+    expect(files.takeRevealPosition()).toBeNull();
+  });
+
+  it('a path without a position suffix parks no position', () => {
+    const term = fakeTerminal(['wrote src/main.ts done']);
+    const links = pathLinks(term, 1, () => ({ sessionName: 'git-foo' }));
+    const files = useFilesStore();
+
+    links[0]?.activate(CLICK, links[0].text);
+    expect(files.revealPosition).toBeNull();
+  });
+
   it('joins a hard wrap tmux repainted, where the break lands mid-token', () => {
     // The "Viewed Image" case. The row is full to its last column, so the TUI
     // ran out of room mid-UUID and continued at column 0.
