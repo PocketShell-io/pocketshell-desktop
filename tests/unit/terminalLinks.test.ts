@@ -23,7 +23,7 @@ vi.mock('@ui/app/ipc', () => ({
   api: { sftp: {}, preview: { onStats: () => () => undefined } },
 }));
 
-const { scanBufferLine, pathLinks, urlLinks, lineLinks } = await import('@ui/app/terminalLinks');
+const { scanBufferLine, pathLinks, urlLinks } = await import('@ui/app/terminalLinks');
 const { useFilesStore } = await import('@ui/app/stores/files');
 const { useSessionsStore } = await import('@ui/app/stores/sessions');
 
@@ -913,10 +913,7 @@ describe('scanBufferLine — a web URL a TUI broke across rows', () => {
 /**
  * The schemeless family the addon can never see: its regex is anchored on
  * `https?://`, so a bare `127.0.0.1:8300` on a single row has exactly one
- * claimant — this provider, which supplies the `http://` at click time. The
- * at-rest highlighter shares the scan but keeps its addon-era rule: a
- * single-row address was never half-underlined by the remote CLI, so there
- * is nothing to repair, bare or not.
+ * claimant — this provider, which supplies the `http://` at click time.
  */
 describe('urlLinks — a bare address on one row', () => {
   it('claims a dev-server address on a single row and opens it with a scheme', () => {
@@ -947,15 +944,10 @@ describe('urlLinks — a bare address on one row', () => {
     expect(urlLinks(term, 1, () => undefined).map((l) => l.text)).toEqual(['127.0.0.1:5173']);
   });
 
-  it('gives a single-row bare address no at-rest tint, like any single-row URL', () => {
-    const term = fakeTerminal(['dev server up on 127.0.0.1:8300 now']);
-    expect(lineLinks(term, 1, () => ({ sessionName: '' }), () => undefined)).toEqual([]);
-  });
-
   it('joins a bare address xterm itself wrapped, as a bare shell pane wraps', () => {
     // An isWrapped join has no gate to satisfy — the wrap is a fact the
     // terminal recorded — so a hard-wrapped address comes whole and spans
-    // rows, tint and all.
+    // rows.
     const term = fakeTerminal(['up on 127.0.0.1:8300', '/health now'], [1]);
     const open = vi.fn();
     const links = urlLinks(term, 2, open);

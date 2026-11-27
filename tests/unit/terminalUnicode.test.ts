@@ -49,7 +49,7 @@ describe('terminal Unicode widths', () => {
 
   it('switches the provider to Unicode 11', () => {
     // `unicode` is proposed API in xterm, like `buffer` below; the pane
-    // constructs with allowProposedApi already on (terminalPathHighlights).
+    // constructs with allowProposedApi already on (terminalUnicode).
     const term = new Terminal({ cols: 20, rows: 2, allowProposedApi: true });
     applyUnicode11Widths(term);
     expect(term.unicode.activeVersion).toBe('11');
