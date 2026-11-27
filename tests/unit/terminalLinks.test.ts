@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import type { Terminal } from '@xterm/xterm';
+import type { LinkHoverPaint, LinkHoverSegment } from '@ui/app/terminalLinkHover';
 
 /**
  * The bridge between xterm's buffer and the path detector.
@@ -1984,5 +1985,115 @@ describe('joinedRowSkip — a schemeless address cut at its own slash', () => {
     const t = fakeScreen(rows, rows[0]!.length);
     expect(scanBufferLine(t, 1).text.trimEnd()).toBe('see node.js/blog/');
     expect(scanBufferLine(t, 2).text.trimEnd()).toBe('/pricing');
+  });
+});
+
+/**
+ * The hover half of the per-row cut (terminalLinkHover.ts): xterm's own hover
+ * underline covers only the row under the mouse, so every fragment carries a
+ * `hover` that shows the link's OTHER rows' plain stretches to the injected
+ * painter — and hovering a wrapped link anywhere underlines it everywhere.
+ * What the tests pin is the wiring: which stretches a hover shows, that a
+ * single-row link gets none, and that a stretch the remote CLI already
+ * underlines at rest is never shown (a second bar there would thicken, not
+ * underline).
+ */
+
+function paintRecorder(): LinkHoverPaint & { shown: LinkHoverSegment[][]; hidden: (number | null)[] } {
+  const recorded = {
+    shown: [] as LinkHoverSegment[][],
+    hidden: [] as (number | null)[],
+    show(segments: LinkHoverSegment[]): number {
+      recorded.shown.push(segments);
+      return recorded.shown.length;
+    },
+    hide(token: number | null): void {
+      recorded.hidden.push(token);
+    },
+  };
+  return recorded;
+}
+
+describe('hover — a wrapped link underlines its other rows', () => {
+  const FIRST = 'see https://x.io/a';
+  const SECOND = '/b/c/commits/01a08215-d194';
+
+  it('hovering the first row shows the second row’s plain stretch', () => {
+    const term = fakeScreen([FIRST, SECOND], FIRST.length);
+    const paint = paintRecorder();
+    const links = urlLinks(term, 1, () => undefined, paint);
+    expect(links).toHaveLength(2);
+
+    links[0]!.hover?.(CLICK, links[0]!.text);
+    expect(paint.shown).toEqual([[{ x: 0, width: SECOND.length, line: 2 }]]);
+    // The token the show answered comes back on the leave, so the painter can
+    // tell this show's hide from a later one.
+    links[0]!.leave?.(CLICK, links[0]!.text);
+    expect(paint.hidden).toEqual([1]);
+  });
+
+  it('hovering the second row shows the first row’s plain stretch', () => {
+    const term = fakeScreen([FIRST, SECOND], FIRST.length);
+    const paint = paintRecorder();
+    const links = urlLinks(term, 1, () => undefined, paint);
+
+    links[1]!.hover?.(CLICK, links[1]!.text);
+    expect(paint.shown).toEqual([[{ x: 4, width: 14, line: 1 }]]);
+    links[1]!.leave?.(CLICK, links[1]!.text);
+    expect(paint.hidden).toEqual([1]);
+  });
+
+  it('a single-row link gets no hover wiring and no show', () => {
+    const term = fakeTerminal(['dev server up on 127.0.0.1:8300 now']);
+    const paint = paintRecorder();
+    const links = urlLinks(term, 1, () => undefined, paint);
+    expect(links).toHaveLength(1);
+    // The read is through a plain shape — the bare method reference trips
+    // the unbound-method lint, and the assertion is about presence anyway.
+    const fragment = links[0] as { hover?: unknown; leave?: unknown };
+    expect(fragment.hover).toBeUndefined();
+    expect(fragment.leave).toBeUndefined();
+    expect(paint.shown).toEqual([]);
+  });
+
+  it('a wrapped path wires the same way', () => {
+    const term = fakeTerminal(['ran /tmp/out-', 'result.png done'], [1]);
+    const paint = paintRecorder();
+    const links = pathLinks(term, 1, () => ({ sessionName: '' }), paint);
+    expect(links.map((l) => l.text)).toEqual(['/tmp/out-', 'result.png']);
+
+    links[0]!.hover?.(CLICK, links[0]!.text);
+    expect(paint.shown).toEqual([[{ x: 0, width: 10, line: 2 }]]);
+  });
+
+  it('a stretch the CLI underlines at rest is never shown — no second bar', () => {
+    // The thirteenth report's shape: the CLI underlines `/tmp/a-` (and would
+    // underline its fill); the continuation row is plain. Hovering the
+    // underlined first fragment still shows the second row's plain stretch —
+    // it is the only part of the link not already underlined at rest — but
+    // hovering the second fragment has NOTHING to show: the first row reads
+    // underlined with no hover at all, so it gets no wiring and no bar.
+    const term = fakeAttrScreen(
+      [
+        [
+          { text: 'see ', underline: false },
+          { text: '/tmp/a-', underline: true },
+        ],
+        [{ text: 'b.png ok', underline: false }],
+      ],
+      20,
+    );
+    const paint = paintRecorder();
+    const links = pathLinks(term, 1, () => ({ sessionName: '' }), paint);
+    expect(links.map((l) => l.text)).toEqual(['/tmp/a-', 'b.png']);
+
+    links[0]!.hover?.(CLICK, links[0]!.text);
+    expect(paint.shown).toEqual([[{ x: 0, width: 5, line: 2 }]]);
+    links[0]!.leave?.(CLICK, links[0]!.text);
+
+    const fragment = links[1] as { hover?: unknown; leave?: unknown };
+    expect(fragment.hover).toBeUndefined();
+    expect(fragment.leave).toBeUndefined();
+    expect(paint.shown).toHaveLength(1);
   });
 });
